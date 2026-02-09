@@ -676,19 +676,24 @@ async def execute_unit_action(
 
 
 @mcp.tool()
-async def set_city_production(ctx: Context, city_id: int, item_type: str, item_name: str) -> str:
+async def set_city_production(
+    ctx: Context, city_id: int, item_type: str, item_name: str,
+    target_x: int | None = None, target_y: int | None = None,
+) -> str:
     """Set what a city should produce.
 
     Args:
         city_id: City ID (from get_cities output)
         item_type: UNIT, BUILDING, or DISTRICT
         item_name: e.g. UNIT_WARRIOR, BUILDING_MONUMENT, DISTRICT_CAMPUS
+        target_x: X coordinate for district placement (use get_district_advisor to find best tile)
+        target_y: Y coordinate for district placement
 
     Tip: call get_cities first to see your cities and their IDs.
     """
     try:
         gs = _get_game(ctx)
-        return await gs.set_city_production(city_id, item_type, item_name)
+        return await gs.set_city_production(city_id, item_type, item_name, target_x, target_y)
     except LuaError as e:
         return f"Error setting production: {e}"
     except ConnectionError as e:
@@ -749,6 +754,149 @@ async def end_turn(ctx: Context) -> str:
         return await gs.end_turn()
     except LuaError as e:
         return f"Error ending turn: {e}"
+    except ConnectionError as e:
+        return str(e)
+
+
+# ---------------------------------------------------------------------------
+# District advisor
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_district_advisor(ctx: Context, city_id: int, district_type: str) -> str:
+    """Show best tiles to place a district with adjacency bonuses.
+
+    Args:
+        city_id: City ID (from get_cities)
+        district_type: e.g. DISTRICT_CAMPUS, DISTRICT_HOLY_SITE, DISTRICT_INDUSTRIAL_ZONE
+
+    Returns valid placement tiles ranked by adjacency bonus.
+    Use set_city_production with target_x/target_y to build the district.
+    """
+    try:
+        gs = _get_game(ctx)
+        placements = await gs.get_district_advisor(city_id, district_type)
+        return gs.narrate_district_advisor(placements, district_type)
+    except LuaError as e:
+        return f"Error: {e}"
+    except ConnectionError as e:
+        return str(e)
+
+
+# ---------------------------------------------------------------------------
+# Tile purchase tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_purchasable_tiles(ctx: Context, city_id: int) -> str:
+    """List tiles a city can purchase with gold.
+
+    Args:
+        city_id: City ID (from get_cities)
+
+    Shows cost, terrain, and resources for each purchasable tile.
+    Tiles with luxury/strategic resources are listed first.
+    """
+    try:
+        gs = _get_game(ctx)
+        tiles = await gs.get_purchasable_tiles(city_id)
+        return gs.narrate_purchasable_tiles(tiles)
+    except LuaError as e:
+        return f"Error: {e}"
+    except ConnectionError as e:
+        return str(e)
+
+
+@mcp.tool()
+async def purchase_tile(ctx: Context, city_id: int, x: int, y: int) -> str:
+    """Buy a tile for a city with gold.
+
+    Args:
+        city_id: City ID
+        x: Tile X coordinate
+        y: Tile Y coordinate
+
+    Use get_purchasable_tiles first to see costs and options.
+    """
+    try:
+        gs = _get_game(ctx)
+        return await gs.purchase_tile(city_id, x, y)
+    except LuaError as e:
+        return f"Error: {e}"
+    except ConnectionError as e:
+        return str(e)
+
+
+# ---------------------------------------------------------------------------
+# Government change
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def change_government(ctx: Context, government_type: str) -> str:
+    """Switch to a different government type.
+
+    Args:
+        government_type: e.g. GOVERNMENT_CLASSICAL_REPUBLIC, GOVERNMENT_OLIGARCHY
+
+    Use get_policies to see current government. First switch after
+    unlocking a new tier is free (no anarchy).
+    """
+    try:
+        gs = _get_game(ctx)
+        return await gs.change_government(government_type)
+    except LuaError as e:
+        return f"Error: {e}"
+    except ConnectionError as e:
+        return str(e)
+
+
+# ---------------------------------------------------------------------------
+# Great People
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_great_people(ctx: Context) -> str:
+    """See available Great People and recruitment progress.
+
+    Shows which Great People are available, their recruitment cost,
+    and which civilization (if any) is recruiting them.
+    """
+    try:
+        gs = _get_game(ctx)
+        gp = await gs.get_great_people()
+        return gs.narrate_great_people(gp)
+    except LuaError as e:
+        return f"Error: {e}"
+    except ConnectionError as e:
+        return str(e)
+
+
+# ---------------------------------------------------------------------------
+# City yield focus
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def set_city_focus(ctx: Context, city_id: int, focus: str) -> str:
+    """Set a city's citizen yield priority.
+
+    Args:
+        city_id: City ID
+        focus: One of: food, production, gold, science, culture, faith, default
+               'default' clears all focus settings.
+
+    Cities automatically assign citizens to tiles. This biases the AI
+    toward the chosen yield type when assigning new citizens.
+    """
+    try:
+        gs = _get_game(ctx)
+        return await gs.set_city_focus(city_id, focus)
+    except LuaError as e:
+        return f"Error: {e}"
     except ConnectionError as e:
         return str(e)
 

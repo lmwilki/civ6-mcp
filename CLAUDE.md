@@ -25,8 +25,10 @@ Follow this pattern every turn:
 3. `get_map_area` around your city/units — see terrain, resources, **enemy units**
 4. For each unit: decide action based on context (threats, resources, terrain)
 5. `get_cities` — check production queues
-6. `set_city_production` / `set_research` if needed
-7. `end_turn` — auto-checks for blockers and reports events
+6. `get_district_advisor` if building a district — find the best adjacency tile
+7. `set_city_production` / `set_research` if needed
+8. `get_empire_resources` every 10 turns — check for unimproved luxuries, nearby strategics
+9. `end_turn` — auto-checks for blockers and reports events
 
 ## Combat & Threat Awareness
 
@@ -121,6 +123,11 @@ Several operations are asynchronous in the game engine:
 4. **Trying to build improvements outside territory** — only owned tiles work
 5. **Not setting production after a build completes** — city sits idle
 6. **Forgetting to choose research/civic after completion** — wastes turns
+7. **Not building districts by turn 50** — Campus and Commercial Hub are the midgame engine
+8. **Not building trade routes** — free yields from turn 1 of the route
+9. **Ignoring amenities** — improve luxuries first, not bonus resources
+10. **Exploring with warriors instead of scouts** — warriors should guard, scouts should explore
+11. **Hoarding gold** — buy tiles for luxuries, buy builders, invest in growth
 
 ## Production & Research
 
@@ -150,6 +157,47 @@ Several operations are asynchronous in the game engine:
 - Use `upgrade_unit` to upgrade a unit (e.g. slinger → archer) — requires the right tech, enough gold, and moves remaining
 - Common upgrade paths: Slinger → Archer (needs Archery), Warrior → Swordsman (needs Iron Working + iron), Scout → Ranger
 - Upgrading consumes all movement for the turn
+
+## Strategic Benchmarks
+
+By turn 50: 2 cities, 1-2 builders, scout exploring, 2-3 military units, at least 1 luxury improved
+By turn 75: 3 cities, Campus in progress, 1+ trade routes, 10+ science/turn, iron/horses located
+By turn 100: 3-4 cities, Campus + Commercial Hub built, 20+ science, Classical/Medieval era techs
+
+Score targets: Stay within 20% of AI leaders. If behind by 50%+, prioritize settlers and builders.
+
+## Midgame Priorities (Turns 50-100)
+
+1. **Districts are king.** Campus first (science compounds), then Commercial Hub (trade routes + gold).
+   Use `get_district_advisor` to find the best adjacency tile BEFORE starting production.
+2. **Trade routes = free yields.** Build a Trader as soon as you have Foreign Trade civic.
+   Domestic routes to your newest city for food+production. International for gold.
+3. **Improve luxuries BEFORE bonus resources.** Each luxury = +1 amenity empire-wide.
+   Zero amenities = growth penalty = falling behind. Use `get_empire_resources` to track.
+4. **Builders > military in peacetime.** 2-3 builders cycling improvements is more valuable
+   than a 5th warrior sitting idle. Each improved tile = permanent yield increase.
+5. **Don't over-explore with military.** Send scouts to explore, keep warriors near cities.
+   A warrior 10 tiles from home can't defend against barbarian raids.
+
+## District Placement
+
+Use `get_district_advisor(city_id, district_type)` to see valid tiles ranked by adjacency.
+Then use `set_city_production(city_id, "DISTRICT", "DISTRICT_CAMPUS", target_x=X, target_y=Y)`.
+
+Key adjacency tips:
+- Campus: mountains (+1 each), jungles (+1 per 2), geothermal/reef (+2)
+- Holy Site: mountains (+1 each), forests (+1 per 2), natural wonders (+2)
+- Industrial Zone: mines (+1 each), quarries (+1 each), aqueducts (+2)
+- Commercial Hub: adjacent to river (+2 flat bonus), harbors (+2)
+- Theater: wonders (+1 each), Entertainment Complex (+2)
+
+## Economy & Trade
+
+- `get_purchasable_tiles` shows tiles you can buy with gold — prioritize luxury resources
+- `purchase_tile` to buy them instantly
+- Government changes use `change_government` — first switch after new tier is free
+- `set_city_focus` to bias citizen assignment (production focus for builders, food for growth)
+- `get_great_people` to track Great Person recruitment race
 
 ## Code Architecture
 

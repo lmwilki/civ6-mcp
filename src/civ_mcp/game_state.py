@@ -146,8 +146,11 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
-    async def set_city_production(self, city_id: int, item_type: str, item_name: str) -> str:
-        lua = lq.build_produce_item(city_id, item_type, item_name)
+    async def set_city_production(
+        self, city_id: int, item_type: str, item_name: str,
+        target_x: int | None = None, target_y: int | None = None,
+    ) -> str:
+        lua = lq.build_produce_item(city_id, item_type, item_name, target_x, target_y)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
@@ -309,6 +312,56 @@ class GameState:
 
     async def choose_dedication(self, dedication_index: int) -> str:
         lua = lq.build_choose_dedication(dedication_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
+    # District advisor
+    # ------------------------------------------------------------------
+
+    async def get_district_advisor(self, city_id: int, district_type: str) -> list[lq.DistrictPlacement]:
+        lua = lq.build_district_advisor_query(city_id, district_type)
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_district_advisor_response(lines)
+
+    # ------------------------------------------------------------------
+    # Tile purchase methods (InGame context)
+    # ------------------------------------------------------------------
+
+    async def get_purchasable_tiles(self, city_id: int) -> list[lq.PurchasableTile]:
+        lua = lq.build_purchasable_tiles_query(city_id)
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_purchasable_tiles_response(lines)
+
+    async def purchase_tile(self, city_id: int, x: int, y: int) -> str:
+        lua = lq.build_purchase_tile(city_id, x, y)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
+    # Government change (InGame context)
+    # ------------------------------------------------------------------
+
+    async def change_government(self, government_type: str) -> str:
+        lua = lq.build_change_government(government_type)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
+    # Great People (InGame context)
+    # ------------------------------------------------------------------
+
+    async def get_great_people(self) -> list[lq.GreatPersonInfo]:
+        lua = lq.build_great_people_query()
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_great_people_response(lines)
+
+    # ------------------------------------------------------------------
+    # City yield focus (InGame context)
+    # ------------------------------------------------------------------
+
+    async def set_city_focus(self, city_id: int, focus: str) -> str:
+        lua = lq.build_set_yield_focus(city_id, focus)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
@@ -944,9 +997,13 @@ class GameState:
         else:
             lines.append("No civic being progressed!")
         if tc.available_techs:
-            lines.append(f"Available techs: {', '.join(tc.available_techs)}")
+            lines.append("\nAvailable techs:")
+            for t in tc.available_techs:
+                lines.append(f"  {t}")
         if tc.available_civics:
-            lines.append(f"Available civics: {', '.join(tc.available_civics)}")
+            lines.append("\nAvailable civics:")
+            for c in tc.available_civics:
+                lines.append(f"  {c}")
         return "\n".join(lines)
 
     @staticmethod
@@ -1086,6 +1143,40 @@ class GameState:
             lines.append("\nUse choose_dedication(dedication_index=N) to select.")
         elif not status.active:
             lines.append("\nNo dedications available or required.")
+        return "\n".join(lines)
+
+    @staticmethod
+    def narrate_district_advisor(placements: list[lq.DistrictPlacement], district_type: str) -> str:
+        if not placements:
+            return f"No valid placement tiles for {district_type}."
+        lines = [f"{district_type} placement options ({len(placements)} tiles):"]
+        for i, p in enumerate(placements, 1):
+            adj_parts = [f"{v} {k}" for k, v in p.adjacency.items()]
+            adj_str = ", ".join(adj_parts) if adj_parts else "no adjacency"
+            lines.append(f"  #{i} ({p.x},{p.y}) Adj: +{p.total_adjacency} ({adj_str}) — {p.terrain_desc}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def narrate_purchasable_tiles(tiles: list[lq.PurchasableTile]) -> str:
+        if not tiles:
+            return "No purchasable tiles."
+        lines = [f"{len(tiles)} purchasable tiles:"]
+        for t in tiles:
+            res_str = ""
+            if t.resource:
+                cls_tag = {"strategic": "*", "luxury": "+", "bonus": ""}.get(t.resource_class or "", "")
+                res_str = f" [{t.resource}{cls_tag}]"
+            lines.append(f"  ({t.x},{t.y}): {t.cost}g — {t.terrain}{res_str}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def narrate_great_people(gp: list[lq.GreatPersonInfo]) -> str:
+        if not gp:
+            return "No Great People in timeline."
+        lines = [f"{len(gp)} Great People:"]
+        for g in gp:
+            progress = f"{g.player_points}/{g.cost}"
+            lines.append(f"  {g.class_name}: {g.individual_name} ({g.era_name}) — {g.claimant} — your points: {progress}")
         return "\n".join(lines)
 
     @staticmethod

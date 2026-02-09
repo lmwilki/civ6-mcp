@@ -480,6 +480,38 @@ class DedicationStatus:
     choices: list[DedicationChoice] = field(default_factory=list)
 
 
+@dataclass
+class DistrictPlacement:
+    """A valid tile for placing a district, with adjacency bonuses."""
+    x: int
+    y: int
+    adjacency: dict[str, int]   # yield_type -> bonus (e.g. {"science": 3})
+    total_adjacency: int
+    terrain_desc: str           # e.g. "Plains Hills"
+
+
+@dataclass
+class PurchasableTile:
+    """A tile that can be purchased with gold."""
+    x: int
+    y: int
+    cost: int
+    terrain: str
+    resource: str | None
+    resource_class: str | None  # "strategic", "luxury", "bonus"
+
+
+@dataclass
+class GreatPersonInfo:
+    """Info about an available or claimed Great Person."""
+    class_name: str       # e.g. "Great Scientist"
+    individual_name: str  # e.g. "Hypatia"
+    era_name: str
+    cost: int             # great person points needed to recruit
+    claimant: str         # civ name or "Unclaimed"
+    player_points: int    # our points toward this class
+
+
 # Map notification types to the MCP tool that resolves them
 NOTIFICATION_TOOL_MAP: dict[str, str] = {
     "NOTIFICATION_CHOOSE_TECH": "set_research(tech_or_civic=..., category='tech')",
@@ -772,9 +804,36 @@ if civicIdx >= 0 then
     civicTurns = cu:GetTurnsLeftOnCurrentCivic()
 end
 print("CURRENT|" .. techName .. "|" .. techTurns .. "|" .. civicName .. "|" .. civicTurns)
+-- Build boost lookup
+local boostsByTech = {{}}
+local boostsByCivic = {{}}
+for b in GameInfo.Boosts() do
+    if b.TechnologyType then boostsByTech[b.TechnologyType] = b end
+    if b.CivicType then boostsByCivic[b.CivicType] = b end
+end
 for tech in GameInfo.Technologies() do
     if te:CanResearch(tech.Index) and not te:HasTech(tech.Index) then
-        print("TECH|" .. Locale.Lookup(tech.Name) .. "|" .. tech.TechnologyType)
+        local cost = te:GetResearchCost(tech.Index)
+        local progress = te:GetResearchProgress(tech.Index)
+        local turns = te:GetTurnsToResearch(tech.Index)
+        local pct = cost > 0 and math.floor(progress * 100 / cost) or 0
+        local boosted = te:HasBoostBeenTriggered(tech.Index)
+        local boostDesc = ""
+        local b = boostsByTech[tech.TechnologyType]
+        if b and b.TriggerDescription then
+            boostDesc = Locale.Lookup(b.TriggerDescription):gsub("|", "/")
+        end
+        local unlocks = {{}}
+        for u in GameInfo.Units() do if u.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(u.Name)) end end
+        for bld in GameInfo.Buildings() do if bld.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(bld.Name)) end end
+        for d in GameInfo.Districts() do if d.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(d.Name)) end end
+        for imp in GameInfo.Improvements() do if imp.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(imp.Name)) end end
+        for r in GameInfo.Resources() do
+            if r.PrereqTech == tech.TechnologyType then table.insert(unlocks, "Reveals " .. Locale.Lookup(r.Name)) end
+        end
+        local unlockStr = table.concat(unlocks, ", "):gsub("|", "/")
+        local boostTag = boosted and "BOOSTED" or "UNBOOSTED"
+        print("TECH|" .. Locale.Lookup(tech.Name) .. "|" .. tech.TechnologyType .. "|" .. cost .. "|" .. pct .. "|" .. turns .. "|" .. boostTag .. "|" .. boostDesc .. "|" .. unlockStr)
     end
 end
 local curEra = Game.GetEras():GetCurrentEra()
@@ -797,7 +856,18 @@ for civic in GameInfo.Civics() do
                 end
             end
             if canProgress then
-                print("CIVIC|" .. Locale.Lookup(civic.Name) .. "|" .. civic.CivicType)
+                local cost = cu:GetCultureCost(civic.Index)
+                local progress = cu:GetCulturalProgress(civic.Index)
+                local turns2 = cu:GetTurnsLeft(civic.Index)
+                local pct2 = cost > 0 and math.floor(progress * 100 / cost) or 0
+                local boosted2 = cu:HasBoostBeenTriggered(civic.Index)
+                local boostDesc2 = ""
+                local b2 = boostsByCivic[civic.CivicType]
+                if b2 and b2.TriggerDescription then
+                    boostDesc2 = Locale.Lookup(b2.TriggerDescription):gsub("|", "/")
+                end
+                local boostTag2 = boosted2 and "BOOSTED" or "UNBOOSTED"
+                print("CIVIC|" .. Locale.Lookup(civic.Name) .. "|" .. civic.CivicType .. "|" .. cost .. "|" .. pct2 .. "|" .. turns2 .. "|" .. boostTag2 .. "|" .. boostDesc2)
             end
         end
     end
@@ -892,7 +962,9 @@ if isRanged then
         print("{SENTINEL}"); return
     end
     UnitManager.RequestOperation(unit, UnitOperationTypes.RANGE_ATTACK, params)
-    print("OK:RANGE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|enemy HP before:" .. enemyHP .. "/" .. enemyMaxHP .. "|your HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
+    local enemyAfterHP = enemy:GetMaxDamage() - enemy:GetDamage()
+    local dmgDealt = enemyHP - enemyAfterHP
+    print("OK:RANGE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|enemy HP:" .. enemyHP .. " -> " .. enemyAfterHP .. "/" .. enemyMaxHP .. "|damage dealt:" .. dmgDealt .. "|your HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
 else
     -- Melee: must be adjacent (dist == 1)
     if dist > 1 then
@@ -906,7 +978,23 @@ else
         print("{SENTINEL}"); return
     end
     UnitManager.RequestOperation(unit, UnitOperationTypes.MOVE_TO, params)
-    print("OK:MELEE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|enemy HP before:" .. enemyHP .. "/" .. enemyMaxHP .. "|your HP:" .. myHP .. " CS:" .. myCS .. "|unit moves onto target tile if enemy dies")
+    -- Try to read post-combat state (may fail if units moved/died)
+    local myAfterHP = myHP
+    local ok1, _ = pcall(function() myAfterHP = unit:GetMaxDamage() - unit:GetDamage() end)
+    local enemyAfterHP = 0
+    local enemyAlive = false
+    local ok2, _ = pcall(function()
+        local d = enemy:GetDamage()
+        if d ~= nil then enemyAfterHP = enemy:GetMaxDamage() - d; enemyAlive = true end
+    end)
+    local report = "OK:MELEE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})"
+    if enemyAlive then
+        report = report .. "|enemy HP:" .. enemyHP .. " -> " .. enemyAfterHP .. "/" .. enemyMaxHP
+    else
+        report = report .. "|enemy HP:" .. enemyHP .. " -> KILLED"
+    end
+    report = report .. "|your HP:" .. myHP .. " -> " .. myAfterHP .. " CS:" .. myCS
+    print(report)
 end
 print("{SENTINEL}")
 """
@@ -1378,14 +1466,22 @@ print("{SENTINEL}")
 """
 
 
-def build_produce_item(city_id: int, item_type: str, item_name: str) -> str:
+def build_produce_item(
+    city_id: int, item_type: str, item_name: str,
+    target_x: int | None = None, target_y: int | None = None,
+) -> str:
     """Set production for a city via CityManager.RequestOperation (InGame context).
 
     item_type is UNIT/BUILDING/DISTRICT, item_name is e.g. UNIT_WARRIOR.
     Uses .Hash for item refs and VALUE_REPLACE_AT position 0 to replace current production.
+    For districts, pass target_x/target_y to specify placement tile.
     """
     table_name = _ITEM_TABLE_MAP.get(item_type.upper(), "Units")
     param_key = _ITEM_PARAM_MAP.get(item_type.upper(), "PARAM_UNIT_TYPE")
+    # Extra params for district placement
+    xy_params = ""
+    if target_x is not None and target_y is not None:
+        xy_params = f"tParams[CityOperationTypes.PARAM_X] = {target_x}\ntParams[CityOperationTypes.PARAM_Y] = {target_y}"
     return f"""
 {_lua_get_city(city_id)}
 local item = GameInfo.{table_name}["{item_name}"]
@@ -1398,6 +1494,7 @@ local tParams = {{}}
 tParams[CityOperationTypes.{param_key}] = item.Hash
 tParams[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_REPLACE_AT
 tParams[CityOperationTypes.PARAM_QUEUE_DESTINATION_LOCATION] = 0
+{xy_params}
 CityManager.RequestOperation(pCity, CityOperationTypes.BUILD, tParams)
 local turnsLeft = bq:GetTurnsLeft(item.Hash)
 print("OK:PRODUCING|{item_name}|" .. turnsLeft .. " turns")
@@ -2291,6 +2388,366 @@ print("{SENTINEL}")
 
 
 # ---------------------------------------------------------------------------
+# District advisor
+# ---------------------------------------------------------------------------
+
+
+def build_district_advisor_query(city_id: int, district_type: str) -> str:
+    """Find valid tiles for a district with adjacency bonuses (InGame context).
+
+    Uses hardcoded adjacency formulas for common districts rather than
+    parsing 157 Adjacency_YieldChanges rows in Lua.
+    """
+    return f"""
+{_lua_get_city(city_id)}
+local dist = GameInfo.Districts["{district_type}"]
+if dist == nil then {_bail(f"ERR:DISTRICT_NOT_FOUND|{district_type}")} end
+local bq = pCity:GetBuildQueue()
+if not bq:CanProduce(dist.Hash, true) then
+    {_bail(f"ERR:CANNOT_PRODUCE|{district_type} cannot be produced in this city")}
+end
+local targets = CityManager.GetOperationTargets(pCity, CityOperationTypes.BUILD, {{[CityOperationTypes.PARAM_DISTRICT_TYPE] = dist.Hash}})
+if targets == nil then {_bail("ERR:NO_TARGETS|No valid placement targets found")} end
+local plotIndices = {{}}
+for k, v in pairs(targets) do
+    if type(v) == "table" then
+        for _, idx in ipairs(v) do table.insert(plotIndices, idx) end
+    end
+end
+if #plotIndices == 0 then {_bail("ERR:NO_TILES|No valid placement tiles found")} end
+local results = {{}}
+local dType = "{district_type}"
+for _, pIdx in ipairs(plotIndices) do
+    local plot = Map.GetPlotByIndex(pIdx)
+    if plot then
+        local px, py = plot:GetX(), plot:GetY()
+        local adj_s, adj_p, adj_g, adj_f, adj_c = 0, 0, 0, 0, 0
+        local mountains, jungles, forests, districts, rivers = 0, 0, 0, 0, 0
+        local wonders, mines, quarries, harbors, aqueducts, ent_complex = 0, 0, 0, 0, 0, 0
+        local geothermal, reefs, nat_wonders, sea_resources = 0, 0, 0, 0
+        local isRiver = plot:IsRiver()
+        if isRiver then rivers = 1 end
+        for d = 0, 5 do
+            local adj = Map.GetAdjacentPlot(px, py, d)
+            if adj then
+                if adj:IsMountain() then mountains = mountains + 1 end
+                local feat = adj:GetFeatureType()
+                if feat >= 0 then
+                    local fInfo = GameInfo.Features[feat]
+                    if fInfo then
+                        local fn = fInfo.FeatureType
+                        if fn == "FEATURE_JUNGLE" then jungles = jungles + 1
+                        elseif fn == "FEATURE_FOREST" then forests = forests + 1
+                        elseif fn == "FEATURE_GEOTHERMAL_FISSURE" then geothermal = geothermal + 1
+                        elseif fn == "FEATURE_REEF" then reefs = reefs + 1
+                        elseif fInfo.NaturalWonder then nat_wonders = nat_wonders + 1
+                        end
+                    end
+                end
+                local distId = adj:GetDistrictType()
+                if distId >= 0 then
+                    districts = districts + 1
+                    local dInfo = GameInfo.Districts[distId]
+                    if dInfo then
+                        local dn = dInfo.DistrictType
+                        if dn == "DISTRICT_HARBOR" then harbors = harbors + 1
+                        elseif dn == "DISTRICT_AQUEDUCT" then aqueducts = aqueducts + 1
+                        elseif dn == "DISTRICT_ENTERTAINMENT_COMPLEX" or dn == "DISTRICT_WATER_ENTERTAINMENT_COMPLEX" then ent_complex = ent_complex + 1
+                        end
+                    end
+                end
+                local imp = adj:GetImprovementType()
+                if imp >= 0 then
+                    local iInfo = GameInfo.Improvements[imp]
+                    if iInfo then
+                        local in2 = iInfo.ImprovementType
+                        if in2 == "IMPROVEMENT_MINE" then mines = mines + 1
+                        elseif in2 == "IMPROVEMENT_QUARRY" then quarries = quarries + 1
+                        end
+                    end
+                end
+                local res = adj:GetResourceType()
+                if res >= 0 then
+                    local rInfo = GameInfo.Resources[res]
+                    if rInfo and adj:IsWater() then sea_resources = sea_resources + 1 end
+                end
+                local wid = adj:GetWonderType()
+                if wid >= 0 then wonders = wonders + 1 end
+            end
+        end
+        if dType == "DISTRICT_CAMPUS" then
+            adj_s = mountains + math.floor(jungles / 2) + geothermal * 2 + reefs * 2 + nat_wonders * 2
+        elseif dType == "DISTRICT_HOLY_SITE" then
+            adj_f = mountains + math.floor(forests / 2) + nat_wonders * 2
+        elseif dType == "DISTRICT_INDUSTRIAL_ZONE" then
+            adj_p = mines + quarries + aqueducts * 2
+        elseif dType == "DISTRICT_COMMERCIAL_HUB" then
+            if rivers > 0 then adj_g = adj_g + 2 end
+            adj_g = adj_g + harbors * 2
+        elseif dType == "DISTRICT_THEATER" then
+            adj_c = wonders + ent_complex * 2
+        elseif dType == "DISTRICT_HARBOR" then
+            adj_g = sea_resources
+        end
+        local total = adj_s + adj_p + adj_g + adj_f + adj_c
+        local terrain = ""
+        local tInfo = GameInfo.Terrains[plot:GetTerrainType()]
+        if tInfo then terrain = Locale.Lookup(tInfo.Name) end
+        if plot:IsHills() then terrain = terrain .. " Hills" end
+        local fInfo2 = nil
+        if plot:GetFeatureType() >= 0 then fInfo2 = GameInfo.Features[plot:GetFeatureType()] end
+        if fInfo2 then terrain = terrain .. " " .. Locale.Lookup(fInfo2.Name) end
+        table.insert(results, {{x=px, y=py, s=adj_s, p=adj_p, g=adj_g, f=adj_f, c=adj_c, total=total, terrain=terrain}})
+    end
+end
+table.sort(results, function(a, b) return a.total > b.total end)
+for i = 1, math.min(#results, 10) do
+    local r = results[i]
+    print("DPLOT|" .. r.x .. "," .. r.y .. "|" .. r.s .. "|" .. r.p .. "|" .. r.g .. "|" .. r.f .. "|" .. r.c .. "|" .. r.total .. "|" .. r.terrain)
+end
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Tile purchase
+# ---------------------------------------------------------------------------
+
+
+def build_purchasable_tiles_query(city_id: int) -> str:
+    """List tiles a city can purchase with gold (InGame context)."""
+    return f"""
+{_lua_get_city(city_id)}
+local targets = CityManager.GetCommandTargets(pCity, CityCommandTypes.PURCHASE, {{[CityCommandTypes.PARAM_PLOT_PURCHASE] = 1}})
+if targets == nil then {_bail("ERR:NO_TARGETS|No purchasable tiles found")} end
+local plotIndices = {{}}
+for k, v in pairs(targets) do
+    if type(v) == "table" then
+        for _, idx in ipairs(v) do table.insert(plotIndices, idx) end
+    end
+end
+if #plotIndices == 0 then {_bail("ERR:NO_TILES|No purchasable tiles")} end
+local results = {{}}
+for _, pIdx in ipairs(plotIndices) do
+    local plot = Map.GetPlotByIndex(pIdx)
+    if plot then
+        local px, py = plot:GetX(), plot:GetY()
+        local cost = pCity:GetGold():GetPlotPurchaseCost(px, py)
+        if cost > 0 then
+            local terrain = ""
+            local tInfo = GameInfo.Terrains[plot:GetTerrainType()]
+            if tInfo then terrain = Locale.Lookup(tInfo.Name) end
+            if plot:IsHills() then terrain = terrain .. " Hills" end
+            local resName, resClass = "", ""
+            local res = plot:GetResourceType()
+            if res >= 0 then
+                local rInfo = GameInfo.Resources[res]
+                if rInfo then
+                    resName = Locale.Lookup(rInfo.Name)
+                    local rc = rInfo.ResourceClassType
+                    if rc == "RESOURCECLASS_STRATEGIC" then resClass = "strategic"
+                    elseif rc == "RESOURCECLASS_LUXURY" then resClass = "luxury"
+                    else resClass = "bonus" end
+                end
+            end
+            local sortKey = 0
+            if resClass == "luxury" then sortKey = 3
+            elseif resClass == "strategic" then sortKey = 2
+            elseif resClass == "bonus" then sortKey = 1 end
+            table.insert(results, {{x=px, y=py, cost=cost, terrain=terrain, res=resName, cls=resClass, sk=sortKey}})
+        end
+    end
+end
+table.sort(results, function(a, b)
+    if a.sk ~= b.sk then return a.sk > b.sk end
+    return a.cost < b.cost
+end)
+for i = 1, math.min(#results, 15) do
+    local r = results[i]
+    print("PTILE|" .. r.x .. "," .. r.y .. "|" .. r.cost .. "|" .. r.terrain .. "|" .. r.res .. "|" .. r.cls)
+end
+print("{SENTINEL}")
+"""
+
+
+def build_purchase_tile(city_id: int, x: int, y: int) -> str:
+    """Buy a tile for a city with gold (InGame context)."""
+    return f"""
+{_lua_get_city(city_id)}
+local cost = pCity:GetGold():GetPlotPurchaseCost({x}, {y})
+if cost <= 0 then {_bail(f"ERR:NOT_PURCHASABLE|Tile ({x},{y}) is not purchasable by this city")} end
+local balance = Players[me]:GetTreasury():GetGoldBalance()
+if balance < cost then
+    print("ERR:INSUFFICIENT_GOLD|Need " .. cost .. " gold, have " .. math.floor(balance))
+    print("{SENTINEL}"); return
+end
+local tParams = {{}}
+tParams[CityCommandTypes.PARAM_PLOT_PURCHASE] = 1
+tParams[CityCommandTypes.PARAM_X] = {x}
+tParams[CityCommandTypes.PARAM_Y] = {y}
+CityManager.RequestCommand(pCity, CityCommandTypes.PURCHASE, tParams)
+print("OK:TILE_PURCHASED|({x},{y})|cost:" .. cost)
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Government change
+# ---------------------------------------------------------------------------
+
+
+def build_available_governments_query() -> str:
+    """List unlocked governments with slot info (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local pCulture = Players[me]:GetCulture()
+local curGov = pCulture:GetCurrentGovernment()
+for row in GameInfo.Governments() do
+    local unlocked = pCulture:IsGovernmentUnlocked(row.Index)
+    if unlocked then
+        local isCurrent = (row.Index == curGov)
+        local slots = {{}}
+        for slotRow in GameInfo.Government_SlotCounts() do
+            if slotRow.GovernmentType == row.GovernmentType then
+                for i = 1, slotRow.NumSlots do
+                    table.insert(slots, slotRow.GovernmentSlotType)
+                end
+            end
+        end
+        local slotStr = table.concat(slots, ",")
+        local name = Locale.Lookup(row.Name)
+        local bonus = ""
+        if row.BonusType then
+            local bRow = GameInfo.GovernmentBonuses and GameInfo.GovernmentBonuses[row.BonusType]
+            if bRow then bonus = Locale.Lookup(bRow.Description or "") end
+        end
+        local tag = isCurrent and "CURRENT" or "AVAILABLE"
+        print("GOV|" .. row.GovernmentType .. "|" .. row.Index .. "|" .. tag .. "|" .. name .. "|" .. slotStr .. "|" .. bonus)
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def build_change_government(gov_type: str) -> str:
+    """Switch government type (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local pCulture = Players[me]:GetCulture()
+local row = GameInfo.Governments["{gov_type}"]
+if row == nil then {_bail(f"ERR:GOV_NOT_FOUND|{gov_type}")} end
+if not pCulture:IsGovernmentUnlocked(row.Index) then {_bail(f"ERR:GOV_LOCKED|{gov_type} is not unlocked")} end
+if row.Index == pCulture:GetCurrentGovernment() then {_bail(f"ERR:ALREADY_CURRENT|{gov_type} is already your government")} end
+pCulture:SetGovernmentChangeConsidered(true)
+pCulture:RequestChangeGovernment(row.Index)
+print("OK:GOVERNMENT_CHANGED|{gov_type}|" .. Locale.Lookup(row.Name))
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Great People tracking
+# ---------------------------------------------------------------------------
+
+
+def build_great_people_query() -> str:
+    """Get available Great People and recruitment progress (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local gp = Game.GetGreatPeople()
+if gp == nil then {_bail("ERR:NO_GP_SYSTEM|Great People system not available")} end
+local timeline = gp:GetTimeline()
+if timeline == nil then {_bail("ERR:NO_TIMELINE|No great people timeline")} end
+for _, entry in ipairs(timeline) do
+    if entry.Class == nil or entry.Individual == nil then goto continue_gp end
+    local classInfo = GameInfo.GreatPersonClasses[entry.Class]
+    local indivInfo = GameInfo.GreatPersonIndividuals[entry.Individual]
+    if classInfo and indivInfo then
+        local className = Locale.Lookup(classInfo.Name)
+        local indivName = Locale.Lookup(indivInfo.Name)
+        local eraInfo = GameInfo.Eras[entry.Era]
+        local eraName = eraInfo and Locale.Lookup(eraInfo.Name) or "Unknown"
+        local claimant = "Unclaimed"
+        if entry.Claimant and entry.Claimant >= 0 then
+            local cfg = PlayerConfigurations[entry.Claimant]
+            if cfg then claimant = Locale.Lookup(cfg:GetCivilizationShortDescription()) end
+        end
+        local myPoints = 0
+        local threshold = entry.Cost or 0
+        local pGP = Players[me]:GetGreatPeoplePoints()
+        if pGP then
+            myPoints = pGP:GetPointsTotal(entry.Class)
+        end
+        print("GP|" .. className .. "|" .. indivName .. "|" .. eraName .. "|" .. threshold .. "|" .. claimant .. "|" .. myPoints)
+    end
+    ::continue_gp::
+end
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# City yield focus
+# ---------------------------------------------------------------------------
+
+
+def build_city_yield_focus_query(city_id: int) -> str:
+    """Get current yield focus settings for a city (InGame context)."""
+    return f"""
+{_lua_get_city(city_id)}
+local citz = pCity:GetCitizens()
+local yields = {{"YIELD_FOOD", "YIELD_PRODUCTION", "YIELD_GOLD", "YIELD_SCIENCE", "YIELD_CULTURE", "YIELD_FAITH"}}
+for _, yName in ipairs(yields) do
+    local yRow = GameInfo.Yields[yName]
+    if yRow then
+        local favored = citz:IsYieldFavored(yRow.Index)
+        local disfavored = citz:IsYieldDisfavored(yRow.Index)
+        local status = "neutral"
+        if favored then status = "favored" elseif disfavored then status = "disfavored" end
+        print("FOCUS|" .. yName .. "|" .. status)
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def build_set_yield_focus(city_id: int, yield_type: str) -> str:
+    """Set or clear a yield focus for a city (InGame context).
+
+    yield_type="DEFAULT" clears all focus. Otherwise sets the given yield as favored.
+    """
+    if yield_type.upper() == "DEFAULT":
+        # Clear all focus
+        return f"""
+{_lua_get_city(city_id)}
+local citz = pCity:GetCitizens()
+for yRow in GameInfo.Yields() do
+    if citz:IsYieldFavored(yRow.Index) then citz:SetFavoredYield(yRow.Index) end
+    if citz:IsYieldDisfavored(yRow.Index) then citz:SetDisfavoredYield(yRow.Index) end
+end
+print("OK:FOCUS_CLEARED|All yield focus cleared")
+print("{SENTINEL}")
+"""
+    yield_name = yield_type.upper()
+    if not yield_name.startswith("YIELD_"):
+        yield_name = f"YIELD_{yield_name}"
+    return f"""
+{_lua_get_city(city_id)}
+local yRow = GameInfo.Yields["{yield_name}"]
+if yRow == nil then {_bail(f"ERR:YIELD_NOT_FOUND|{yield_name}")} end
+local citz = pCity:GetCitizens()
+-- Clear existing focus first
+for yr in GameInfo.Yields() do
+    if citz:IsYieldFavored(yr.Index) then citz:SetFavoredYield(yr.Index) end
+    if citz:IsYieldDisfavored(yr.Index) then citz:SetDisfavoredYield(yr.Index) end
+end
+citz:SetFavoredYield(yRow.Index)
+print("OK:FOCUS_SET|{yield_name}|favored")
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
 # Response parsers
 # ---------------------------------------------------------------------------
 
@@ -2511,10 +2968,27 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
             current_civic_turns = int(parts[4])
         elif line.startswith("TECH|"):
             parts = line.split("|")
-            available_techs.append(f"{parts[1]} ({parts[2]})")
+            if len(parts) >= 9:
+                # Enhanced format: name|type|cost|pct|turns|boostTag|boostDesc|unlocks
+                boost_str = f" {parts[6]}" if parts[6] == "BOOSTED" else ""
+                boost_desc = f" [Boost: {parts[7]}]" if parts[7] else ""
+                unlocks = f" -> {parts[8]}" if parts[8] else ""
+                available_techs.append(
+                    f"{parts[1]} ({parts[2]}) — {parts[4]}%, {parts[5]} turns{boost_str}{boost_desc}{unlocks}"
+                )
+            else:
+                available_techs.append(f"{parts[1]} ({parts[2]})")
         elif line.startswith("CIVIC|"):
             parts = line.split("|")
-            available_civics.append(f"{parts[1]} ({parts[2]})")
+            if len(parts) >= 8:
+                # Enhanced format: name|type|cost|pct|turns|boostTag|boostDesc
+                boost_str = f" {parts[6]}" if parts[6] == "BOOSTED" else ""
+                boost_desc = f" [Boost: {parts[7]}]" if parts[7] else ""
+                available_civics.append(
+                    f"{parts[1]} ({parts[2]}) — {parts[4]}%, {parts[5]} turns{boost_str}{boost_desc}"
+                )
+            else:
+                available_civics.append(f"{parts[1]} ({parts[2]})")
 
     return TechCivicStatus(
         current_research=current_research,
@@ -2959,3 +3433,65 @@ def parse_dedications_response(lines: list[str]) -> DedicationStatus:
         active=active,
         choices=choices,
     )
+
+
+def parse_district_advisor_response(lines: list[str]) -> list[DistrictPlacement]:
+    """Parse DPLOT| lines from build_district_advisor_query."""
+    results: list[DistrictPlacement] = []
+    for line in lines:
+        if line.startswith("DPLOT|"):
+            parts = line.split("|")
+            if len(parts) >= 9:
+                coords = parts[1].split(",")
+                adjacency: dict[str, int] = {}
+                s, p, g, f, c = int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5]), int(parts[6])
+                if s: adjacency["science"] = s
+                if p: adjacency["production"] = p
+                if g: adjacency["gold"] = g
+                if f: adjacency["faith"] = f
+                if c: adjacency["culture"] = c
+                results.append(DistrictPlacement(
+                    x=int(coords[0]),
+                    y=int(coords[1]),
+                    adjacency=adjacency,
+                    total_adjacency=int(parts[7]),
+                    terrain_desc=parts[8],
+                ))
+    return results
+
+
+def parse_purchasable_tiles_response(lines: list[str]) -> list[PurchasableTile]:
+    """Parse PTILE| lines from build_purchasable_tiles_query."""
+    results: list[PurchasableTile] = []
+    for line in lines:
+        if line.startswith("PTILE|"):
+            parts = line.split("|")
+            if len(parts) >= 6:
+                coords = parts[1].split(",")
+                results.append(PurchasableTile(
+                    x=int(coords[0]),
+                    y=int(coords[1]),
+                    cost=int(parts[2]),
+                    terrain=parts[3],
+                    resource=parts[4] if parts[4] else None,
+                    resource_class=parts[5] if parts[5] else None,
+                ))
+    return results
+
+
+def parse_great_people_response(lines: list[str]) -> list[GreatPersonInfo]:
+    """Parse GP| lines from build_great_people_query."""
+    results: list[GreatPersonInfo] = []
+    for line in lines:
+        if line.startswith("GP|"):
+            parts = line.split("|")
+            if len(parts) >= 7:
+                results.append(GreatPersonInfo(
+                    class_name=parts[1],
+                    individual_name=parts[2],
+                    era_name=parts[3],
+                    cost=int(parts[4]),
+                    claimant=parts[5],
+                    player_points=int(parts[6]),
+                ))
+    return results
