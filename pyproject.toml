@@ -1,0 +1,35 @@
+[project]
+name = "civ6-mcp"
+version = "0.1.0"
+description = "MCP server for Civilization VI — lets LLM agents read game state and play"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Liam Wilkinson", email = "liam.m.wilkinson@gmail.com" }
+]
+requires-python = ">=3.12"
+keywords = ["civ6", "civilization", "mcp", "llm", "agent", "game-ai", "benchmark"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment :: Turn Based Strategy",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "mcp>=1.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/lmwilki/civ6-mcp"
+Repository = "https://github.com/lmwilki/civ6-mcp"
+
+[project.scripts]
+civ-mcp = "civ_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/civ_mcp"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
