@@ -4,19 +4,24 @@ Uses FastMCP with the lifespan pattern to maintain a persistent TCP connection
 to the running game via FireTuner protocol.
 """
 
+import asyncio
 import logging
 import subprocess
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
+import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.utilities.types import Image
 
 from civ_mcp.connection import GameConnection, LuaError
 from civ_mcp.game_state import GameState
+from civ_mcp.logger import GameLogger
+from civ_mcp.web_api import create_app
 
 log = logging.getLogger(__name__)
 
@@ -24,16 +29,28 @@ log = logging.getLogger(__name__)
 @dataclass
 class AppContext:
     game: GameState
+    logger: GameLogger
 
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     conn = GameConnection()
-    # Don't connect here — connect lazily on first tool call via ensure_connected().
-    # This lets the MCP server start even when the game isn't running yet.
+    logger = GameLogger()
+    gs = GameState(conn)
+    log.info("Game log: %s", logger.path)
+
+    # Start the web dashboard API as a background task (port 8000)
+    web_app = create_app(gs)
+    uvi_config = uvicorn.Config(web_app, host="0.0.0.0", port=8000, log_level="info")
+    uvi_server = uvicorn.Server(uvi_config)
+    api_task = asyncio.create_task(uvi_server.serve())
+    log.info("Web API starting on http://0.0.0.0:8000")
+
     try:
-        yield AppContext(game=GameState(conn))
+        yield AppContext(game=gs, logger=logger)
     finally:
+        uvi_server.should_exit = True
+        await api_task
         await conn.disconnect()
 
 
@@ -46,6 +63,34 @@ mcp = FastMCP(
 
 def _get_game(ctx: Context) -> GameState:
     return ctx.request_context.lifespan_context.game
+
+
+def _get_logger(ctx: Context) -> GameLogger:
+    return ctx.request_context.lifespan_context.logger
+
+
+async def _logged(
+    ctx: Context,
+    tool_name: str,
+    params: dict[str, Any],
+    fn: Callable[[], Awaitable[str]],
+) -> str:
+    """Run a tool function with timing, error handling, and logging."""
+    logger = _get_logger(ctx)
+    start = time.monotonic()
+    try:
+        result = await fn()
+    except (LuaError, ValueError) as e:
+        result = f"Error: {e}"
+        await logger.log_error(tool_name, result)
+        return result
+    except ConnectionError as e:
+        result = str(e)
+        await logger.log_error(tool_name, result)
+        return result
+    ms = int((time.monotonic() - start) * 1000)
+    await logger.log_tool_call(tool_name, params, result, ms)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -61,14 +106,14 @@ async def get_game_overview(ctx: Context) -> str:
     current research and civic, and counts of cities and units.
     Call this first to orient yourself.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         ov = await gs.get_game_overview()
+        _get_logger(ctx).set_turn(ov.turn)
         return gs.narrate_overview(ov)
-    except LuaError as e:
-        return f"Error reading game state: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_game_overview", {}, _run)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -78,14 +123,8 @@ async def get_units(ctx: Context) -> str:
     Each unit shows its id and idx (needed for action commands).
     Consumed units (e.g. settlers that founded cities) are excluded.
     """
-    try:
-        gs = _get_game(ctx)
-        units = await gs.get_units()
-        return gs.narrate_units(units)
-    except LuaError as e:
-        return f"Error reading units: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_units", {}, lambda: _narrate(gs.get_units, gs.narrate_units))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -94,14 +133,8 @@ async def get_cities(ctx: Context) -> str:
 
     Each city shows its id (needed for production commands).
     """
-    try:
-        gs = _get_game(ctx)
-        cities = await gs.get_cities()
-        return gs.narrate_cities(cities)
-    except LuaError as e:
-        return f"Error reading cities: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_cities", {}, lambda: _narrate(gs.get_cities, gs.narrate_cities))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -114,14 +147,13 @@ async def get_city_production(ctx: Context, city_id: int) -> str:
     Returns available units, buildings, and districts with production costs.
     Call this when a city finishes building or to decide what to produce next.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         options = await gs.list_city_production(city_id)
         return gs.narrate_city_production(options)
-    except LuaError as e:
-        return f"Error listing production: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_city_production", {"city_id": city_id}, _run)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -134,14 +166,13 @@ async def get_map_area(ctx: Context, center_x: int, center_y: int, radius: int =
         radius: How many tiles out from center (default 2, max 4)
     """
     radius = min(radius, 4)
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         tiles = await gs.get_map_area(center_x, center_y, radius)
         return gs.narrate_map(tiles)
-    except LuaError as e:
-        return f"Error reading map: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_map_area", {"center_x": center_x, "center_y": center_y, "radius": radius}, _run)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -154,14 +185,10 @@ async def get_settle_advisor(ctx: Context, unit_id: int) -> str:
     Scores locations by yields, water, defense, and resource value.
     Returns top 5 candidates sorted by score.
     """
-    try:
-        gs = _get_game(ctx)
-        unit_index = unit_id % 65536
-        return await gs.get_settle_advisor(unit_index)
-    except LuaError as e:
-        return f"Error running settle advisor: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    unit_index = unit_id % 65536
+    return await _logged(ctx, "get_settle_advisor", {"unit_id": unit_id},
+                         lambda: gs.get_settle_advisor(unit_index))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -171,14 +198,13 @@ async def get_empire_resources(ctx: Context) -> str:
     Shows owned resources (improved/unimproved) grouped by type,
     and unclaimed resources near your cities.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         stockpiles, owned, nearby, luxuries = await gs.get_empire_resources()
         return gs.narrate_empire_resources(stockpiles, owned, nearby, luxuries)
-    except LuaError as e:
-        return f"Error reading resources: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_empire_resources", {}, _run)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -189,14 +215,8 @@ async def get_diplomacy(ctx: Context) -> str:
     with scores and reasons, grievances, delegations/embassies, and available
     diplomatic actions you can take.
     """
-    try:
-        gs = _get_game(ctx)
-        civs = await gs.get_diplomacy()
-        return gs.narrate_diplomacy(civs)
-    except LuaError as e:
-        return f"Error reading diplomacy: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_diplomacy", {}, lambda: _narrate(gs.get_diplomacy, gs.narrate_diplomacy))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -206,14 +226,8 @@ async def get_tech_civics(ctx: Context) -> str:
     Shows current research, current civic, turns remaining,
     and lists of available technologies and civics to choose from.
     """
-    try:
-        gs = _get_game(ctx)
-        tc = await gs.get_tech_civics()
-        return gs.narrate_tech_civics(tc)
-    except LuaError as e:
-        return f"Error reading tech/civics: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_tech_civics", {}, lambda: _narrate(gs.get_tech_civics, gs.narrate_tech_civics))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -223,14 +237,9 @@ async def get_pending_deals(ctx: Context) -> str:
     Shows what each civ is offering and what they want in return.
     Use respond_to_deal to accept or reject.
     """
-    try:
-        gs = _get_game(ctx)
-        deals = await gs.get_pending_deals()
-        return gs.narrate_pending_deals(deals)
-    except LuaError as e:
-        return f"Error reading deals: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_pending_deals", {},
+                         lambda: _narrate(gs.get_pending_deals, gs.narrate_pending_deals))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -241,14 +250,8 @@ async def get_policies(ctx: Context) -> str:
     policy (if any), and all unlocked policies grouped by compatible slot type.
     Wildcard slots accept any policy type.
     """
-    try:
-        gs = _get_game(ctx)
-        gov = await gs.get_policies()
-        return gs.narrate_policies(gov)
-    except LuaError as e:
-        return f"Error reading policies: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_policies", {}, lambda: _narrate(gs.get_policies, gs.narrate_policies))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -260,14 +263,9 @@ async def get_notifications(ctx: Context) -> str:
     to resolve them. Call this to check what needs attention without
     ending the turn.
     """
-    try:
-        gs = _get_game(ctx)
-        notifs = await gs.get_notifications()
-        return gs.narrate_notifications(notifs)
-    except LuaError as e:
-        return f"Error reading notifications: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_notifications", {},
+                         lambda: _narrate(gs.get_notifications, gs.narrate_notifications))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -278,14 +276,9 @@ async def get_pending_diplomacy(ctx: Context) -> str:
     reports the turn didn't advance. Returns any open sessions and how
     to respond.
     """
-    try:
-        gs = _get_game(ctx)
-        sessions = await gs.get_diplomacy_sessions()
-        return gs.narrate_diplomacy_sessions(sessions)
-    except LuaError as e:
-        return f"Error checking diplomacy: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_pending_diplomacy", {},
+                         lambda: _narrate(gs.get_diplomacy_sessions, gs.narrate_diplomacy_sessions))
 
 
 # ---------------------------------------------------------------------------
@@ -300,14 +293,8 @@ async def get_governors(ctx: Context) -> str:
     Shows governor points, currently appointed governors with assignments,
     and governors available to appoint. Use appoint_governor to appoint one.
     """
-    try:
-        gs = _get_game(ctx)
-        gov = await gs.get_governors()
-        return gs.narrate_governors(gov)
-    except LuaError as e:
-        return f"Error reading governors: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_governors", {}, lambda: _narrate(gs.get_governors, gs.narrate_governors))
 
 
 @mcp.tool()
@@ -319,13 +306,9 @@ async def appoint_governor(ctx: Context, governor_type: str) -> str:
 
     Requires available governor points. Use get_governors to see options.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.appoint_governor(governor_type)
-    except LuaError as e:
-        return f"Error appointing governor: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "appoint_governor", {"governor_type": governor_type},
+                         lambda: gs.appoint_governor(governor_type))
 
 
 @mcp.tool()
@@ -338,13 +321,9 @@ async def assign_governor(ctx: Context, governor_type: str, city_id: int) -> str
 
     Governor must already be appointed. Takes several turns to establish.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.assign_governor(governor_type, city_id)
-    except LuaError as e:
-        return f"Error assigning governor: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "assign_governor", {"governor_type": governor_type, "city_id": city_id},
+                         lambda: gs.assign_governor(governor_type, city_id))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -357,14 +336,13 @@ async def get_unit_promotions(ctx: Context, unit_id: int) -> str:
     Shows promotions filtered by the unit's promotion class.
     Only units with enough XP will have promotions available.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         status = await gs.get_unit_promotions(unit_id)
         return gs.narrate_unit_promotions(status)
-    except (LuaError, ValueError) as e:
-        return f"Error reading promotions: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_unit_promotions", {"unit_id": unit_id}, _run)
 
 
 @mcp.tool()
@@ -377,13 +355,9 @@ async def promote_unit(ctx: Context, unit_id: int, promotion_type: str) -> str:
 
     Use get_unit_promotions first to see available options.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.promote_unit(unit_id, promotion_type)
-    except LuaError as e:
-        return f"Error promoting unit: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "promote_unit", {"unit_id": unit_id, "promotion_type": promotion_type},
+                         lambda: gs.promote_unit(unit_id, promotion_type))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -394,14 +368,8 @@ async def get_city_states(ctx: Context) -> str:
     Industrial, etc.), how many envoys you've sent, and who is suzerain.
     Use send_envoy to send an envoy.
     """
-    try:
-        gs = _get_game(ctx)
-        status = await gs.get_city_states()
-        return gs.narrate_city_states(status)
-    except LuaError as e:
-        return f"Error reading city-states: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_city_states", {}, lambda: _narrate(gs.get_city_states, gs.narrate_city_states))
 
 
 @mcp.tool()
@@ -413,13 +381,9 @@ async def send_envoy(ctx: Context, city_state_player_id: int) -> str:
 
     Requires available envoy tokens. Use get_city_states to see options.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.send_envoy(city_state_player_id)
-    except LuaError as e:
-        return f"Error sending envoy: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "send_envoy", {"city_state_player_id": city_state_player_id},
+                         lambda: gs.send_envoy(city_state_player_id))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -429,14 +393,13 @@ async def get_available_beliefs(ctx: Context) -> str:
     Shows current pantheon (if any), faith balance, and all available
     pantheon beliefs with their bonuses. Use choose_pantheon to found one.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         status = await gs.get_pantheon_status()
         return gs.narrate_pantheon_status(status)
-    except LuaError as e:
-        return f"Error reading beliefs: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_available_beliefs", {}, _run)
 
 
 @mcp.tool()
@@ -449,13 +412,9 @@ async def choose_pantheon(ctx: Context, belief_type: str) -> str:
     Use get_available_beliefs first to see options. Requires enough faith
     and no existing pantheon.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.choose_pantheon(belief_type)
-    except LuaError as e:
-        return f"Error choosing pantheon: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "choose_pantheon", {"belief_type": belief_type},
+                         lambda: gs.choose_pantheon(belief_type))
 
 
 @mcp.tool()
@@ -468,13 +427,9 @@ async def upgrade_unit(ctx: Context, unit_id: int) -> str:
     Requires the right technology, enough gold, and the unit must have
     moves remaining. The unit's movement is consumed by upgrading.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.upgrade_unit(unit_id)
-    except LuaError as e:
-        return f"Error upgrading unit: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "upgrade_unit", {"unit_id": unit_id},
+                         lambda: gs.upgrade_unit(unit_id))
 
 
 @mcp.tool()
@@ -485,14 +440,13 @@ async def get_dedications(ctx: Context) -> str:
     and lists available dedication choices with their bonuses.
     Use choose_dedication to select one when required.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         status = await gs.get_dedications()
         return gs.narrate_dedications(status)
-    except LuaError as e:
-        return f"Error getting dedications: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_dedications", {}, _run)
 
 
 @mcp.tool()
@@ -504,13 +458,9 @@ async def choose_dedication(ctx: Context, dedication_index: int) -> str:
 
     Use get_dedications first to see available options and their bonuses.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.choose_dedication(dedication_index)
-    except LuaError as e:
-        return f"Error choosing dedication: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "choose_dedication", {"dedication_index": dedication_index},
+                         lambda: gs.choose_dedication(dedication_index))
 
 
 @mcp.tool()
@@ -523,13 +473,9 @@ async def respond_to_deal(ctx: Context, other_player_id: int, accept: bool) -> s
 
     Use get_pending_deals first to see what's being offered.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.respond_to_deal(other_player_id, accept)
-    except LuaError as e:
-        return f"Error responding to deal: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "respond_to_deal", {"other_player_id": other_player_id, "accept": accept},
+                         lambda: gs.respond_to_deal(other_player_id, accept))
 
 
 @mcp.tool()
@@ -545,8 +491,9 @@ async def set_policies(ctx: Context, assignments: str) -> str:
     Wildcard slots can accept any policy type. Military slots accept
     military policies, economic slots accept economic policies, etc.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         parsed: dict[int, str] = {}
         for pair in assignments.split(","):
             pair = pair.strip()
@@ -557,12 +504,8 @@ async def set_policies(ctx: Context, assignments: str) -> str:
         if not parsed:
             return "Error: no valid assignments. Format: '0=POLICY_AGOGE,1=POLICY_URBAN_PLANNING'"
         return await gs.set_policies(parsed)
-    except ValueError as e:
-        return f"Error parsing assignments: {e}"
-    except LuaError as e:
-        return f"Error setting policies: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "set_policies", {"assignments": assignments}, _run)
 
 
 @mcp.tool()
@@ -576,13 +519,9 @@ async def diplomacy_respond(ctx: Context, other_player_id: int, response: str) -
     First meetings typically have 2-3 rounds. After your POSITIVE/NEGATIVE
     response, the tool auto-closes the session if it reaches the goodbye phase.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.diplomacy_respond(other_player_id, response)
-    except LuaError as e:
-        return f"Error responding: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "diplomacy_respond", {"other_player_id": other_player_id, "response": response},
+                         lambda: gs.diplomacy_respond(other_player_id, response))
 
 
 @mcp.tool()
@@ -597,13 +536,10 @@ async def send_diplomatic_action(ctx: Context, other_player_id: int, action: str
     Delegations cost 25 gold and can be rejected if the civ dislikes you.
     Embassies require Writing tech. Use get_diplomacy to see available actions.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.send_diplomatic_action(other_player_id, action)
-    except LuaError as e:
-        return f"Error sending diplomatic action: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "send_diplomatic_action",
+                         {"other_player_id": other_player_id, "action": action},
+                         lambda: gs.send_diplomatic_action(other_player_id, action))
 
 
 @mcp.tool()
@@ -619,16 +555,19 @@ async def execute_unit_action(
 
     Args:
         unit_id: The unit's composite ID (from get_units output)
-        action: One of: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete
-        target_x: Target X coordinate (required for move/attack)
-        target_y: Target Y coordinate (required for move/attack)
+        action: One of: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete, trade_route, activate, teleport
+        target_x: Target X coordinate (required for move/attack/trade_route/teleport)
+        target_y: Target Y coordinate (required for move/attack/trade_route/teleport)
         improvement: Improvement type for builders (required for improve), e.g.
             IMPROVEMENT_FARM, IMPROVEMENT_MINE, IMPROVEMENT_QUARRY,
             IMPROVEMENT_PLANTATION, IMPROVEMENT_CAMP, IMPROVEMENT_PASTURE,
             IMPROVEMENT_FISHING_BOATS, IMPROVEMENT_LUMBER_MILL
 
     For move/attack: provide target_x and target_y.
+    For trade_route: provide target_x and target_y of destination city.
+    For teleport: provide target_x and target_y of destination city. Traders only, must be idle (not on active route).
     For improve: provide improvement name. Builder must be on the tile.
+    For activate: activates a Great Person on their matching district.
     For fortify/skip/found_city/automate/heal/alert/sleep/delete: no target needed.
     heal = fortify until healed (auto-wake at full HP).
     alert = sleep but auto-wake when enemy enters sight range.
@@ -636,8 +575,15 @@ async def execute_unit_action(
     """
     gs = _get_game(ctx)
     unit_index = unit_id % 65536
+    params: dict[str, Any] = {"unit_id": unit_id, "action": action}
+    if target_x is not None:
+        params["target_x"] = target_x
+    if target_y is not None:
+        params["target_y"] = target_y
+    if improvement:
+        params["improvement"] = improvement
 
-    try:
+    async def _run():
         match action.lower():
             case "move":
                 if target_x is None or target_y is None:
@@ -667,12 +613,20 @@ async def execute_unit_action(
                 return await gs.sleep_unit(unit_index)
             case "delete":
                 return await gs.delete_unit(unit_index)
+            case "trade_route":
+                if target_x is None or target_y is None:
+                    return "Error: trade_route requires target_x and target_y of destination city"
+                return await gs.make_trade_route(unit_index, target_x, target_y)
+            case "activate":
+                return await gs.activate_great_person(unit_index)
+            case "teleport":
+                if target_x is None or target_y is None:
+                    return "Error: teleport requires target_x and target_y of the destination city"
+                return await gs.teleport_to_city(unit_index, target_x, target_y)
             case _:
-                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete"
-    except LuaError as e:
-        return f"Error executing action: {e}"
-    except ConnectionError as e:
-        return str(e)
+                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete, trade_route, activate, teleport"
+
+    return await _logged(ctx, "execute_unit_action", params, _run)
 
 
 @mcp.tool()
@@ -691,13 +645,10 @@ async def set_city_production(
 
     Tip: call get_cities first to see your cities and their IDs.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.set_city_production(city_id, item_type, item_name, target_x, target_y)
-    except LuaError as e:
-        return f"Error setting production: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "set_city_production",
+                         {"city_id": city_id, "item_type": item_type, "item_name": item_name},
+                         lambda: gs.set_city_production(city_id, item_type, item_name, target_x, target_y))
 
 
 @mcp.tool()
@@ -712,13 +663,10 @@ async def purchase_item(ctx: Context, city_id: int, item_type: str, item_name: s
 
     Costs gold/faith immediately. Use get_city_production to see what's available.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.purchase_item(city_id, item_type, item_name, yield_type)
-    except LuaError as e:
-        return f"Error purchasing: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "purchase_item",
+                         {"city_id": city_id, "item_type": item_type, "item_name": item_name, "yield_type": yield_type},
+                         lambda: gs.purchase_item(city_id, item_type, item_name, yield_type))
 
 
 @mcp.tool()
@@ -731,15 +679,14 @@ async def set_research(ctx: Context, tech_or_civic: str, category: str = "tech")
 
     Tip: call get_tech_civics first to see available options.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         if category.lower() == "civic":
             return await gs.set_civic(tech_or_civic)
         return await gs.set_research(tech_or_civic)
-    except LuaError as e:
-        return f"Error setting research: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "set_research", {"tech_or_civic": tech_or_civic, "category": category}, _run)
 
 
 @mcp.tool(annotations={"destructiveHint": True})
@@ -749,13 +696,33 @@ async def end_turn(ctx: Context) -> str:
     Make sure you've moved all units, set production, and chosen research
     before ending the turn.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.end_turn()
-    except LuaError as e:
-        return f"Error ending turn: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "end_turn", {}, gs.end_turn)
+
+
+# ---------------------------------------------------------------------------
+# Trade routes
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_trade_destinations(ctx: Context, unit_id: int) -> str:
+    """List valid trade route destinations for a trader unit.
+
+    Args:
+        unit_id: The trader's composite ID (from get_units output)
+
+    Shows domestic and international destinations. Use execute_unit_action
+    with action='trade_route' and target_x/target_y to start a route.
+    """
+    gs = _get_game(ctx)
+    unit_index = unit_id % 65536
+
+    async def _run():
+        dests = await gs.get_trade_destinations(unit_index)
+        return gs.narrate_trade_destinations(dests)
+
+    return await _logged(ctx, "get_trade_destinations", {"unit_id": unit_id}, _run)
 
 
 # ---------------------------------------------------------------------------
@@ -774,14 +741,13 @@ async def get_district_advisor(ctx: Context, city_id: int, district_type: str) -
     Returns valid placement tiles ranked by adjacency bonus.
     Use set_city_production with target_x/target_y to build the district.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         placements = await gs.get_district_advisor(city_id, district_type)
         return gs.narrate_district_advisor(placements, district_type)
-    except LuaError as e:
-        return f"Error: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_district_advisor", {"city_id": city_id, "district_type": district_type}, _run)
 
 
 # ---------------------------------------------------------------------------
@@ -799,14 +765,13 @@ async def get_purchasable_tiles(ctx: Context, city_id: int) -> str:
     Shows cost, terrain, and resources for each purchasable tile.
     Tiles with luxury/strategic resources are listed first.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         tiles = await gs.get_purchasable_tiles(city_id)
         return gs.narrate_purchasable_tiles(tiles)
-    except LuaError as e:
-        return f"Error: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_purchasable_tiles", {"city_id": city_id}, _run)
 
 
 @mcp.tool()
@@ -820,13 +785,9 @@ async def purchase_tile(ctx: Context, city_id: int, x: int, y: int) -> str:
 
     Use get_purchasable_tiles first to see costs and options.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.purchase_tile(city_id, x, y)
-    except LuaError as e:
-        return f"Error: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "purchase_tile", {"city_id": city_id, "x": x, "y": y},
+                         lambda: gs.purchase_tile(city_id, x, y))
 
 
 # ---------------------------------------------------------------------------
@@ -844,13 +805,9 @@ async def change_government(ctx: Context, government_type: str) -> str:
     Use get_policies to see current government. First switch after
     unlocking a new tier is free (no anarchy).
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.change_government(government_type)
-    except LuaError as e:
-        return f"Error: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "change_government", {"government_type": government_type},
+                         lambda: gs.change_government(government_type))
 
 
 # ---------------------------------------------------------------------------
@@ -865,14 +822,72 @@ async def get_great_people(ctx: Context) -> str:
     Shows which Great People are available, their recruitment cost,
     and which civilization (if any) is recruiting them.
     """
-    try:
-        gs = _get_game(ctx)
+    gs = _get_game(ctx)
+
+    async def _run():
         gp = await gs.get_great_people()
         return gs.narrate_great_people(gp)
-    except LuaError as e:
-        return f"Error: {e}"
-    except ConnectionError as e:
-        return str(e)
+
+    return await _logged(ctx, "get_great_people", {}, _run)
+
+
+# ---------------------------------------------------------------------------
+# World Congress
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_world_congress(ctx: Context) -> str:
+    """Get World Congress status, active resolutions, and voting options.
+
+    Shows whether congress is in session, resolutions to vote on (with options A/B
+    and possible targets), turns until next session, and your diplomatic favor.
+    When in session, use vote_world_congress to cast votes.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        status = await gs.get_world_congress()
+        return gs.narrate_world_congress(status)
+
+    return await _logged(ctx, "get_world_congress", {}, _run)
+
+
+@mcp.tool()
+async def vote_world_congress(
+    ctx: Context, resolution_hash: int, option: int,
+    target_index: int, num_votes: int = 1,
+) -> str:
+    """Vote on a World Congress resolution.
+
+    Args:
+        resolution_hash: Resolution type hash (from get_world_congress)
+        option: 1 for option A, 2 for option B
+        target_index: 0-based index into the resolution's possible targets list
+        num_votes: Number of votes (1 is free, extras cost diplomatic favor)
+
+    After voting on all resolutions, call submit_congress or end_turn.
+    Use get_world_congress first to see available resolutions and targets.
+    """
+    gs = _get_game(ctx)
+    params = {
+        "resolution_hash": resolution_hash, "option": option,
+        "target_index": target_index, "num_votes": num_votes,
+    }
+
+    async def _run():
+        result = await gs.vote_world_congress(resolution_hash, option, target_index, num_votes)
+        # Auto-submit after voting — the game requires all resolutions voted before submitting
+        # Try to submit; if it's not ready yet (more resolutions to vote), that's fine
+        try:
+            submit_result = await gs.submit_congress()
+            if "CONGRESS_SUBMITTED" in submit_result:
+                return result + "\nCongress votes submitted!"
+        except Exception:
+            pass
+        return result
+
+    return await _logged(ctx, "vote_world_congress", params, _run)
 
 
 # ---------------------------------------------------------------------------
@@ -892,13 +907,9 @@ async def set_city_focus(ctx: Context, city_id: int, focus: str) -> str:
     Cities automatically assign citizens to tiles. This biases the AI
     toward the chosen yield type when assigning new citizens.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.set_city_focus(city_id, focus)
-    except LuaError as e:
-        return f"Error: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "set_city_focus", {"city_id": city_id, "focus": focus},
+                         lambda: gs.set_city_focus(city_id, focus))
 
 
 # ---------------------------------------------------------------------------
@@ -913,13 +924,8 @@ async def dismiss_popup(ctx: Context) -> str:
     Call this if you suspect a popup (e.g. historic moment, boost notification)
     is blocking interaction.
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.dismiss_popup()
-    except LuaError as e:
-        return f"Error dismissing popup: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "dismiss_popup", {}, gs.dismiss_popup)
 
 
 @mcp.tool(annotations={"destructiveHint": True})
@@ -933,13 +939,9 @@ async def execute_lua(ctx: Context, code: str, context: str = "gamecore") -> str
     The code runs in the game's Lua environment with full access to the
     Civ 6 API. Always use print() for output (not return).
     """
-    try:
-        gs = _get_game(ctx)
-        return await gs.execute_lua(code, context)
-    except LuaError as e:
-        return f"Lua error: {e}"
-    except ConnectionError as e:
-        return str(e)
+    gs = _get_game(ctx)
+    return await _logged(ctx, "execute_lua", {"context": context},
+                         lambda: gs.execute_lua(code, context))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -984,6 +986,12 @@ if let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String:
         return Image(data=Path(tmp_path).read_bytes(), format="png")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+async def _narrate(query_fn: Callable[[], Awaitable[Any]], narrate_fn: Callable[..., str]) -> str:
+    """Helper: call a query function then narrate the result."""
+    data = await query_fn()
+    return narrate_fn(data)
 
 
 def main():

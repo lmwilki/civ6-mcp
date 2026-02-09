@@ -18,6 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.20",
+    "fastapi[standard]>=0.128",
 ]
 
 [project.urls]

@@ -1912,3 +1912,282 @@ The `found_city` error "Too close to Kraków (distance 3, need > 3)" was confusi
 - Currently moving settler to (12,20), ETA ~2 turns
 
 **Score at Turn 60:** Poland 58 vs Spain 102, Mapuche 71. Behind schedule — delayed city founding is the #1 problem.
+
+## 2026-02-09: Midgame Tool Suite + Playtest Turns 66–84
+
+### Self-Assessment at Turn 75
+
+Paused at turn 75 to do a comprehensive gameplay audit. Graded ourselves **C-**:
+
+- **Score**: 84 vs Spain 129, Mapuche 94. Last place among known civs.
+- **Cities**: Only 2 at turn 75 (benchmark says 3). Lodz founded turn ~62, very late.
+- **Production**: Kraków pop 9 but only 5 production — entirely floodplain farms, zero mines.
+- **Luxuries**: Zero improved. Zero amenities surplus. Growth penalty active.
+- **Trade**: Zero trade routes. Foreign Trade civic researched but never built a Trader.
+- **Science**: 7.1/turn — should be 15-20 by turn 75. No Campus anywhere.
+- **Governors**: 2 unspent points sitting idle.
+- **Districts**: None built or in progress at turn 75.
+
+Root causes: late second city, no builder cycling, no district timing, gold hoarding instead of investing.
+
+### Tool Gaps Identified
+
+The audit revealed 8 concrete gaps preventing better play:
+
+1. **District placement advisor** — no way to evaluate adjacency bonuses before committing
+2. **District coordinates in production** — `set_city_production` couldn't pass x,y for district tiles
+3. **Tile purchase** — couldn't buy tiles for luxury resources outside borders
+4. **Government change** — had to use raw Lua to switch governments
+5. **Enhanced tech/civic info** — no boost conditions, costs, or unlock lists shown
+6. **Combat feedback** — attack results only showed "HP before", never damage dealt
+7. **Great People tracking** — no visibility into GP timeline or recruitment race
+8. **City yield focus** — no way to bias citizen assignment toward production/food
+
+### Implementation: 8 Enhancements
+
+Built all 8 in a single implementation session. Key technical details:
+
+**District Advisor** (`get_district_advisor`): Uses `CityManager.GetOperationTargets` to get valid tiles, then hardcoded adjacency formulas for 6 common district types (Campus, Holy Site, Industrial Zone, Commercial Hub, Theater, Harbor). Returns top 10 tiles ranked by total adjacency.
+
+**Tile Purchase** (`get_purchasable_tiles` + `purchase_tile`): Uses `CityManager.GetCommandTargets` with `PARAM_PLOT_PURCHASE=1` for valid tiles, `GetPlotPurchaseCost(x,y)` for costs. Results sorted luxury-first.
+
+**District Placement in Production**: Added `target_x`/`target_y` optional params to `build_produce_item`, passing `PARAM_X`/`PARAM_Y` to the build operation.
+
+**Government Change** (`change_government`): Must call `SetGovernmentChangeConsidered(true)` before `RequestChangeGovernment(govIndex)` — without it, the change silently fails.
+
+**Tech/Civic Enhancement**: Added boost status, trigger descriptions, progress percentages, turn counts, and key unlocks (units, buildings, districts, improvements, revealed resources) to the existing query. Pipe-escaped boost descriptions to prevent parser field miscount.
+
+**Great People** (`get_great_people`): `Game.GetGreatPeople():GetTimeline()` returns the full GP timeline. Shows class, individual name, era, recruitment cost, current claimant, and our points.
+
+**City Focus** (`set_city_focus`): Uses `CityManager.RequestCommand` with `CityCommandTypes.SET_FOCUS`. `PARAM_FLAGS=1` toggles favored yield. Must clear existing focus before setting new one.
+
+**Combat Feedback**: Added post-attack HP read for ranged attacks. Melee uses pcall-wrapped read since units may have moved/died.
+
+### Bugs Found During Live Testing
+
+1. **Civic progress methods nil in GameCore**: `cu:GetCulturalProgress()` and `cu:GetTurnsLeft()` don't exist in GameCore context. Fixed by using `GetCultureCost()` (works) and estimating turns from culture yield.
+
+2. **Lua 5.1 has no `goto`**: Used `goto continue_gp` / `::continue_gp::` in Great People query — Civ 6 uses Lua 5.1 which doesn't support goto labels. Fixed with nested `if` instead.
+
+3. **City focus API mismatch**: `SetFavoredYield`/`IsYieldFavored` don't exist in InGame. Correct API is `IsFavoredYield` (read) and `CityCommandTypes.SET_FOCUS` via `CityManager.RequestCommand` (write).
+
+4. **Combat HP reads are stale same-frame**: `enemy:GetDamage()` returns pre-attack values when read in the same frame as `RequestOperation`. The damage IS applied (confirmed by next-turn reads showing correct HP), but we can't read it synchronously. This is an engine limitation, not a bug in our code.
+
+### Playtest: Turns 66–84
+
+**Turns 66–75**: Previous session. Completed Irrigation, Political Philosophy. Switched to Classical Republic. Set Agoge + Urban Planning + Ilkum + Charismatic Leader policies. Skirmished with barbarian archers south of Kraków.
+
+**Turns 75–78**: First use of new tools. Bought Wine tile at (7,27) for 105g via `purchase_tile`. District advisor found +2 Campus at (10,23) for Kraków, +4 Campus at (10,21) for Lodz (next to mountain + jungles). Set Lodz Campus with x,y coordinates — worked perfectly.
+
+**Turns 78–81**: Barbarian warrior appeared on Wine tile, engaged with dual archers. Promoted archer (Volley, +5 ranged vs land). Completed Games and Recreation, Military Tradition civics. Bought builder (230g) for Wine improvement.
+
+**Turns 81–84**: Builder heading to Wine for plantation. Kraków finished Water Mill, started Campus at (10,23). Both cities now building Campuses. Military Tradition BOOSTED completed in 3 turns. Set Drama and Poetry as next civic.
+
+### Score Trajectory
+
+| Turn | Score | Spain | Mapuche | Notes |
+|------|-------|-------|---------|-------|
+| 60   | 58    | 102   | 71      | Only 1 city, no improvements |
+| 66   | 73    | 113   | 82      | Lodz founded |
+| 75   | 84    | 129   | 94      | Audit + tool implementation |
+| 80   | 89    | 143   | 94      | Wine tile bought, campuses started |
+| 84   | ~90   | ~147  | ~96     | Builder en route, both campuses queued |
+
+Gap to Spain widening (58 points). Mapuche plateauing. We're accelerating but from too far behind.
+
+### Reflections on Tooling
+
+**What's working well:**
+- District advisor is a game-changer — without it, I was blind-placing districts. The +4 Campus at Lodz would have been missed.
+- Tile purchase lets me grab luxuries without waiting for border growth — first amenity improvement incoming.
+- Enhanced tech/civic output with boost conditions is genuinely useful for decision-making.
+- Great People tracker provides strategic awareness I was completely missing.
+
+**What's still lacking:**
+- **Trade routes**: Still no tool. Foreign Trade civic researched 30+ turns ago, never built a Trader. This is pure yield waste.
+- **Worker automation**: Builder micro is tedious — move, verify position, improve, repeat. An "auto-improve" or "queue improvements" would help.
+- **Ranged combat HP reads**: Same-frame staleness makes it hard to judge whether to commit a second shot or move. Would need a 1-frame delay or deferred read.
+- **Production queue**: Can only set one item. A proper queue (Campus → Library → Builder) would reduce idle turns.
+
+**Lessons for the AI agent:**
+- Buying tiles for luxuries early is worth more than saving gold. Zero amenities for 75 turns was catastrophic.
+- Districts should start by turn 40-50, not turn 84. The Campus at Lodz won't complete until turn ~96.
+- Two cities by turn 75 is too slow. Need to settle city #2 by turn 40 and city #3 by turn 60.
+- Water Mill before Campus was wrong at Krakow — science compounds, production doesn't (much) at this stage.
+
+### Tool Count: 33 → 39
+
+New tools: `get_district_advisor`, `get_purchasable_tiles`, `purchase_tile`, `change_government`, `get_great_people`, `set_city_focus`.
+
+### Status
+
+Turn 84 in progress. Builder 1 tile from Wine improvement. Both cities building Campuses (19 turns Kraków, 12 turns Lodz). Iron Working 7 turns out. Score 89 vs Spain 147. Playable but behind — need to focus on builder cycling and getting those Campuses online.
+
+---
+
+## 2025-02-09: Turn 100 Milestone — Strategic Inflection Point
+
+### Playtest: Turns 84–104
+
+**Turns 84–91**: Builder improved Wine plantation (first luxury!). Astrology completed. Builder headed to Wheat at Lodz but discovered it's the city center tile (can't improve). Redirected to Silk luxury at (12,21). Two Declarations of War appeared — not against us, between unmet civs. Score crossed 101 at turn 90, passing Mapuche briefly.
+
+**Turns 91–95**: Built Silk plantation (second luxury, +1 amenity). Lodz Campus completed turn 94 — only 3 turns for the final stretch. Science jumped from 8.7 to 11.8 instantly. Drama and Poetry civic completed, unlocked Recorded History. Sent envoy to Hunza (Trade city-state), gold income jumped from +9 to +14/turn. Attacked and killed barbarian warriors/scouts threatening southern approach.
+
+**Turns 95–100**: Builder placed Stone quarry at (9,26) for Krakow production. Krakow grew to pop 11. Currency tech completed turn 100 — unlocks Commercial Hub and Market. Recorded History civic completed. Appointed Liang (Builder governor), assigned Magnus to Lodz. Both Archers fortified covering approaches.
+
+**Turns 100–104**: Sailing tech completed (2 turns!). Lodz Granary finished, fixing Housing 2→5 crisis. Both cities now building Libraries. Swapped to **Natural Philosophy** policy (+100% Campus adjacency) — should boost Lodz +4 adj to +8 science. Set Colonization in wildcard slot for future settler production.
+
+### Score Trajectory (continued)
+
+| Turn | Score | Spain | Mapuche | Notes |
+|------|-------|-------|---------|-------|
+| 84   | ~90   | ~147  | ~96     | Builder en route, campuses queued |
+| 91   | 101   | 156   | 100     | Wars elsewhere, silk improved |
+| 95   | 110   | 174   | 154     | Lodz Campus online, science +47% |
+| 100  | 114   | 188   | 156     | Currency done, both campuses built |
+| 104  | 123   | 189   | 166     | Libraries building, Natural Philosophy set |
+
+Spain gap narrowing in rate: was growing +10/turn faster, now ~+3/turn faster. Mapuche surged (probably districts/wonders). We're accelerating but still 3rd.
+
+### Critical Policy Discovery: Natural Philosophy
+
+This is the biggest single-action improvement of the game so far. Natural Philosophy (+100% Campus adjacency) doubles Campus yields:
+- Lodz: +4 → +8 science (Campus next to mountain + jungles near Sri Pada)
+- Krakow: +2 → +4 science
+
+That's +6 free science from one policy swap — a 46% boost to our 12.9 science output. Should have been set the moment Recorded History was researched.
+
+### Strategic Analysis: Where We Stand
+
+**Strengths:**
+- Two Campuses online with strong adjacency (especially Lodz +4)
+- Healthy gold economy: 240 treasury, +14/turn (with Hunza envoy bonus)
+- Both luxuries improved, amenities stable
+- Suzerain of Cardiff (Industrial bonuses)
+- No active wars, both known civs FRIENDLY
+
+**Weaknesses:**
+- Only 2 cities (should have 3-4 by now) — losing the expansion race
+- Zero trade routes (Foreign Trade civic done 50+ turns ago)
+- Zero strategic resources improved (iron at (11,17), horses at (11,25) — both nearby but unclaimed)
+- No builders in the field — last one consumed at turn 98
+- Krakow housing-capped at pop 11 (Housing 10) — needs Granary or Aqueduct
+- No Commercial Hub despite Currency being done
+
+### Objectives: Turns 104–125
+
+**Phase 1 — Immediate (T104–108): Yield optimization**
+1. ~~Swap Natural Philosophy policy~~ ✓ Done
+2. Buy a builder (245g) — improve bonus resources near cities
+3. Consider buying a Trader (240g) — trade routes are pure free yields
+
+**Phase 2 — Infrastructure (T108–115): Library + Commercial Hub**
+4. Krakow Library completes ~T111 → start Commercial Hub (use district advisor for placement near river for +2 adjacency)
+5. Lodz Library completes ~T114 → start Trader or Builder production
+6. Commercial Hub enables Market building and Trader slots
+
+**Phase 3 — Expansion (T115–125): 3rd city**
+7. Build settler in Krakow (with Colonization policy, ~9 turns) or buy one (440g)
+8. Target settle location: northeast toward Tea luxury at (7,19) or south for more resources
+9. New city should have Campus potential from day 1
+
+**Key tech/civic targets:**
+- Horseback Riding (researching, ~7 turns) → Horsemen, Stables
+- After: Engineering (Aqueduct for housing) or Construction (Lumber Mill, Ancient Walls)
+- Civic: Military Training (8 turns) → then Medieval Faires for Commercial Hub boost
+
+**Resource priorities:**
+- Iron at (11,17): 3 tiles from Lodz, needs claiming + Mine improvement → Swordsmen
+- Horses at (11,25): 3 tiles from Krakow, needs claiming + Pasture → Horsemen + boost Horseback Riding
+- Turtles at (6,22): luxury 4 tiles from Krakow, needs coast tile + Fishing Boats → amenity
+
+### Bug Found: Great People Parser
+
+`get_great_people` crashed with `invalid literal for int()` — Lua returns float values for point totals (e.g. `14.9296875`). Fixed with `int(float(parts[N]))` wrapper.
+
+### Status
+
+Turn 104. Both cities building Libraries (7 and 10 turns). Natural Philosophy active. Horseback Riding researching. Gold 240 (+14/turn). Score 123 vs Spain 189. Playing toward turn 125 with focus on Libraries → Commercial Hub → 3rd city expansion.
+
+---
+
+## 2025-02-09: Turn 125 Check-in — Medieval Era Begins
+
+### Playtest: Turns 104–125
+
+**Turns 104–111**: Libraries completed in both cities (Krakow T111, Lodz T114). Science rocketed from 15.9 to 23.3. Bought builder (245g T110), improved Bananas plantation at (11,22) and Mine at (10,20) for Lodz. Horseback Riding and Military Training completed T111 — set Construction (boosted) and Theology. Killed several barbarian scouts near Krakow. Sent exploring warrior east toward unmet civilizations.
+
+**Turns 111–120**: Construction completed (T117) — Lumber Mills now available. Builder placed final charge, consumed. Recruited **Euclid** (Great Scientist) — but couldn't activate him on Campus (still investigating API). Krakow built settler with Colonization policy (+50%). Theology completed, entering Medieval Era. **World Congress** first session — discovered voting API (WORLD_CONGRESS_RESOLUTION_VOTE + WORLD_CONGRESS_SUBMIT_TURN). Lost an archer to barbarian raids near (9,28).
+
+**Turns 120–125**: **Lublin founded** at (10,28) — 3rd city! South of Krakow with access to Horses, Stone, Rice. Lodz Commercial Hub started at (11,19) with +2 river adjacency. Krakow Granary nearly done (1 turn). Engineering completed — Aqueducts unlocked. Set Apprenticeship (Industrial Zone, Workshop). Free Inquiry dedication chosen (science-focused era).
+
+### Score Trajectory (continued)
+
+| Turn | Score | Spain | Mapuche | Notes |
+|------|-------|-------|---------|-------|
+| 104  | 123   | 189   | 166     | Libraries building, Natural Philosophy |
+| 111  | ~130  | ~205  | ~187    | Libraries done, settler started |
+| 120  | ~141  | ~237  | ~228    | Settler produced, era transition |
+| 125  | 150   | 248   | 241     | 3rd city founded, Medieval Era |
+
+Gap to Spain: 98 points (was 66 at T104). Gap widened during settler production turns. Mapuche surged to nearly match Spain — both are 90+ points ahead.
+
+### Objective Review (T104–125)
+
+| Objective | Status | Notes |
+|-----------|--------|-------|
+| Natural Philosophy policy | Done T104 | +6 science instantly |
+| Buy builder | Done T110 | 3 charges used: banana, mine, consumed |
+| Krakow Library | Done T111 | +2 science base |
+| Lodz Library | Done T114 | +2 science base + adjacency doubled |
+| Commercial Hub started | In progress | Lodz, 10 turns remaining at T125 |
+| 3rd city settler | Done T120 | With Colonization policy, 9 turns |
+| 3rd city founded | Done T124 | Lublin at (10,28) |
+| Trade route | BLOCKED | Trader can't start route — investigating |
+| Euclid activation | BLOCKED | CanStartCommand returns false on Campus |
+
+### Key Discoveries
+
+**World Congress API**: Resolutions accessed via `Game.GetWorldCongress():GetResolutions()` returning tables with `.Type`, `.TargetType`, `.PossibleTargets`. Vote via `UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_RESOLUTION_VOTE, params)` then finalize with `WORLD_CONGRESS_SUBMIT_TURN`.
+
+**Great Person Activation Bug**: Euclid on Campus at (8,22) with district type = 2 (DISTRICT_CAMPUS) confirmed. `UnitManager.CanStartCommand(unit, ACTIVATE_GREAT_PERSON, nil, true)` returns false despite correct position. May need specific param format or different command. The forced `RequestCommand` didn't visibly consume the GP.
+
+**Trade Route Capacity Issue**: `UnitOperationTypes.MAKE_TRADE_ROUTE` returns `CanStartOperation = false` for our Trader at Lodz. `GetNumOutgoingRoutes()` returns 0. Foreign Trade civic is completed. Might need a Market building first in GS? Or there may be a different capacity mechanism.
+
+**Great People Parser**: `int(float(parts[N]))` fix for Lua returning fractional point values. Fix is in code but needs MCP reboot to take effect.
+
+### Current State — Turn 125
+
+**Empire:**
+- 3 cities: Krakow (pop 10), Lodz (pop 6), Lublin (pop 1)
+- Score 150 | Gold 201 (+16/turn) | Science 23.8 | Culture 14.3 | Faith 615
+- 2 Campuses + 2 Libraries online, Commercial Hub 10 turns out
+- 2 luxuries (Wine, Silk), 26 Horses stockpiled
+- Suzerain of Cardiff (7 envoys), 2 envoys at Hunza
+- Medieval Era, Normal Age, Free Inquiry dedication
+
+**Units:** 6 total — 1 Archer, 2 Warriors, 1 Builder (consumed), 1 Euclid, 1 Trader
+**Threats:** Barbarian archer near Lublin (8,29), ongoing barb scouts
+
+### Objectives: Turns 125–150
+
+**Immediate (T125–130):**
+1. Defend Lublin from barbarian archer — move archer south
+2. Krakow Granary done next turn → build Aqueduct (housing) or Commercial Hub
+3. Use builder's last charge (if builder still alive — check) or buy new builder
+4. Investigate trade route blocker — try moving Trader to Krakow
+
+**Infrastructure (T130–140):**
+5. Lodz Commercial Hub completes ~T135 → build Market for trade routes
+6. Lublin Monument → Builder for improvements → Campus later
+7. Apprenticeship tech completes → Industrial Zone planning
+8. Investigate Euclid activation — try moving to Lodz Campus
+
+**Expansion (T140–150):**
+9. 4th city consideration (northeast toward Tea/Iron)
+10. Military upgrade: Warriors → Swordsmen (need iron), Archers maintained
+11. Target 30+ science/turn, 200+ score
+
+### Tooling Notes
+
+Still need MCP reboot for Great People parser fix. World Congress will need a proper tool eventually — raw Lua voting is fragile. Trade route and Great Person activation are the two biggest API gaps.

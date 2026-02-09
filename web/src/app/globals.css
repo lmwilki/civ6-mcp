@@ -1,0 +1,129 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-cormorant);
+  --font-mono: var(--font-jetbrains);
+  --font-display: var(--font-cinzel);
+
+  /* Marble surface scale */
+  --color-marble-50: #FAFAF8;
+  --color-marble-100: #F5F3EF;
+  --color-marble-200: #EBE8E2;
+  --color-marble-300: #E0DBD3;
+  --color-marble-400: #C8C1B7;
+  --color-marble-500: #A39B8F;
+  --color-marble-600: #7A7269;
+  --color-marble-700: #5C5549;
+  --color-marble-800: #3D3832;
+  --color-marble-900: #2A2521;
+
+  /* Accent colors */
+  --color-gold: #D4A853;
+  --color-gold-light: #E8C97A;
+  --color-gold-dark: #8C6E2C;
+  --color-patina: #7A9B8A;
+  --color-terracotta: #C4785C;
+  --color-vein: #D4CFC8;
+  --color-vein-dark: #8A8279;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  --radius: 0.375rem;
+
+  --background: #FAFAF8;
+  --foreground: #3D3832;
+  --card: #F5F3EF;
+  --card-foreground: #3D3832;
+  --popover: #F5F3EF;
+  --popover-foreground: #3D3832;
+  --primary: #D4A853;
+  --primary-foreground: #FAFAF8;
+  --secondary: #EBE8E2;
+  --secondary-foreground: #3D3832;
+  --muted: #EBE8E2;
+  --muted-foreground: #7A7269;
+  --accent: #EBE8E2;
+  --accent-foreground: #3D3832;
+  --destructive: #C4785C;
+  --border: #E0DBD3;
+  --input: #E0DBD3;
+  --ring: #D4A853;
+  --chart-1: #D4A853;
+  --chart-2: #7A9B8A;
+  --chart-3: #C4785C;
+  --chart-4: #5C5549;
+  --chart-5: #A39B8F;
+  --sidebar: #F5F3EF;
+  --sidebar-foreground: #3D3832;
+  --sidebar-primary: #D4A853;
+  --sidebar-primary-foreground: #FAFAF8;
+  --sidebar-accent: #EBE8E2;
+  --sidebar-accent-foreground: #3D3832;
+  --sidebar-border: #E0DBD3;
+  --sidebar-ring: #D4A853;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Marble noise texture overlay — applied to body */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600'%3E%3Cfilter id='a'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23a)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px;
+  pointer-events: none;
+  z-index: 50;
+}

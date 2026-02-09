@@ -512,6 +512,54 @@ class GreatPersonInfo:
     player_points: int    # our points toward this class
 
 
+@dataclass
+class TradeDestination:
+    """A valid trade route destination city."""
+    city_name: str
+    owner_name: str       # "OWN" for domestic, civ name for international
+    x: int
+    y: int
+    is_domestic: bool
+
+
+@dataclass
+class CongressResolution:
+    """A resolution to vote on or that has been passed."""
+    resolution_type: str      # e.g. "WC_RES_MERCENARY_COMPANIES"
+    resolution_hash: int      # e.g. -1027166762
+    name: str                 # e.g. "Mercenary Companies"
+    target_kind: str          # e.g. "YIELD", "RELIGION", "PLAYER"
+    effect_a: str             # description of option A
+    effect_b: str             # description of option B
+    possible_targets: list[str]  # ["Production", "Gold", ...] or player names etc.
+    is_passed: bool = False
+    winner: int = -1          # 0=A won, 1=B won
+    chosen_thing: str = ""    # target that was chosen
+
+
+@dataclass
+class CongressProposal:
+    """A discussion proposal to vote on."""
+    sender_id: int
+    sender_name: str
+    target_id: int
+    target_name: str
+    proposal_type: int
+    description: str
+
+
+@dataclass
+class WorldCongressStatus:
+    """Full World Congress state."""
+    is_in_session: bool
+    turns_until_next: int
+    favor: int
+    max_votes: int
+    favor_costs: list[int]      # [0, 10, 30, 60, 100, 150]
+    resolutions: list[CongressResolution]
+    proposals: list[CongressProposal]
+
+
 # Map notification types to the MCP tool that resolves them
 NOTIFICATION_TOOL_MAP: dict[str, str] = {
     "NOTIFICATION_CHOOSE_TECH": "set_research(tech_or_civic=..., category='tech')",
@@ -529,9 +577,12 @@ NOTIFICATION_TOOL_MAP: dict[str, str] = {
     "NOTIFICATION_GOVERNOR_APPOINTMENT_AVAILABLE": "get_governors() then appoint_governor()",
     "NOTIFICATION_GOVERNOR_PROMOTION_AVAILABLE": "get_governors() then appoint_governor()",
     "NOTIFICATION_COMMEMORATION_AVAILABLE": "get_dedications() then choose_dedication(dedication_index=...)",
+    "NOTIFICATION_WORLD_CONGRESS_BLOCKING": "get_world_congress() then vote_world_congress()",
+    "NOTIFICATION_WORLD_CONGRESS_RESULTS": "get_world_congress() (review results)",
+    "NOTIFICATION_WORLD_CONGRESS_SPECIAL_SESSION_BLOCKING": "get_world_congress() then vote_world_congress()",
 }
 
-_ACTION_KEYWORDS = ("CHOOSE", "FILL", "CONSIDER", "GOVERNOR", "PANTHEON", "PROMOTION", "CLAIM", "INFLUENCE_TOKEN", "COMMEMORATION")
+_ACTION_KEYWORDS = ("CHOOSE", "FILL", "CONSIDER", "GOVERNOR", "PANTHEON", "PROMOTION", "CLAIM", "INFLUENCE_TOKEN", "COMMEMORATION", "WORLD_CONGRESS")
 
 # Map EndTurnBlockingTypes to resolution hints
 BLOCKING_TOOL_MAP: dict[str, str] = {
@@ -546,6 +597,8 @@ BLOCKING_TOOL_MAP: dict[str, str] = {
     "ENDTURN_BLOCKING_STACKED_UNITS": "Move units — cannot stack military units",
     "ENDTURN_BLOCKING_CONSIDER_GOVERNMENT_CHANGE": "Consider Changing Governments",
     "ENDTURN_BLOCKING_COMMEMORATION_AVAILABLE": "Use get_dedications() then choose_dedication(dedication_index=...)",
+    "ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION": "Use get_world_congress() to see resolutions, then vote_world_congress() to vote",
+    "ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK": "Use get_world_congress() to review results (informational)",
 }
 
 
@@ -857,9 +910,10 @@ for civic in GameInfo.Civics() do
             end
             if canProgress then
                 local cost = cu:GetCultureCost(civic.Index)
-                local progress = cu:GetCulturalProgress(civic.Index)
-                local turns2 = cu:GetTurnsLeft(civic.Index)
-                local pct2 = cost > 0 and math.floor(progress * 100 / cost) or 0
+                -- GameCore has no GetCulturalProgress/GetTurnsLeft per civic
+                -- Estimate turns from cost and culture yield
+                local cultureYield = Players[id]:GetCulture():GetCultureYield() or 1
+                local turns2 = cultureYield > 0 and math.ceil(cost / cultureYield) or -1
                 local boosted2 = cu:HasBoostBeenTriggered(civic.Index)
                 local boostDesc2 = ""
                 local b2 = boostsByCivic[civic.CivicType]
@@ -867,7 +921,7 @@ for civic in GameInfo.Civics() do
                     boostDesc2 = Locale.Lookup(b2.TriggerDescription):gsub("|", "/")
                 end
                 local boostTag2 = boosted2 and "BOOSTED" or "UNBOOSTED"
-                print("CIVIC|" .. Locale.Lookup(civic.Name) .. "|" .. civic.CivicType .. "|" .. cost .. "|" .. pct2 .. "|" .. turns2 .. "|" .. boostTag2 .. "|" .. boostDesc2)
+                print("CIVIC|" .. Locale.Lookup(civic.Name) .. "|" .. civic.CivicType .. "|" .. cost .. "|0|" .. turns2 .. "|" .. boostTag2 .. "|" .. boostDesc2)
             end
         end
     end
@@ -2659,7 +2713,7 @@ if gp == nil then {_bail("ERR:NO_GP_SYSTEM|Great People system not available")} 
 local timeline = gp:GetTimeline()
 if timeline == nil then {_bail("ERR:NO_TIMELINE|No great people timeline")} end
 for _, entry in ipairs(timeline) do
-    if entry.Class == nil or entry.Individual == nil then goto continue_gp end
+    if entry.Class ~= nil and entry.Individual ~= nil then
     local classInfo = GameInfo.GreatPersonClasses[entry.Class]
     local indivInfo = GameInfo.GreatPersonIndividuals[entry.Individual]
     if classInfo and indivInfo then
@@ -2680,8 +2734,304 @@ for _, entry in ipairs(timeline) do
         end
         print("GP|" .. className .. "|" .. indivName .. "|" .. eraName .. "|" .. threshold .. "|" .. claimant .. "|" .. myPoints)
     end
-    ::continue_gp::
+    end
 end
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Trade routes
+# ---------------------------------------------------------------------------
+
+
+def build_trade_destinations_query(unit_index: int) -> str:
+    """List valid trade route destinations for a trader unit (InGame context).
+
+    Checks MAKE_TRADE_ROUTE operation with each known city as target.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+local opInfo = GameInfo.UnitOperations["UNITOPERATION_MAKE_TRADE_ROUTE"]
+if opInfo == nil then {_bail("ERR:NO_TRADE_OP|MAKE_TRADE_ROUTE operation not found")} end
+local opHash = opInfo.Hash
+local found = 0
+for i = 0, 62 do
+    if Players[i]:IsAlive() and i ~= 63 then
+        for _, city in Players[i]:GetCities():Members() do
+            local cx, cy = city:GetX(), city:GetY()
+            local tParams = {{}}
+            tParams[UnitOperationTypes.PARAM_X] = cx
+            tParams[UnitOperationTypes.PARAM_Y] = cy
+            local can = UnitManager.CanStartOperation(unit, opHash, nil, tParams, true)
+            if can then
+                local civ = "OWN"
+                local domestic = "1"
+                if i ~= me then
+                    civ = Locale.Lookup(PlayerConfigurations[i]:GetCivilizationShortDescription())
+                    domestic = "0"
+                end
+                print("TDEST|" .. Locale.Lookup(city:GetName()) .. "|" .. civ .. "|" .. cx .. "," .. cy .. "|" .. domestic)
+                found = found + 1
+            end
+        end
+    end
+end
+if found == 0 then print("NONE") end
+print("{SENTINEL}")
+"""
+
+
+def parse_trade_destinations_response(lines: list[str]) -> list[TradeDestination]:
+    """Parse TDEST| lines from build_trade_destinations_query."""
+    results: list[TradeDestination] = []
+    for line in lines:
+        if line.startswith("TDEST|"):
+            parts = line.split("|")
+            if len(parts) >= 5:
+                coords = parts[3].split(",")
+                results.append(TradeDestination(
+                    city_name=parts[1],
+                    owner_name=parts[2],
+                    x=int(coords[0]),
+                    y=int(coords[1]),
+                    is_domestic=parts[4] == "1",
+                ))
+    return results
+
+
+def build_make_trade_route(unit_index: int, target_x: int, target_y: int) -> str:
+    """Start a trade route from a trader to a target city (InGame context)."""
+    return f"""
+{_lua_get_unit(unit_index)}
+local opInfo = GameInfo.UnitOperations["UNITOPERATION_MAKE_TRADE_ROUTE"]
+if opInfo == nil then {_bail("ERR:NO_TRADE_OP|MAKE_TRADE_ROUTE operation not found")} end
+local opHash = opInfo.Hash
+local tParams = {{}}
+tParams[UnitOperationTypes.PARAM_X] = {target_x}
+tParams[UnitOperationTypes.PARAM_Y] = {target_y}
+local can = UnitManager.CanStartOperation(unit, opHash, nil, tParams, true)
+if not can then {_bail("ERR:CANNOT_TRADE|Cannot start trade route to ({target_x},{target_y})")} end
+UnitManager.RequestOperation(unit, opHash, tParams)
+local destCity = CityManager.GetCityAt({target_x}, {target_y})
+local destName = destCity and Locale.Lookup(destCity:GetName()) or "({target_x},{target_y})"
+print("OK:TRADE_ROUTE_STARTED|to " .. destName .. " at ({target_x},{target_y})")
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Trader teleport (change origin city)
+# ---------------------------------------------------------------------------
+
+
+def build_teleport_to_city(unit_index: int, target_x: int, target_y: int) -> str:
+    """Teleport a trader to a different city to change origin (InGame context).
+
+    Only works when the trader is idle (not on an active route).
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+local opInfo = GameInfo.UnitOperations["UNITOPERATION_TELEPORT_TO_CITY"]
+if opInfo == nil then {_bail("ERR:NO_TELEPORT_OP|TELEPORT_TO_CITY operation not found")} end
+local opHash = opInfo.Hash
+local tParams = {{}}
+tParams[UnitOperationTypes.PARAM_X] = {target_x}
+tParams[UnitOperationTypes.PARAM_Y] = {target_y}
+local can = UnitManager.CanStartOperation(unit, opHash, nil, tParams, true)
+if not can then {_bail("ERR:CANNOT_TELEPORT|Cannot teleport trader to ({target_x},{target_y}). Is the trader idle (not on an active route)?")} end
+UnitManager.RequestOperation(unit, opHash, tParams)
+local destCity = CityManager.GetCityAt({target_x}, {target_y})
+local destName = destCity and Locale.Lookup(destCity:GetName()) or "({target_x},{target_y})"
+print("OK:TELEPORTED|to " .. destName .. " at ({target_x},{target_y})")
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# Great Person activation
+# ---------------------------------------------------------------------------
+
+
+def build_activate_great_person(unit_index: int) -> str:
+    """Activate a Great Person on their matching district (InGame context)."""
+    return f"""
+{_lua_get_unit(unit_index)}
+local cmdHash = GameInfo.UnitCommands["UNITCOMMAND_ACTIVATE_GREAT_PERSON"].Hash
+local can = UnitManager.CanStartCommand(unit, cmdHash, nil, true)
+if not can then
+    local ux, uy = unit:GetX(), unit:GetY()
+    local plot = Map.GetPlot(ux, uy)
+    local dt = plot:GetDistrictType()
+    local dtName = "none"
+    if dt >= 0 then
+        local dinfo = GameInfo.Districts[dt]
+        if dinfo then dtName = dinfo.DistrictType end
+    end
+    {_bail('ERR:CANNOT_ACTIVATE|Great Person cannot activate here (district: " .. dtName .. " at " .. ux .. "," .. uy .. ")')}
+end
+UnitManager.RequestCommand(unit, cmdHash, {{}})
+local uInfo = GameInfo.Units[unit:GetType()]
+local uName = uInfo and uInfo.UnitType or "UNKNOWN"
+print("OK:GP_ACTIVATED|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ") at " .. unit:GetX() .. "," .. unit:GetY())
+print("{SENTINEL}")
+"""
+
+
+# ---------------------------------------------------------------------------
+# World Congress
+# ---------------------------------------------------------------------------
+
+
+def build_world_congress_query() -> str:
+    """Get World Congress status, resolutions, and proposals (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local wc = Game.GetWorldCongress()
+if not wc then {_bail("ERR:NO_WORLD_CONGRESS|World Congress not available yet")} end
+local inSession = wc:IsInSession()
+local meeting = wc:GetMeetingStatus()
+local turnsLeft = meeting and meeting.TurnsLeft or -1
+local favor = Players[me]:GetFavor()
+local costs = wc:GetVotesandFavorCost()
+local maxVotes = costs.MaxVotes or 5
+local costStr = ""
+for i = 0, maxVotes do
+    if i > 0 then costStr = costStr .. "," end
+    costStr = costStr .. tostring(costs[i] or 0)
+end
+print("WC_STATUS|" .. tostring(inSession) .. "|" .. turnsLeft .. "|" .. favor .. "|" .. maxVotes .. "|" .. costStr)
+local ress = wc:GetResolutions()
+if ress then
+    for _, res in ipairs(ress) do
+        local rType = res.Type
+        local gRes = nil
+        for row in GameInfo.Resolutions() do
+            if row.Hash == rType then gRes = row end
+        end
+        local typeName = gRes and gRes.ResolutionType or ("HASH_" .. tostring(rType))
+        local name = gRes and Locale.Lookup(gRes.Name) or "Unknown"
+        local targetKind = gRes and (gRes.TargetKind or "") or ""
+        local effectA = gRes and gRes.Effect1Description and Locale.Lookup(gRes.Effect1Description) or ""
+        local effectB = gRes and gRes.Effect2Description and Locale.Lookup(gRes.Effect2Description) or ""
+        local isPassed = "0"
+        local winner = -1
+        local chosen = ""
+        if not inSession then
+            isPassed = "1"
+            winner = res.Winner or -1
+            if res.ChosenThing then chosen = Locale.Lookup(res.ChosenThing) end
+        end
+        local targets = ""
+        if inSession and res.PossibleTargets then
+            for ti, tgt in ipairs(res.PossibleTargets) do
+                if ti > 1 then targets = targets .. "~" end
+                local tName = ""
+                if tgt.Name then tName = Locale.Lookup(tgt.Name)
+                elseif tgt.Tooltip then tName = Locale.Lookup(tgt.Tooltip)
+                else tName = "Target" .. ti end
+                targets = targets .. tName
+            end
+        end
+        effectA = effectA:gsub("|", "/"):gsub("~", "-")
+        effectB = effectB:gsub("|", "/"):gsub("~", "-")
+        name = name:gsub("|", "/"):gsub("~", "-")
+        chosen = chosen:gsub("|", "/"):gsub("~", "-")
+        print("WC_RES|" .. rType .. "|" .. typeName .. "|" .. name .. "|" .. targetKind .. "|" .. effectA .. "|" .. effectB .. "|" .. isPassed .. "|" .. winner .. "|" .. chosen .. "|" .. targets)
+    end
+end
+if inSession then
+    local props = wc:GetProposals()
+    if props then
+        for _, prop in ipairs(props) do
+            local sid = prop.SenderID or -1
+            local tid = prop.TargetID or -1
+            local sName = sid >= 0 and Locale.Lookup(PlayerConfigurations[sid]:GetCivilizationShortDescription()) or "Unknown"
+            local tName = tid >= 0 and Locale.Lookup(PlayerConfigurations[tid]:GetCivilizationShortDescription()) or "Unknown"
+            local pType = prop.Type or 0
+            local desc = prop.Description and Locale.Lookup(prop.Description) or ""
+            desc = desc:gsub("|", "/"):gsub("~", "-")
+            sName = sName:gsub("|", "/")
+            tName = tName:gsub("|", "/")
+            print("WC_PROP|" .. sid .. "|" .. sName .. "|" .. tid .. "|" .. tName .. "|" .. pType .. "|" .. desc)
+        end
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_world_congress_response(lines: list[str]) -> WorldCongressStatus:
+    """Parse WC_STATUS / WC_RES / WC_PROP lines into WorldCongressStatus."""
+    status = WorldCongressStatus(
+        is_in_session=False, turns_until_next=-1, favor=0,
+        max_votes=5, favor_costs=[], resolutions=[], proposals=[],
+    )
+    for line in lines:
+        if line.startswith("WC_STATUS|"):
+            parts = line.split("|")
+            status.is_in_session = parts[1] == "true"
+            status.turns_until_next = int(parts[2])
+            status.favor = int(parts[3])
+            status.max_votes = int(parts[4])
+            if len(parts) > 5 and parts[5]:
+                status.favor_costs = [int(x) for x in parts[5].split(",")]
+        elif line.startswith("WC_RES|"):
+            parts = line.split("|")
+            targets = parts[10].split("~") if len(parts) > 10 and parts[10] else []
+            status.resolutions.append(CongressResolution(
+                resolution_type=parts[2],
+                resolution_hash=int(parts[1]),
+                name=parts[3],
+                target_kind=parts[4],
+                effect_a=parts[5],
+                effect_b=parts[6],
+                possible_targets=targets,
+                is_passed=parts[7] == "1",
+                winner=int(parts[8]),
+                chosen_thing=parts[9],
+            ))
+        elif line.startswith("WC_PROP|"):
+            parts = line.split("|")
+            status.proposals.append(CongressProposal(
+                sender_id=int(parts[1]),
+                sender_name=parts[2],
+                target_id=int(parts[3]),
+                target_name=parts[4],
+                proposal_type=int(parts[5]),
+                description=parts[6] if len(parts) > 6 else "",
+            ))
+    return status
+
+
+def build_congress_vote(resolution_hash: int, option: int, target_index: int, num_votes: int) -> str:
+    """Vote on a World Congress resolution (InGame context).
+
+    option: 1=A, 2=B
+    target_index: 0-based index into PossibleTargets
+    num_votes: total votes to commit (A.votes + B.votes = this value, allocated to chosen option)
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local kParams = {{}}
+kParams[PlayerOperations.PARAM_RESOLUTION_TYPE] = {resolution_hash}
+kParams[PlayerOperations.PARAM_WORLD_CONGRESS_VOTES] = {num_votes}
+kParams[PlayerOperations.PARAM_RESOLUTION_OPTION] = {option}
+kParams[PlayerOperations.PARAM_RESOLUTION_SELECTION] = {target_index}
+UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_RESOLUTION_VOTE, kParams)
+print("OK:VOTED|res:{resolution_hash}|option:{option}|target:{target_index}|votes:{num_votes}")
+print("{SENTINEL}")
+"""
+
+
+def build_congress_submit() -> str:
+    """Submit all World Congress votes and finalize (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local intro = ContextPtr:LookUpControl("/InGame/WorldCongressIntro")
+if intro then intro:SetHide(true) end
+UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_SUBMIT_TURN, {{}})
+print("OK:CONGRESS_SUBMITTED")
 print("{SENTINEL}")
 """
 
@@ -2700,8 +3050,8 @@ local yields = {{"YIELD_FOOD", "YIELD_PRODUCTION", "YIELD_GOLD", "YIELD_SCIENCE"
 for _, yName in ipairs(yields) do
     local yRow = GameInfo.Yields[yName]
     if yRow then
-        local favored = citz:IsYieldFavored(yRow.Index)
-        local disfavored = citz:IsYieldDisfavored(yRow.Index)
+        local favored = citz:IsFavoredYield(yRow.Index)
+        local disfavored = citz:IsDisfavoredYield(yRow.Index)
         local status = "neutral"
         if favored then status = "favored" elseif disfavored then status = "disfavored" end
         print("FOCUS|" .. yName .. "|" .. status)
@@ -2714,18 +3064,34 @@ print("{SENTINEL}")
 def build_set_yield_focus(city_id: int, yield_type: str) -> str:
     """Set or clear a yield focus for a city (InGame context).
 
+    Uses CityManager.RequestCommand with CityCommandTypes.SET_FOCUS.
     yield_type="DEFAULT" clears all focus. Otherwise sets the given yield as favored.
+    PARAM_FLAGS: 1 = toggle favored, 0 = toggle disfavored.
     """
     if yield_type.upper() == "DEFAULT":
-        # Clear all focus
+        # Clear all focus by toggling off any currently favored/disfavored yields
         return f"""
 {_lua_get_city(city_id)}
 local citz = pCity:GetCitizens()
+local cleared = false
 for yRow in GameInfo.Yields() do
-    if citz:IsYieldFavored(yRow.Index) then citz:SetFavoredYield(yRow.Index) end
-    if citz:IsYieldDisfavored(yRow.Index) then citz:SetDisfavoredYield(yRow.Index) end
+    if citz:IsFavoredYield(yRow.Index) then
+        local tp = {{}}
+        tp[CityCommandTypes.PARAM_YIELD_TYPE] = yRow.Index
+        tp[CityCommandTypes.PARAM_FLAGS] = 1
+        CityManager.RequestCommand(pCity, CityCommandTypes.SET_FOCUS, tp)
+        cleared = true
+    end
+    if citz:IsDisfavoredYield(yRow.Index) then
+        local tp = {{}}
+        tp[CityCommandTypes.PARAM_YIELD_TYPE] = yRow.Index
+        tp[CityCommandTypes.PARAM_FLAGS] = 0
+        CityManager.RequestCommand(pCity, CityCommandTypes.SET_FOCUS, tp)
+        cleared = true
+    end
 end
-print("OK:FOCUS_CLEARED|All yield focus cleared")
+if cleared then print("OK:FOCUS_CLEARED|All yield focus cleared")
+else print("OK:FOCUS_CLEARED|No focus was set") end
 print("{SENTINEL}")
 """
     yield_name = yield_type.upper()
@@ -2736,12 +3102,20 @@ print("{SENTINEL}")
 local yRow = GameInfo.Yields["{yield_name}"]
 if yRow == nil then {_bail(f"ERR:YIELD_NOT_FOUND|{yield_name}")} end
 local citz = pCity:GetCitizens()
--- Clear existing focus first
+-- Clear existing favored focus first
 for yr in GameInfo.Yields() do
-    if citz:IsYieldFavored(yr.Index) then citz:SetFavoredYield(yr.Index) end
-    if citz:IsYieldDisfavored(yr.Index) then citz:SetDisfavoredYield(yr.Index) end
+    if citz:IsFavoredYield(yr.Index) then
+        local tp = {{}}
+        tp[CityCommandTypes.PARAM_YIELD_TYPE] = yr.Index
+        tp[CityCommandTypes.PARAM_FLAGS] = 1
+        CityManager.RequestCommand(pCity, CityCommandTypes.SET_FOCUS, tp)
+    end
 end
-citz:SetFavoredYield(yRow.Index)
+-- Set new focus
+local tParams = {{}}
+tParams[CityCommandTypes.PARAM_YIELD_TYPE] = yRow.Index
+tParams[CityCommandTypes.PARAM_FLAGS] = 1
+CityManager.RequestCommand(pCity, CityCommandTypes.SET_FOCUS, tParams)
 print("OK:FOCUS_SET|{yield_name}|favored")
 print("{SENTINEL}")
 """
@@ -3490,8 +3864,8 @@ def parse_great_people_response(lines: list[str]) -> list[GreatPersonInfo]:
                     class_name=parts[1],
                     individual_name=parts[2],
                     era_name=parts[3],
-                    cost=int(parts[4]),
+                    cost=int(float(parts[4])),
                     claimant=parts[5],
-                    player_points=int(parts[6]),
+                    player_points=int(float(parts[6])),
                 ))
     return results

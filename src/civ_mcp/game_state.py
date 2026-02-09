@@ -357,6 +357,57 @@ class GameState:
         return lq.parse_great_people_response(lines)
 
     # ------------------------------------------------------------------
+    # Trade route methods (InGame context)
+    # ------------------------------------------------------------------
+
+    async def get_trade_destinations(self, unit_index: int) -> list[lq.TradeDestination]:
+        lua = lq.build_trade_destinations_query(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_trade_destinations_response(lines)
+
+    async def make_trade_route(self, unit_index: int, target_x: int, target_y: int) -> str:
+        lua = lq.build_make_trade_route(unit_index, target_x, target_y)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
+    # Great Person activation (InGame context)
+    # ------------------------------------------------------------------
+
+    async def activate_great_person(self, unit_index: int) -> str:
+        lua = lq.build_activate_great_person(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
+    # Trader teleport (InGame context)
+    # ------------------------------------------------------------------
+
+    async def teleport_to_city(self, unit_index: int, target_x: int, target_y: int) -> str:
+        lua = lq.build_teleport_to_city(unit_index, target_x, target_y)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
+    # World Congress (InGame context)
+    # ------------------------------------------------------------------
+
+    async def get_world_congress(self) -> lq.WorldCongressStatus:
+        lua = lq.build_world_congress_query()
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_world_congress_response(lines)
+
+    async def vote_world_congress(self, resolution_hash: int, option: int, target_index: int, num_votes: int) -> str:
+        lua = lq.build_congress_vote(resolution_hash, option, target_index, num_votes)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    async def submit_congress(self) -> str:
+        lua = lq.build_congress_submit()
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    # ------------------------------------------------------------------
     # City yield focus (InGame context)
     # ------------------------------------------------------------------
 
@@ -550,6 +601,19 @@ class GameState:
                     await self.conn.execute_write(
                         f'local me = Game.GetLocalPlayer(); '
                         f'Players[me]:GetCulture():SetGovernmentChangeConsidered(true); '
+                        f'print("OK"); print("{lq.SENTINEL}")'
+                    )
+                    continue  # re-check for more blockers
+
+                # Auto-resolve: World Congress review (informational only)
+                if blocking_type == "ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK":
+                    await self.conn.execute_write(
+                        f'local me = Game.GetLocalPlayer(); '
+                        f'UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); '
+                        f'local i = ContextPtr:LookUpControl("/InGame/WorldCongressIntro"); '
+                        f'if i then i:SetHide(true) end; '
+                        f'local p = ContextPtr:LookUpControl("/InGame/WorldCongressPopup"); '
+                        f'if p then p:SetHide(true) end; '
                         f'print("OK"); print("{lq.SENTINEL}")'
                     )
                     continue  # re-check for more blockers
@@ -1177,6 +1241,65 @@ class GameState:
         for g in gp:
             progress = f"{g.player_points}/{g.cost}"
             lines.append(f"  {g.class_name}: {g.individual_name} ({g.era_name}) — {g.claimant} — your points: {progress}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def narrate_trade_destinations(dests: list[lq.TradeDestination]) -> str:
+        if not dests:
+            return "No valid trade route destinations. Check that your trader is in a city and has moves."
+        domestic = [d for d in dests if d.is_domestic]
+        foreign = [d for d in dests if not d.is_domestic]
+        lines = [f"{len(dests)} trade route destinations:"]
+        if domestic:
+            lines.append("\nDomestic (food + production to destination):")
+            for d in domestic:
+                lines.append(f"  {d.city_name} at ({d.x},{d.y})")
+        if foreign:
+            lines.append("\nInternational (gold to origin):")
+            for d in foreign:
+                lines.append(f"  {d.city_name} ({d.owner_name}) at ({d.x},{d.y})")
+        lines.append("\nUse execute_unit_action with action='trade_route', target_x=X, target_y=Y")
+        return "\n".join(lines)
+
+    @staticmethod
+    def narrate_world_congress(status: lq.WorldCongressStatus) -> str:
+        lines = []
+        if status.is_in_session:
+            lines.append("World Congress: IN SESSION (vote required!)")
+            costs_str = "/".join(str(c) for c in status.favor_costs[1:]) if len(status.favor_costs) > 1 else "10/30/60/100/150"
+            lines.append(f"Favor: {status.favor} | Max votes per resolution: {status.max_votes} (1 free, extras cost favor: {costs_str})")
+        else:
+            if status.turns_until_next >= 0:
+                lines.append(f"World Congress: Next session in {status.turns_until_next} turns")
+            else:
+                lines.append("World Congress: Not yet convened")
+            lines.append(f"Favor: {status.favor}")
+
+        if status.resolutions:
+            lines.append("")
+            for i, r in enumerate(status.resolutions, 1):
+                if status.is_in_session:
+                    lines.append(f"Resolution #{i}: {r.name} (hash: {r.resolution_hash})")
+                    lines.append(f"  Target type: {r.target_kind}")
+                    if r.effect_a:
+                        lines.append(f"  Option A: {r.effect_a}")
+                    if r.effect_b:
+                        lines.append(f"  Option B: {r.effect_b}")
+                    if r.possible_targets:
+                        targets_str = ", ".join(f"[{j}] {t}" for j, t in enumerate(r.possible_targets))
+                        lines.append(f"  Targets: {targets_str}")
+                    lines.append(f"  -> vote_world_congress(resolution_hash={r.resolution_hash}, option=1or2, target_index=N, num_votes=1)")
+                else:
+                    outcome = "A" if r.winner == 0 else "B" if r.winner == 1 else "?"
+                    effect = r.effect_a if r.winner == 0 else r.effect_b if r.winner == 1 else ""
+                    chosen = f" ({r.chosen_thing})" if r.chosen_thing else ""
+                    lines.append(f"  {r.name} — Outcome {outcome}{chosen}: {effect}")
+
+        if status.proposals:
+            lines.append("\nProposals:")
+            for p in status.proposals:
+                lines.append(f"  {p.sender_name} -> {p.target_name}: {p.description}")
+
         return "\n".join(lines)
 
     @staticmethod

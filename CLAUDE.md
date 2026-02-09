@@ -81,6 +81,9 @@ Civ 6 does NOT allow two units of the same formation class on the same tile:
 | `attack` | Attack enemy at target tile | Melee (adjacent) or ranged (within range) |
 | `found_city` | Settle a city | Settlers only |
 | `improve` | Build an improvement | Builders only, requires improvement name |
+| `trade_route` | Start a trade route | Traders only. Requires target_x, target_y of destination city |
+| `teleport` | Move trader to a different city | Traders only, must be idle. Requires target_x, target_y of city |
+| `activate` | Activate a Great Person | GP must be on completed matching district |
 
 - Already-fortified units return `ALREADY_FORTIFIED` — just skip them
 - Fortified/alert units auto-wake when enemies approach, then need new orders
@@ -198,6 +201,32 @@ Key adjacency tips:
 - Government changes use `change_government` — first switch after new tier is free
 - `set_city_focus` to bias citizen assignment (production focus for builders, food for growth)
 - `get_great_people` to track Great Person recruitment race
+
+## Trade Routes
+
+- Use `get_trade_destinations(unit_id)` to see available destinations for a trader
+- Use `execute_unit_action(unit_id, action='trade_route', target_x=X, target_y=Y)` to start a route
+- **Domestic routes** send food + production to the destination city (good for new cities)
+- **International routes** generate gold for the origin city
+- Trader must be in a city with moves remaining
+- Route capacity: 1 from Foreign Trade civic, +1 per Market/Lighthouse
+
+## Great People
+
+- Use `get_great_people` to see available GP candidates and recruitment progress
+- When you recruit a GP, move it to the matching completed district (e.g. Great Scientist → Campus)
+- Use `execute_unit_action(unit_id, action='activate')` to activate — unit is consumed
+- The district must be **completed** (not just placed) for activation to work
+
+## World Congress
+
+- `get_world_congress` shows session status, active/passed resolutions, and voting options
+- When in session (blocks turn): vote on each resolution with `vote_world_congress`
+- Each resolution has two options (A/B) and a target to choose from a list
+- 1 free vote per resolution, extra votes cost diplomatic favor (10/30/60/100/150)
+- After voting on all resolutions, congress auto-submits
+- Between sessions: shows passed resolutions and turns until next session
+- The `ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK` blocker (review results) is auto-resolved by `end_turn`
 
 ## Code Architecture
 
