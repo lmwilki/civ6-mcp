@@ -124,7 +124,16 @@ async def get_units(ctx: Context) -> str:
     Consumed units (e.g. settlers that founded cities) are excluded.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_units", {}, lambda: _narrate(gs.get_units, gs.narrate_units))
+
+    async def _run():
+        units = await gs.get_units()
+        try:
+            threats = await gs.get_threat_scan()
+        except Exception:
+            threats = None
+        return gs.narrate_units(units, threats)
+
+    return await _logged(ctx, "get_units", {}, _run)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -888,6 +897,29 @@ async def vote_world_congress(
         return result
 
     return await _logged(ctx, "vote_world_congress", params, _run)
+
+
+# ---------------------------------------------------------------------------
+# Victory progress
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_victory_progress(ctx: Context) -> str:
+    """Get victory condition progress for all civilizations.
+
+    Shows progress toward Science, Domination, Culture, Religious,
+    Diplomatic, and Score victories. Includes space race VP, diplomatic VP,
+    tourism vs domestic tourists, religion spread, capital ownership,
+    and military strength. Call every 20-30 turns to track the race.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        vp = await gs.get_victory_progress()
+        return gs.narrate_victory_progress(vp)
+
+    return await _logged(ctx, "get_victory_progress", {}, _run)
 
 
 # ---------------------------------------------------------------------------

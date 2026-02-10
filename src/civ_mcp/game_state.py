@@ -39,8 +39,16 @@ class GameState:
         return ov
 
     async def get_units(self) -> list[lq.UnitInfo]:
-        lines = await self.conn.execute_read(lq.build_units_query())
+        lines = await self.conn.execute_write(lq.build_units_query())
         return lq.parse_units_response(lines)
+
+    async def get_threat_scan(self) -> list[lq.ThreatInfo]:
+        lines = await self.conn.execute_read(lq.build_threat_scan_query())
+        return lq.parse_threat_scan_response(lines)
+
+    async def get_victory_progress(self) -> lq.VictoryProgress:
+        lines = await self.conn.execute_write(lq.build_victory_progress_query())
+        return lq.parse_victory_progress_response(lines)
 
     async def get_cities(self) -> list[lq.CityInfo]:
         lines = await self.conn.execute_write(lq.build_cities_query())
@@ -82,7 +90,16 @@ class GameState:
     async def attack_unit(self, unit_index: int, target_x: int, target_y: int) -> str:
         lua = lq.build_attack_unit(unit_index, target_x, target_y)
         lines = await self.conn.execute_write(lua)
-        return _action_result(lines)
+        result = _action_result(lines)
+        # Follow up with GameCore read for actual post-combat HP
+        if result.startswith("RANGE_ATTACK") or result.startswith("MELEE_ATTACK"):
+            try:
+                followup = await self.conn.execute_read(
+                    lq.build_attack_followup_query(target_x, target_y))
+                result += "\n  Post-combat: " + _format_attack_followup(followup)
+            except Exception as e:
+                log.debug("Attack followup read failed: %s", e)
+        return result
 
     async def found_city(self, unit_index: int) -> str:
         lua = lq.build_found_city(unit_index)
@@ -618,6 +635,31 @@ class GameState:
                     )
                     continue  # re-check for more blockers
 
+                # Auto-resolve: World Congress session with no resolutions
+                # (e.g. Special Sessions / Aid Requests we're not party to)
+                if blocking_type == "ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION":
+                    try:
+                        wc_lines = await self.conn.execute_write(
+                            f'local wc = Game.GetWorldCongress(); '
+                            f'if wc then '
+                            f'  local ok, res = pcall(function() return wc:GetResolutions() end); '
+                            f'  if ok and res and #res == 0 then '
+                            f'    local me = Game.GetLocalPlayer(); '
+                            f'    UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_SUBMIT_TURN, {{}}); '
+                            f'    local i = ContextPtr:LookUpControl("/InGame/WorldCongressIntro"); '
+                            f'    if i then i:SetHide(true) end; '
+                            f'    local p = ContextPtr:LookUpControl("/InGame/WorldCongressPopup"); '
+                            f'    if p then p:SetHide(true) end; '
+                            f'    print("AUTO_RESOLVED"); '
+                            f'  else print("HAS_RESOLUTIONS"); end; '
+                            f'else print("NO_WC"); end; '
+                            f'print("{lq.SENTINEL}")'
+                        )
+                        if any("AUTO_RESOLVED" in l for l in wc_lines):
+                            continue  # re-check for more blockers
+                    except Exception:
+                        log.debug("WC session auto-resolve failed", exc_info=True)
+
                 hint = lq.BLOCKING_TOOL_MAP.get(blocking_type, "Resolve the blocking notification")
                 display_type = blocking_type.replace("ENDTURN_BLOCKING_", "").replace("_", " ").title()
                 msg = f"Cannot end turn: {display_type} required."
@@ -712,9 +754,10 @@ class GameState:
             threat_lines = await self.conn.execute_read(lq.build_threat_scan_query())
             threats = lq.parse_threat_scan_response(threat_lines)
             for t in threats:
+                rs_str = f" RS:{t.ranged_strength}" if t.ranged_strength > 0 else ""
                 events.append(lq.TurnEvent(
                     priority=2, category="unit",
-                    message=f"THREAT: {t.unit_desc} spotted {t.distance} tiles from {t.city_name} at ({t.x},{t.y})",
+                    message=f"THREAT: {t.unit_type} CS:{t.combat_strength}{rs_str} HP:{t.hp}/{t.max_hp} spotted {t.distance} tiles away at ({t.x},{t.y})",
                 ))
             events.sort(key=lambda e: e.priority)
         except Exception:
@@ -758,6 +801,7 @@ class GameState:
         ingame_popups = (
             "InGamePopup", "GenericPopup", "PopupDialog",
             "BoostUnlockedPopup", "GreatWorkShowcase",
+            "WorldCongressPopup", "WorldCongressIntro",
         )
         for popup_name in ingame_popups:
             try:
@@ -793,7 +837,7 @@ class GameState:
     def narrate_overview(ov: lq.GameOverview) -> str:
         lines = [
             f"Turn {ov.turn} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}",
-            f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn) | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f}",
+            f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn) | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor}",
             f"Research: {ov.current_research} | Civic: {ov.current_civic}",
             f"Cities: {ov.num_cities} | Units: {ov.num_units}",
         ]
@@ -805,7 +849,7 @@ class GameState:
         return "\n".join(lines)
 
     @staticmethod
-    def narrate_units(units: list[lq.UnitInfo]) -> str:
+    def narrate_units(units: list[lq.UnitInfo], threats: list[lq.ThreatInfo] | None = None) -> str:
         if not units:
             return "No units."
         lines = [f"{len(units)} units:"]
@@ -822,14 +866,28 @@ class GameState:
                 status += " (no moves)"
             charges = f" charges:{u.build_charges}" if u.build_charges > 0 else ""
             promo_flag = " **NEEDS PROMOTION**" if u.needs_promotion else ""
+            upgrade_flag = ""
+            if u.can_upgrade:
+                upgrade_flag = f" **CAN UPGRADE to {u.upgrade_target} ({u.upgrade_cost}g)**"
             lines.append(
                 f"  {u.name} ({u.unit_type}) at ({u.x},{u.y}) —{strength} "
-                f"moves {u.moves_remaining}/{u.max_moves}{charges}{status}{promo_flag} "
+                f"moves {u.moves_remaining}/{u.max_moves}{charges}{status}{promo_flag}{upgrade_flag} "
                 f"[id:{u.unit_id}, idx:{u.unit_index}]"
             )
             if u.targets:
                 for t in u.targets:
                     lines.append(f"    >> CAN ATTACK: {t}")
+            if u.valid_improvements:
+                lines.append(f"    >> Can build: {', '.join(u.valid_improvements)}")
+        if threats:
+            lines.append("")
+            lines.append(f"Nearby barbarian threats ({len(threats)}):")
+            for t in threats:
+                rs_str = f" RS:{t.ranged_strength}" if t.ranged_strength > 0 else ""
+                lines.append(
+                    f"  {t.unit_type} at ({t.x},{t.y}) — CS:{t.combat_strength}{rs_str} "
+                    f"HP:{t.hp}/{t.max_hp} ({t.distance} tiles away)"
+                )
         return "\n".join(lines)
 
     @staticmethod
@@ -842,12 +900,21 @@ class GameState:
             prod_str = f"Building: {building}"
             if building != "nothing" and c.production_turns_left > 0:
                 prod_str += f" ({c.production_turns_left} turns)"
+            defense = ""
+            if c.wall_max_hp > 0:
+                defense = (
+                    f" | Walls {c.wall_hp}/{c.wall_max_hp}"
+                    f" Garrison {c.garrison_hp}/{c.garrison_max_hp}"
+                    f" Def:{c.defense_strength}"
+                )
+            elif c.defense_strength > 0:
+                defense = f" | Def:{c.defense_strength}"
             lines.append(
                 f"  {c.name} (pop {c.population}) at ({c.x},{c.y}) — "
                 f"Food {c.food:.0f} Prod {c.production:.0f} Gold {c.gold:.0f} "
                 f"Sci {c.science:.0f} Cul {c.culture:.0f} | "
                 f"Housing {c.housing:.0f} Amenities {c.amenities} | "
-                f"Growth in {c.turns_to_grow} turns | {prod_str} "
+                f"Growth in {c.turns_to_grow} turns | {prod_str}{defense} "
                 f"[id:{c.city_id}]"
             )
         return "\n".join(lines)
@@ -1303,6 +1370,71 @@ class GameState:
         return "\n".join(lines)
 
     @staticmethod
+    def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
+        if not vp.players:
+            return "No victory data available."
+
+        lines = ["=== VICTORY PROGRESS ===", ""]
+
+        # Find our player (player_id 0 typically, or first non-Unmet)
+        us = next((p for p in vp.players if p.name != "Unmet"), None)
+
+        # --- Science Victory ---
+        lines.append("SCIENCE VICTORY (launch 4 space projects = 50 VP)")
+        sci_sorted = sorted(vp.players, key=lambda p: (p.science_vp, p.techs_researched), reverse=True)
+        for p in sci_sorted:
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: {p.science_vp}/{p.science_vp_needed} VP | {p.techs_researched} techs{marker}")
+
+        # --- Domination Victory ---
+        lines.append("")
+        lines.append("DOMINATION (own all original capitals)")
+        for p in vp.players:
+            holds = vp.capitals_held.get(p.name, True)
+            status = "holds own capital" if holds else "CAPITAL LOST"
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: {status} | military {p.military_strength}{marker}")
+
+        # --- Culture Victory ---
+        lines.append("")
+        lines.append("CULTURE (your tourists > every civ's domestic tourists)")
+        if us:
+            lines.append(f"  Our domestic tourists: {us.staycationers}")
+            for name, our_tourists in vp.our_tourists_from.items():
+                their_dom = vp.their_staycationers.get(name, 0)
+                gap = their_dom - our_tourists
+                status = "DOMINANT" if gap <= 0 else f"need {gap} more"
+                lines.append(f"  vs {name}: {our_tourists}/{their_dom} tourists ({status})")
+
+        # --- Religious Victory ---
+        lines.append("")
+        lines.append("RELIGION (your religion majority in all civs)")
+        for p in vp.players:
+            rel = vp.religion_majority.get(p.name, "none")
+            rel_short = rel.replace("RELIGION_", "").title() if rel != "none" else "none"
+            founded = " (FOUNDED)" if p.has_religion else ""
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: majority={rel_short}{founded} | {p.religion_cities} cities converted{marker}")
+
+        # --- Diplomatic Victory ---
+        lines.append("")
+        lines.append("DIPLOMATIC (20 VP from World Congress)")
+        diplo_sorted = sorted(vp.players, key=lambda p: p.diplomatic_vp, reverse=True)
+        for p in diplo_sorted:
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: {p.diplomatic_vp}/20 VP{marker}")
+
+        # --- Score Victory ---
+        lines.append("")
+        lines.append("SCORE (highest at turn 500)")
+        score_sorted = sorted(vp.players, key=lambda p: p.score, reverse=True)
+        for p in score_sorted:
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: {p.score}{marker}")
+
+        return "\n".join(lines)
+
+    @staticmethod
     def narrate_notifications(notifs: list[lq.GameNotification]) -> str:
         if not notifs:
             return "No active notifications."
@@ -1339,3 +1471,16 @@ def _action_result(lines: list[str]) -> str:
     if result.startswith("ERR:"):
         return f"Error: {result[4:]}"
     return result
+
+
+def _format_attack_followup(lines: list[str]) -> str:
+    """Format the GameCore follow-up read after an attack."""
+    parts = []
+    for line in lines:
+        if line.startswith("UNIT|"):
+            fields = line.split("|")
+            if len(fields) >= 3:
+                parts.append(f"{fields[1]} {fields[2]}")
+    if not parts:
+        return "Target eliminated"
+    return ", ".join(parts)

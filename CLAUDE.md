@@ -28,7 +28,8 @@ Follow this pattern every turn:
 6. `get_district_advisor` if building a district — find the best adjacency tile
 7. `set_city_production` / `set_research` if needed
 8. `get_empire_resources` every 10 turns — check for unimproved luxuries, nearby strategics
-9. `end_turn` — auto-checks for blockers and reports events
+9. `get_victory_progress` every 20-30 turns — track who's winning and adjust strategy
+10. `end_turn` — auto-checks for blockers and reports events
 
 ## Combat & Threat Awareness
 
@@ -227,6 +228,27 @@ Key adjacency tips:
 - After voting on all resolutions, congress auto-submits
 - Between sessions: shows passed resolutions and turns until next session
 - The `ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK` blocker (review results) is auto-resolved by `end_turn`
+
+## Victory Conditions
+
+Use `get_victory_progress` every 20-30 turns to track the race. There are 6 victory types:
+
+| Victory | Condition | Key Metric |
+|---------|-----------|------------|
+| **Science** | Complete 4 space projects (satellite, moon, Mars, exoplanet) | Science VP (0/50) |
+| **Domination** | Own every other civ's original capital | Capitals controlled |
+| **Culture** | Your foreign tourists > every civ's domestic tourists | Tourism vs staycationers |
+| **Religious** | Your religion is majority in all civilizations | Cities converted |
+| **Diplomatic** | Earn 20 diplomatic victory points | Diplo VP from World Congress |
+| **Score** | Highest score at turn 500 | Total score |
+
+**Strategic awareness:**
+- Science: Track techs researched — the tech leader will reach space race first. Need Rocketry → Spaceport → projects.
+- Domination: Watch military strength — a civ with 300+ military and your neighbor is a threat. Losing your capital = game over.
+- Culture: You need more tourists visiting FROM each civ than their domestic tourists (staycationers). Theater Squares, Great Works, Wonders, National Parks drive tourism.
+- Religion: Must have FOUNDED a religion (not just a pantheon). Need religious units (Missionaries, Apostles) to spread. Poland has no founded religion — this path is likely closed.
+- Diplomatic: Accumulates slowly via World Congress votes and emergencies. 20 VP is a long game.
+- Score: Fallback — whoever is ahead at turn 500 wins. Track rankings in `get_game_overview`.
 
 ## Code Architecture
 

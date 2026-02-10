@@ -97,6 +97,7 @@ class GameOverview:
     num_cities: int
     num_units: int
     score: int = 0
+    diplomatic_favor: int = 0
     rankings: list[ScoreEntry] | None = None
 
 
@@ -117,6 +118,10 @@ class UnitInfo:
     build_charges: int = 0
     targets: list[str] = field(default_factory=list)
     needs_promotion: bool = False
+    can_upgrade: bool = False
+    upgrade_target: str = ""
+    upgrade_cost: int = 0
+    valid_improvements: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -137,6 +142,11 @@ class CityInfo:
     turns_to_grow: int
     currently_building: str
     production_turns_left: int = 0
+    defense_strength: int = 0
+    garrison_hp: int = 0
+    garrison_max_hp: int = 0
+    wall_hp: int = 0
+    wall_max_hp: int = 0
 
 
 @dataclass
@@ -305,12 +315,48 @@ class NearbyResource:
 
 @dataclass
 class ThreatInfo:
-    """A hostile military unit spotted near one of our cities."""
-    city_name: str
-    unit_desc: str
+    """A hostile military unit spotted near our empire."""
+    unit_type: str
     x: int
     y: int
+    hp: int
+    max_hp: int
+    combat_strength: int
+    ranged_strength: int
     distance: int
+
+
+@dataclass
+class VictoryPlayerProgress:
+    """Victory progress for a single civilization."""
+    player_id: int
+    name: str  # "Unmet" if not met
+    score: int
+    science_vp: int  # space race VP (0-50)
+    science_vp_needed: int
+    diplomatic_vp: int  # need 20 to win
+    tourism: int
+    military_strength: int
+    techs_researched: int
+    civics_completed: int
+    religion_cities: int  # cities following their religion
+    # Culture dominance (only for our civ)
+    staycationers: int = 0  # domestic tourists
+    # Religion details (only meaningful if they founded one)
+    has_religion: bool = False
+
+
+@dataclass
+class VictoryProgress:
+    """Full victory progress snapshot."""
+    players: list[VictoryPlayerProgress]
+    # Culture victory details (our perspective)
+    our_tourists_from: dict[str, int] = field(default_factory=dict)  # civ_name -> tourists
+    their_staycationers: dict[str, int] = field(default_factory=dict)  # civ_name -> domestic tourists
+    # Domination: who holds their original capital?
+    capitals_held: dict[str, bool] = field(default_factory=dict)  # civ_name -> still_holds_own_capital
+    # Religion majority per civ
+    religion_majority: dict[str, str] = field(default_factory=dict)  # civ_name -> religion name
 
 
 @dataclass
@@ -625,7 +671,8 @@ if civicIdx >= 0 then civicName = Locale.Lookup(GameInfo.Civics[civicIdx].Name) 
 local nCities = 0; for _ in p:GetCities():Members() do nCities = nCities + 1 end
 local nUnits = 0; for _ in p:GetUnits():Members() do nUnits = nUnits + 1 end
 local myScore = p:GetScore()
-print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore)
+local favor = 0; if p.GetFavor then favor = p:GetFavor() end
+print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor)
 local pDiplo = p:GetDiplomacy()
 for i = 0, 62 do
     if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
@@ -638,6 +685,7 @@ print("{SENTINEL}")
 
 
 def build_units_query() -> str:
+    """InGame context: lists all units with upgrade and builder improvement info."""
     return f"""
 local id = Game.GetLocalPlayer()
 for i, u in Players[id]:GetUnits():Members() do
@@ -679,7 +727,44 @@ for i, u in Players[id]:GetUnits():Members() do
         local promo = "0"
         local exp = u:GetExperience()
         if exp and exp:GetExperiencePoints() >= exp:GetExperienceForNextLevel() then promo = "1" end
-        print(uid .. "|" .. (uid % 65536) .. "|" .. nm .. "|" .. ut .. "|" .. x .. "," .. y .. "|" .. u:GetMovesRemaining() .. "/" .. u:GetMaxMoves() .. "|" .. (u:GetMaxDamage() - u:GetDamage()) .. "/" .. u:GetMaxDamage() .. "|" .. cs .. "|" .. rs .. "|" .. charges .. "|" .. targets .. "|" .. promo)
+        -- Upgrade info (InGame only: CanStartCommand)
+        local canUp, upName, upCost = "0", "", "0"
+        local ok1, _ = pcall(function()
+            if UnitManager.CanStartCommand(u, UnitCommandTypes.UPGRADE, nil, true) then
+                canUp = "1"
+                local c2 = u:GetUpgradeCost()
+                if c2 then upCost = tostring(c2) end
+                if entry and entry.UpgradeUnitCollection then
+                    for _, row in ipairs(entry.UpgradeUnitCollection) do
+                        if row.UpgradeUnit then upName = row.UpgradeUnit end
+                        break
+                    end
+                end
+            end
+        end)
+        -- Builder improvement advisor (InGame only: CanStartOperation)
+        local validImps = ""
+        if ut == "UNIT_BUILDER" and u:GetMovesRemaining() > 0 then
+            local plot = Map.GetPlot(x, y)
+            if plot and plot:GetOwner() == id then
+                local impList = {{}}
+                for imp in GameInfo.Improvements() do
+                    if imp.Buildable and not imp.TraitType then
+                        local bParams = {{}}
+                        bParams[UnitOperationTypes.PARAM_X] = x
+                        bParams[UnitOperationTypes.PARAM_Y] = y
+                        bParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = imp.Hash
+                        local ok2, _ = pcall(function()
+                            if UnitManager.CanStartOperation(u, UnitOperationTypes.BUILD_IMPROVEMENT, nil, bParams) then
+                                table.insert(impList, imp.ImprovementType)
+                            end
+                        end)
+                    end
+                end
+                if #impList > 0 then validImps = table.concat(impList, ";") end
+            end
+        end
+        print(uid .. "|" .. (uid % 65536) .. "|" .. nm .. "|" .. ut .. "|" .. x .. "," .. y .. "|" .. u:GetMovesRemaining() .. "/" .. u:GetMaxMoves() .. "|" .. (u:GetMaxDamage() - u:GetDamage()) .. "/" .. u:GetMaxDamage() .. "|" .. cs .. "|" .. rs .. "|" .. charges .. "|" .. targets .. "|" .. promo .. "|" .. canUp .. "|" .. upName .. "|" .. upCost .. "|" .. validImps)
     end
 end
 print("{SENTINEL}")
@@ -705,7 +790,22 @@ for i, c in Players[me]:GetCities():Members() do
         turnsLeft = bq:GetTurnsLeft()
     end
     local g = c:GetGrowth()
-    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft)
+    -- City defense info
+    local defStr, garHP, garMax, wallHP, wallMax = 0, 0, 0, 0, 0
+    local ccIdx = GameInfo.Districts["DISTRICT_CITY_CENTER"].Index
+    for _, d in c:GetDistricts():Members() do
+        if d:GetType() == ccIdx then
+            local ok, _ = pcall(function()
+                defStr = d:GetDefenseStrength() or 0
+                garMax = d:GetMaxDamage(DefenseTypes.DISTRICT_GARRISON) or 0
+                garHP = garMax - (d:GetDamage(DefenseTypes.DISTRICT_GARRISON) or 0)
+                wallMax = d:GetMaxDamage(DefenseTypes.DISTRICT_OUTER) or 0
+                wallHP = wallMax - (d:GetDamage(DefenseTypes.DISTRICT_OUTER) or 0)
+            end)
+            break
+        end
+    end
+    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax)
 end
 print("{SENTINEL}")
 """
@@ -829,7 +929,7 @@ for i = 0, 62 do
             end
             if #avail > 0 then print("ACTIONS|" .. i .. "|" .. table.concat(avail, ",")) end
         else
-            print("CIV|" .. i .. "|" .. civName .. "|" .. leaderName .. "|" .. met .. "|" .. war .. "|UNKNOWN|0|0|0|0|0|0")
+            print("CIV|" .. i .. "|Unmet Civilization|Unknown Leader|" .. met .. "|" .. war .. "|UNKNOWN|0|0|0|0|0|0")
         end
     end
 end
@@ -1050,6 +1150,28 @@ else
     report = report .. "|your HP:" .. myHP .. " -> " .. myAfterHP .. " CS:" .. myCS
     print(report)
 end
+print("{SENTINEL}")
+"""
+
+
+def build_attack_followup_query(target_x: int, target_y: int) -> str:
+    """GameCore read: get actual HP of units at target tile after combat."""
+    return f"""
+local found = false
+for i = 0, 63 do
+    if Players[i] and Players[i]:IsAlive() then
+        for _, u in Players[i]:GetUnits():Members() do
+            if u:GetX() == {target_x} and u:GetY() == {target_y} then
+                local hp = u:GetMaxDamage() - u:GetDamage()
+                local entry = GameInfo.Units[u:GetType()]
+                local name = entry and entry.UnitType or "UNKNOWN"
+                print("UNIT|" .. name .. "|" .. hp .. "/" .. u:GetMaxDamage() .. "|owner:" .. i)
+                found = true
+            end
+        end
+    end
+end
+if not found then print("EMPTY") end
 print("{SENTINEL}")
 """
 
@@ -1276,50 +1398,44 @@ print("{SENTINEL}")
 
 
 def build_threat_scan_query() -> str:
-    """Scan visible tiles around each city for hostile military units.
+    """GameCore: scan for barbarian units near our empire (within 8 tiles).
 
-    Only checks tiles the player can currently see (vis:IsVisible).
-    Returns THREAT lines for each hostile military unit found.
+    Uses GameCore context for full visibility regardless of fog of war.
+    Reports HP, combat strength, and distance from nearest friendly position.
     """
     return f"""
 local me = Game.GetLocalPlayer()
-local vis = PlayersVisibility[me]
-local cities = {{}}
+local myPos = {{}}
 for _, c in Players[me]:GetCities():Members() do
-    table.insert(cities, {{x=c:GetX(), y=c:GetY(), name=Locale.Lookup(c:GetName())}})
+    table.insert(myPos, {{c:GetX(), c:GetY()}})
 end
-local seen = {{}}
-for _, city in ipairs(cities) do
-    for dy = -4, 4 do
-        for dx = -4, 4 do
-            local x, y = city.x + dx, city.y + dy
-            local dist = Map.GetPlotDistance(city.x, city.y, x, y)
-            if dist > 0 and dist <= 4 then
-                local plot = Map.GetPlot(x, y)
-                if plot and vis:IsVisible(plot:GetIndex()) then
-                    local key = x .. "," .. y
-                    if not seen[key] then
-                        seen[key] = true
-                        for i = 0, 63 do
-                            if i ~= me and Players[i] and Players[i]:IsAlive() then
-                                for _, u in Players[i]:GetUnits():Members() do
-                                    if u:GetX() == x and u:GetY() == y then
-                                        local entry = GameInfo.Units[u:GetType()]
-                                        local cs = entry and entry.Combat or 0
-                                        if cs > 0 then
-                                            local label = i == 63 and "Barbarian" or Locale.Lookup(PlayerConfigurations[i]:GetCivilizationShortDescription())
-                                            print("THREAT|" .. city.name .. "|" .. label .. " " .. entry.UnitType:gsub("UNIT_","") .. " (CS:" .. cs .. ")" .. "|" .. x .. "," .. y .. "|" .. dist)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
+for _, u in Players[me]:GetUnits():Members() do
+    local ux, uy = u:GetX(), u:GetY()
+    if ux ~= -9999 then table.insert(myPos, {{ux, uy}}) end
+end
+local found = false
+if Players[63] and Players[63]:IsAlive() then
+    for _, bu in Players[63]:GetUnits():Members() do
+        local bx, by = bu:GetX(), bu:GetY()
+        if bx ~= -9999 then
+            local minDist = 999
+            for _, pos in ipairs(myPos) do
+                local d = Map.GetPlotDistance(pos[1], pos[2], bx, by)
+                if d < minDist then minDist = d end
+            end
+            if minDist <= 8 then
+                local entry = GameInfo.Units[bu:GetType()]
+                local name = entry and entry.UnitType or "UNKNOWN"
+                local hp = bu:GetMaxDamage() - bu:GetDamage()
+                local bcs = entry and entry.Combat or 0
+                local brs = entry and entry.RangedCombat or 0
+                print("THREAT|" .. name .. "|" .. bx .. "," .. by .. "|" .. hp .. "/" .. bu:GetMaxDamage() .. "|CS:" .. bcs .. "|RS:" .. brs .. "|dist:" .. minDist)
+                found = true
             end
         end
     end
 end
+if not found then print("NO_THREATS") end
 print("{SENTINEL}")
 """
 
@@ -2887,6 +3003,7 @@ def build_world_congress_query() -> str:
     """Get World Congress status, resolutions, and proposals (InGame context)."""
     return f"""
 local me = Game.GetLocalPlayer()
+local pDiplo = Players[me]:GetDiplomacy()
 local wc = Game.GetWorldCongress()
 if not wc then {_bail("ERR:NO_WORLD_CONGRESS|World Congress not available yet")} end
 local inSession = wc:IsInSession()
@@ -2920,16 +3037,39 @@ if ress then
         if not inSession then
             isPassed = "1"
             winner = res.Winner or -1
-            if res.ChosenThing then chosen = Locale.Lookup(res.ChosenThing) end
+            if res.ChosenThing then
+                if res.TargetType == "PlayerType" then
+                    local pid = tonumber(res.ChosenThing)
+                    if pid and PlayerConfigurations[pid] and pDiplo:HasMet(pid) then
+                        chosen = Locale.Lookup(PlayerConfigurations[pid]:GetCivilizationShortDescription())
+                    else
+                        chosen = "Unmet Player"
+                    end
+                else
+                    chosen = Locale.Lookup(res.ChosenThing)
+                end
+            end
         end
         local targets = ""
         if inSession and res.PossibleTargets then
+            local isPlayerType = (res.TargetType == "PlayerType")
             for ti, tgt in ipairs(res.PossibleTargets) do
                 if ti > 1 then targets = targets .. "~" end
                 local tName = ""
-                if tgt.Name then tName = Locale.Lookup(tgt.Name)
-                elseif tgt.Tooltip then tName = Locale.Lookup(tgt.Tooltip)
-                else tName = "Target" .. ti end
+                if isPlayerType then
+                    -- PlayerType: targets are player IDs (numbers)
+                    local pid = tonumber(tgt)
+                    if pid and PlayerConfigurations[pid] and pDiplo:HasMet(pid) then
+                        tName = Locale.Lookup(PlayerConfigurations[pid]:GetCivilizationShortDescription())
+                    else
+                        tName = "Unmet Player"
+                    end
+                else
+                    -- Other types (District, Yield, etc.): targets are LOC key strings
+                    local ok, resolved = pcall(Locale.Lookup, tostring(tgt))
+                    if ok and resolved then tName = resolved
+                    else tName = tostring(tgt) end
+                end
                 targets = targets .. tName
             end
         end
@@ -3034,6 +3174,125 @@ UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_SUBMIT_TURN, {{}})
 print("OK:CONGRESS_SUBMITTED")
 print("{SENTINEL}")
 """
+
+
+# ---------------------------------------------------------------------------
+# Victory progress
+# ---------------------------------------------------------------------------
+
+
+def build_victory_progress_query() -> str:
+    """Build a Lua query for victory progress of all players (InGame context).
+
+    Outputs lines:
+      PLAYER|pid|name|score|sciVP|sciNeeded|diploVP|tourism|milStr|techs|civics|relCities|staycationers|hasReligion
+      CULTURE|civName|ourTourists|theirStaycationers|dominant
+      CAPITAL|civName|holdsOwn
+      RELMAJ|civName|religionName
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local pDiplo = Players[me]:GetDiplomacy()
+local pCul = Players[me]:GetCulture()
+
+for i = 0, 62 do
+    local p = Players[i]
+    if p and p:IsMajor() and p:IsAlive() then
+        local met = pDiplo:HasMet(i) or i == me
+        local name = "Unmet"
+        if met then
+            local cfg = PlayerConfigurations[i]
+            name = Locale.Lookup(cfg:GetCivilizationShortDescription())
+        end
+        local st = p:GetStats()
+        local sciVP = st:GetScienceVictoryPoints()
+        local sciNeeded = st:GetScienceVictoryPointsTotalNeeded()
+        local diploVP = st:GetDiplomaticVictoryPoints()
+        local tourism = st:GetTourism()
+        local milStr = st:GetMilitaryStrength()
+        local techs = st:GetNumTechsResearched()
+        local civics = st:GetNumCivicsCompleted()
+        local relCities = st:GetNumCitiesFollowingReligion()
+        local stay = p:GetCulture():GetStaycationers()
+        local hasRel = p:GetReligion():GetReligionTypeCreated() >= 0
+        print("PLAYER|" .. i .. "|" .. name .. "|" .. p:GetScore() .. "|" .. sciVP .. "|" .. sciNeeded .. "|" .. diploVP .. "|" .. tourism .. "|" .. milStr .. "|" .. techs .. "|" .. civics .. "|" .. relCities .. "|" .. stay .. "|" .. tostring(hasRel))
+
+        -- Culture dominance (from our perspective)
+        if i ~= me then
+            local ourTourists = pCul:GetTouristsFrom(i)
+            local theirStay = p:GetCulture():GetStaycationers()
+            local dominant = pCul:IsDominantOver(i)
+            print("CULTURE|" .. name .. "|" .. ourTourists .. "|" .. theirStay .. "|" .. tostring(dominant))
+        end
+
+        -- Capital ownership
+        local cap = p:GetCities():GetCapitalCity()
+        local holdsOwn = cap and cap:IsOriginalCapital() or false
+        print("CAPITAL|" .. name .. "|" .. tostring(holdsOwn))
+
+        -- Religion majority
+        local majRel = p:GetReligion():GetReligionInMajorityOfCities()
+        local relName = "none"
+        if majRel >= 0 then
+            local r = GameInfo.Religions[majRel]
+            if r then relName = r.ReligionType end
+        end
+        print("RELMAJ|" .. name .. "|" .. relName)
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
+    """Parse victory progress from Lua output."""
+    players: list[VictoryPlayerProgress] = []
+    our_tourists: dict[str, int] = {}
+    their_stay: dict[str, int] = {}
+    capitals: dict[str, bool] = {}
+    rel_majority: dict[str, str] = {}
+
+    for line in lines:
+        if line.startswith("PLAYER|"):
+            p = line.split("|")
+            if len(p) < 14:
+                continue
+            players.append(VictoryPlayerProgress(
+                player_id=int(p[1]),
+                name=p[2],
+                score=int(p[3]),
+                science_vp=int(p[4]),
+                science_vp_needed=int(p[5]),
+                diplomatic_vp=int(p[6]),
+                tourism=int(p[7]),
+                military_strength=int(p[8]),
+                techs_researched=int(p[9]),
+                civics_completed=int(p[10]),
+                religion_cities=int(p[11]),
+                staycationers=int(p[12]),
+                has_religion=p[13] == "true",
+            ))
+        elif line.startswith("CULTURE|"):
+            p = line.split("|")
+            if len(p) >= 5:
+                our_tourists[p[1]] = int(p[2])
+                their_stay[p[1]] = int(p[3])
+        elif line.startswith("CAPITAL|"):
+            p = line.split("|")
+            if len(p) >= 3:
+                capitals[p[1]] = p[2] == "true"
+        elif line.startswith("RELMAJ|"):
+            p = line.split("|")
+            if len(p) >= 3:
+                rel_majority[p[1]] = p[2]
+
+    return VictoryProgress(
+        players=players,
+        our_tourists_from=our_tourists,
+        their_staycationers=their_stay,
+        capitals_held=capitals,
+        religion_majority=rel_majority,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3157,6 +3416,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         num_cities=int(parts[11]),
         num_units=int(parts[12]),
         score=int(parts[13]) if len(parts) > 13 else 0,
+        diplomatic_favor=int(parts[14]) if len(parts) > 14 else 0,
         rankings=rankings if rankings else None,
     )
 
@@ -3176,6 +3436,11 @@ def parse_units_response(lines: list[str]) -> list[UnitInfo]:
         targets_raw = parts[10] if len(parts) > 10 else ""
         targets = [t for t in targets_raw.split(";") if t] if targets_raw else []
         needs_promo = parts[11] == "1" if len(parts) > 11 else False
+        can_upgrade = parts[12] == "1" if len(parts) > 12 else False
+        upgrade_target = parts[13] if len(parts) > 13 else ""
+        upgrade_cost = int(parts[14]) if len(parts) > 14 and parts[14].isdigit() else 0
+        valid_imps_raw = parts[15] if len(parts) > 15 else ""
+        valid_imps = [v for v in valid_imps_raw.split(";") if v] if valid_imps_raw else []
         units.append(UnitInfo(
             unit_id=int(parts[0]),
             unit_index=int(parts[1]),
@@ -3192,6 +3457,10 @@ def parse_units_response(lines: list[str]) -> list[UnitInfo]:
             build_charges=charges,
             targets=targets,
             needs_promotion=needs_promo,
+            can_upgrade=can_upgrade,
+            upgrade_target=upgrade_target,
+            upgrade_cost=upgrade_cost,
+            valid_improvements=valid_imps,
         ))
     return units
 
@@ -3203,6 +3472,15 @@ def parse_cities_response(lines: list[str]) -> list[CityInfo]:
         if len(parts) < 14:
             continue
         x_str, y_str = parts[2].split(",")
+        def _split_hp(s: str) -> tuple[int, int]:
+            if "/" in s:
+                a, b = s.split("/")
+                return int(a), int(b)
+            return 0, 0
+
+        def_str = int(parts[15]) if len(parts) > 15 and parts[15].isdigit() else 0
+        gar_hp, gar_max = _split_hp(parts[16]) if len(parts) > 16 else (0, 0)
+        wall_hp, wall_max = _split_hp(parts[17]) if len(parts) > 17 else (0, 0)
         cities.append(CityInfo(
             city_id=int(parts[0]),
             name=parts[1],
@@ -3220,6 +3498,11 @@ def parse_cities_response(lines: list[str]) -> list[CityInfo]:
             turns_to_grow=int(parts[12]),
             currently_building=parts[13],
             production_turns_left=int(parts[14]) if len(parts) > 14 else 0,
+            defense_strength=def_str,
+            garrison_hp=gar_hp,
+            garrison_max_hp=gar_max,
+            wall_hp=wall_hp,
+            wall_max_hp=wall_max,
         ))
     return cities
 
@@ -3519,20 +3802,27 @@ def parse_empire_resources_response(
 
 
 def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
-    threats = []
+    threats: list[ThreatInfo] = []
     for line in lines:
         if not line.startswith("THREAT|"):
             continue
         parts = line.split("|")
-        if len(parts) < 5:
+        if len(parts) < 7:
             continue
-        x_str, y_str = parts[3].split(",")
+        x_str, y_str = parts[2].split(",")
+        hp_str, max_str = parts[3].split("/")
+        cs = int(parts[4].replace("CS:", "")) if parts[4].startswith("CS:") else 0
+        rs = int(parts[5].replace("RS:", "")) if parts[5].startswith("RS:") else 0
+        dist = int(parts[6].replace("dist:", "")) if parts[6].startswith("dist:") else 0
         threats.append(ThreatInfo(
-            city_name=parts[1],
-            unit_desc=parts[2],
+            unit_type=parts[1],
             x=int(x_str),
             y=int(y_str),
-            distance=int(parts[4]),
+            hp=int(hp_str),
+            max_hp=int(max_str),
+            combat_strength=cs,
+            ranged_strength=rs,
+            distance=dist,
         ))
     return threats
 
