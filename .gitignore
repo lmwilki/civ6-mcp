@@ -21,3 +21,7 @@ wheels/
 # Next.js web viewer
 web/node_modules/
 web/.next/
+
+# CivBench eval artifacts
+evals/saves/*.Civ6Save
+eval-logs/

@@ -21,6 +21,9 @@ dependencies = [
     "fastapi[standard]>=0.128",
 ]
 
+[project.optional-dependencies]
+evals = ["inspect-ai>=0.3.170"]
+
 [project.urls]
 Homepage = "https://github.com/lmwilki/civ6-mcp"
 Repository = "https://github.com/lmwilki/civ6-mcp"
