@@ -98,6 +98,9 @@ class GameOverview:
     num_units: int
     score: int = 0
     diplomatic_favor: int = 0
+    favor_per_turn: int = 0
+    explored_land: int = 0
+    total_land: int = 0
     rankings: list[ScoreEntry] | None = None
 
 
@@ -147,6 +150,9 @@ class CityInfo:
     garrison_max_hp: int = 0
     wall_hp: int = 0
     wall_max_hp: int = 0
+    attack_targets: list[str] = field(default_factory=list)
+    pillaged_districts: list[str] = field(default_factory=list)
+    districts: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -175,6 +181,7 @@ class TileInfo:
     yields: tuple[int, ...] | None = None  # (food, prod, gold, science, culture, faith)
     units: list[str] | None = None  # visible foreign units, e.g. ["Barbarian WARRIOR"]
     resource_class: str | None = None  # "strategic", "luxury", "bonus"
+    is_pillaged: bool = False
 
 
 @dataclass
@@ -200,6 +207,9 @@ class CivInfo:
     they_have_delegation: bool = False
     they_have_embassy: bool = False
     available_actions: list[str] | None = None  # actions we can take
+    alliance_type: str | None = None
+    alliance_level: int = 0
+    defensive_pacts: list[int] = field(default_factory=list)  # player IDs with defensive pacts
 
 
 @dataclass
@@ -210,6 +220,8 @@ class TechCivicStatus:
     current_civic_turns: int
     available_techs: list[str]
     available_civics: list[str]
+    completed_tech_count: int = 0
+    completed_civic_count: int = 0
 
 
 @dataclass
@@ -225,6 +237,8 @@ class DiplomacySession:
     other_civ_name: str
     other_leader_name: str
     choices: list[DiplomacyChoice]
+    dialogue_text: str = ""    # leader's spoken text (from UI controls)
+    reason_text: str = ""      # agenda/reason subtext
 
 
 @dataclass
@@ -267,6 +281,21 @@ class GameNotification:
 
 
 @dataclass
+class CombatEstimate:
+    """Predicted combat outcome."""
+    attacker_type: str
+    defender_type: str
+    attacker_cs: int
+    defender_cs: int
+    is_ranged: bool
+    modifiers: list[str]    # ["fortified +6", "hills +3"]
+    est_damage_to_defender: int
+    est_damage_to_attacker: int   # 0 for ranged
+    defender_hp: int
+    attacker_hp: int
+
+
+@dataclass
 class SettleCandidate:
     """A candidate location for founding a city."""
     x: int
@@ -279,6 +308,39 @@ class SettleCandidate:
     defense_score: int = 0
     luxury_count: int = 0
     strategic_count: int = 0
+
+
+@dataclass
+class FogBoundary:
+    """Fog-of-war boundary distances from a city in 6 hex directions."""
+    city_name: str
+    city_x: int
+    city_y: int
+    fog_distances: list[int]  # NE,E,SE,SW,W,NW — -1 means all explored
+
+
+@dataclass
+class UnclaimedResource:
+    """A luxury or strategic resource on revealed, unowned land."""
+    resource_type: str
+    x: int
+    y: int
+    resource_class: str  # "RESOURCECLASS_LUXURY" or "RESOURCECLASS_STRATEGIC"
+
+
+@dataclass
+class StrategicMapData:
+    """Strategic map overview: fog boundaries and unclaimed resources."""
+    fog_boundaries: list[FogBoundary]
+    unclaimed_resources: list[UnclaimedResource]
+
+
+@dataclass
+class MinimapData:
+    """ASCII minimap data."""
+    width: int
+    height: int
+    rows: dict[int, str]  # y -> row string
 
 
 @dataclass
@@ -344,6 +406,11 @@ class VictoryPlayerProgress:
     staycationers: int = 0  # domestic tourists
     # Religion details (only meaningful if they founded one)
     has_religion: bool = False
+    # Rival intel
+    num_cities: int = 0
+    science_yield: float = 0.0
+    culture_yield: float = 0.0
+    gold_yield: float = 0.0
 
 
 @dataclass
@@ -382,6 +449,26 @@ class PendingDeal:
 
 
 @dataclass
+class DealOptions:
+    """What's available to trade with a civilization."""
+    other_player_id: int
+    other_civ_name: str
+    our_gold: int = 0
+    our_gpt: int = 0
+    our_favor: int = 0
+    their_gold: int = 0
+    their_gpt: int = 0
+    their_favor: int = 0
+    our_luxuries: list[str] = field(default_factory=list)
+    our_strategics: list[str] = field(default_factory=list)
+    their_luxuries: list[str] = field(default_factory=list)
+    their_strategics: list[str] = field(default_factory=list)
+    has_open_borders: bool = False
+    alliance_eligible: bool = False
+    current_alliance: str | None = None
+
+
+@dataclass
 class PolicySlot:
     """A government policy slot with its current policy."""
     slot_index: int
@@ -417,6 +504,14 @@ class GovernorInfo:
 
 
 @dataclass
+class GovernorPromotion:
+    """A promotion available for a governor."""
+    promotion_type: str
+    name: str
+    description: str
+
+
+@dataclass
 class AppointedGovernor:
     """A governor the player has appointed."""
     governor_type: str
@@ -425,6 +520,7 @@ class AppointedGovernor:
     assigned_city_name: str     # "Unassigned" if not placed
     is_established: bool
     turns_to_establish: int = 0
+    available_promotions: list[GovernorPromotion] = field(default_factory=list)
 
 
 @dataclass
@@ -556,16 +652,61 @@ class GreatPersonInfo:
     cost: int             # great person points needed to recruit
     claimant: str         # civ name or "Unclaimed"
     player_points: int    # our points toward this class
+    ability: str = ""     # activation/passive ability description
+    gold_cost: int = 0    # gold patronize cost
+    faith_cost: int = 0   # faith patronize cost
+    can_recruit: bool = False  # have enough GP points
+    individual_id: int = 0  # GameInfo index for recruit/patronize actions
 
 
 @dataclass
 class TradeDestination:
     """A valid trade route destination city."""
     city_name: str
-    owner_name: str       # "OWN" for domestic, civ name for international
+    owner_name: str       # civ/city-state name, or "Domestic"
     x: int
     y: int
     is_domestic: bool
+    is_city_state: bool = False
+    has_quest: bool = False          # city-state wants a trade route
+    has_trading_post: bool = False   # established trading post (bonus yields)
+    origin_yields: str = ""          # e.g. "Food:3 Prod:2 Gold:4"
+    dest_yields: str = ""            # food+prod for domestic routes
+    pressure_out: float = 0.0       # our religion → destination
+    religion_out: str = ""           # our majority religion name
+    pressure_in: float = 0.0        # their religion → our city
+    religion_in: str = ""            # destination's majority religion name
+
+
+@dataclass
+class TraderInfo:
+    """A trader unit with its route status."""
+    unit_id: int
+    x: int
+    y: int
+    has_moves: bool
+    on_route: bool = False
+    route_origin: str = ""    # origin city name
+    route_dest: str = ""      # destination city name
+    route_owner: str = ""     # civ/city-state name
+    is_domestic: bool = False
+    origin_yields: str = ""   # e.g. "Food:3 Prod:2 Gold:4"
+    dest_yields: str = ""
+    pressure_out: float = 0.0       # our religion → destination
+    religion_out: str = ""
+    pressure_in: float = 0.0        # their religion → our city
+    religion_in: str = ""
+    has_quest: bool = False
+    is_city_state: bool = False
+
+
+@dataclass
+class TradeRouteStatus:
+    """Trade route capacity and trader status."""
+    capacity: int
+    active_count: int
+    traders: list[TraderInfo] = field(default_factory=list)
+    ghost_count: int = 0  # ghost route records inflating engine count
 
 
 @dataclass
@@ -645,6 +786,9 @@ BLOCKING_TOOL_MAP: dict[str, str] = {
     "ENDTURN_BLOCKING_COMMEMORATION_AVAILABLE": "Use get_dedications() then choose_dedication(dedication_index=...)",
     "ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION": "Use get_world_congress() to see resolutions, then vote_world_congress() to vote",
     "ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK": "Use get_world_congress() to review results (informational)",
+    "ENDTURN_BLOCKING_CONSIDER_RAZE_CITY": "Use execute_city_action(city_id=..., action='keep') or 'raze'/'liberate'",
+    "ENDTURN_BLOCKING_CONSIDER_DISLOYAL_CITY": "Use execute_city_action(city_id=..., action='keep') or 'reject'",
+    "ENDTURN_BLOCKING_GIVE_INFLUENCE_TOKEN": "Use get_city_states() then send_envoy(city_state_player_id=...)",
 }
 
 
@@ -671,8 +815,11 @@ if civicIdx >= 0 then civicName = Locale.Lookup(GameInfo.Civics[civicIdx].Name) 
 local nCities = 0; for _ in p:GetCities():Members() do nCities = nCities + 1 end
 local nUnits = 0; for _ in p:GetUnits():Members() do nUnits = nUnits + 1 end
 local myScore = p:GetScore()
-local favor = 0; if p.GetFavor then favor = p:GetFavor() end
-print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor)
+local favor = p:GetFavor()
+local favorPerTurn = 0
+local ok_fpt, fpt = pcall(function() return p:GetDiplomacy():GetFavorPerTurn() end)
+if ok_fpt and fpt then favorPerTurn = fpt end
+print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor .. "|" .. favorPerTurn)
 local pDiplo = p:GetDiplomacy()
 for i = 0, 62 do
     if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
@@ -680,6 +827,17 @@ for i = 0, 62 do
         print("RANK|" .. i .. "|" .. Locale.Lookup(oCfg:GetCivilizationShortDescription()) .. "|" .. Players[i]:GetScore())
     end
 end
+local pVis = PlayersVisibility[id]
+local totalPlots = Map.GetPlotCount()
+local revLand, totalLand = 0, 0
+for i = 0, totalPlots - 1 do
+    local plot = Map.GetPlotByIndex(i)
+    if not plot:IsWater() then
+        totalLand = totalLand + 1
+        if pVis:IsRevealed(plot:GetX(), plot:GetY()) then revLand = revLand + 1 end
+    end
+end
+print("EXPLORE|" .. revLand .. "|" .. totalLand)
 print("{SENTINEL}")
 """
 
@@ -698,6 +856,15 @@ for i, u in Players[id]:GetUnits():Members() do
         local cs = entry and entry.Combat or 0
         local rs = entry and entry.RangedCombat or 0
         local charges = u:GetBuildCharges() or 0
+        local gp = u:GetGreatPerson()
+        if gp then
+            local ok_gp, gp_charges = pcall(function() return gp:GetActionCharges() end)
+            if ok_gp and gp_charges and gp_charges > 0 then charges = gp_charges end
+        end
+        if charges == 0 then
+            local ok_sp, sp = pcall(function() return u:GetSpreadCharges() end)
+            if ok_sp and sp and sp > 0 then charges = sp end
+        end
         -- Scan for attackable enemies if unit has moves
         local targets = ""
         if u:GetMovesRemaining() > 0 and (cs > 0 or rs > 0) then
@@ -779,6 +946,7 @@ for u in GameInfo.Units() do hashName[u.Hash] = u.UnitType end
 for b in GameInfo.Buildings() do hashName[b.Hash] = b.BuildingType end
 for d in GameInfo.Districts() do hashName[d.Hash] = d.DistrictType end
 for p in GameInfo.Projects() do hashName[p.Hash] = p.ProjectType end
+local cityCoords = {{}}
 for i, c in Players[me]:GetCities():Members() do
     local nm = Locale.Lookup(c:GetName())
     local bq = c:GetBuildQueue()
@@ -786,7 +954,11 @@ for i, c in Players[me]:GetCities():Members() do
     local turnsLeft = 0
     if bq:GetSize() > 0 then
         local h = bq:GetCurrentProductionTypeHash()
-        producing = hashName[h] or "UNKNOWN"
+        if h == 0 then
+            producing = "CORRUPTED_QUEUE"
+        else
+            producing = hashName[h] or "UNKNOWN"
+        end
         turnsLeft = bq:GetTurnsLeft()
     end
     local g = c:GetGrowth()
@@ -805,8 +977,43 @@ for i, c in Players[me]:GetCities():Members() do
             break
         end
     end
-    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax)
+    local cityTargets = {{}}
+    if wallMax > 0 then
+        local cx, cy = c:GetX(), c:GetY()
+        for dy = -2, 2 do for dx = -2, 2 do
+            local tx, ty = cx + dx, cy + dy
+            local d = Map.GetPlotDistance(cx, cy, tx, ty)
+            if d >= 1 and d <= 2 then
+                local pu = Map.GetUnitsAt(tx, ty)
+                if pu then for other in pu:Units() do
+                    if other:GetOwner() ~= me then
+                        local eInfo = GameInfo.Units[other:GetType()]
+                        local eName = eInfo and eInfo.UnitType or "UNKNOWN"
+                        local eHP = other:GetMaxDamage() - other:GetDamage()
+                        table.insert(cityTargets, eName .. "@" .. tx .. "," .. ty .. "(" .. eHP .. "hp)")
+                    end
+                end end
+            end
+        end end
+    end
+    local pillDistricts = {{}}
+    local distLocs = {{}}
+    for _, d in c:GetDistricts():Members() do
+        local dInfo = GameInfo.Districts[d:GetType()]
+        if dInfo and dInfo.DistrictType ~= "DISTRICT_CITY_CENTER" then
+            table.insert(distLocs, dInfo.DistrictType .. "@" .. d:GetX() .. "," .. d:GetY())
+        end
+        if d:IsPillaged() then
+            if dInfo then table.insert(pillDistricts, dInfo.DistrictType) end
+        end
+    end
+    table.insert(cityCoords, {{name=nm, x=c:GetX(), y=c:GetY()}})
+    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax .. "|" .. table.concat(cityTargets, ";") .. "|" .. table.concat(pillDistricts, ";") .. "|" .. table.concat(distLocs, ";"))
 end
+for i = 1, #cityCoords do for j = i + 1, #cityCoords do
+    local d = Map.GetPlotDistance(cityCoords[i].x, cityCoords[i].y, cityCoords[j].x, cityCoords[j].y)
+    print("DIST|" .. cityCoords[i].name .. "|" .. cityCoords[j].name .. "|" .. d)
+end end
 print("{SENTINEL}")
 """
 
@@ -855,7 +1062,10 @@ for dy = -r, r do
                 if visible then
                     visTag = "visible"
                     local impIdx = plot:GetImprovementType()
-                    if impIdx >= 0 then imp = GameInfo.Improvements[impIdx].ImprovementType end
+                    if impIdx >= 0 then
+                        imp = GameInfo.Improvements[impIdx].ImprovementType
+                        if plot:IsImprovementPillaged() then imp = imp .. ":PILLAGED" end
+                    end
                     freshWater = plot:IsFreshWater() and "1" or "0"
                     yields = plot:GetYield(0) .. "," .. plot:GetYield(1) .. "," .. plot:GetYield(2) .. "," .. plot:GetYield(3) .. "," .. plot:GetYield(4) .. "," .. plot:GetYield(5)
                     local uParts = {{}}
@@ -890,13 +1100,126 @@ print("{SENTINEL}")
 """
 
 
+def build_strategic_map_query() -> str:
+    """GameCore context: fog boundary per city + unclaimed luxury/strategic resources."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local vis = PlayersVisibility[me]
+local pTech = Players[me]:GetTechs()
+local w, h = Map.GetGridSize()
+-- Hex direction offsets (NE, E, SE, SW, W, NW) for offset coords
+local dirs = {{{{0,-1}},{{1,0}},{{0,1}},{{-1,1}},{{-1,0}},{{0,-1}}}}
+-- Actually use precise ray-cast: step along each cardinal hex direction
+-- For offset coordinates, direction deltas depend on row parity
+-- Simplified: use angular sectors by scanning radius rings
+for _, c in Players[me]:GetCities():Members() do
+    local cx, cy = c:GetX(), c:GetY()
+    local nm = Locale.Lookup(c:GetName())
+    -- For 6 directions, scan along a ray and find first unrevealed tile
+    -- Directions: N(0,-1), NE(+1,-1), SE(+1,+1), S(0,+1), SW(-1,+1), NW(-1,-1) approx
+    local dirVecs = {{{{0,-1}},{{1,-1}},{{1,1}},{{0,1}},{{-1,1}},{{-1,-1}}}}
+    local fogDists = {{}}
+    for _, dv in ipairs(dirVecs) do
+        local fogDist = -1
+        for dist = 3, 15 do
+            local tx = cx + dv[1] * dist
+            local ty = cy + dv[2] * dist
+            local plot = Map.GetPlot(tx, ty)
+            if plot then
+                if not vis:IsRevealed(plot:GetIndex()) then
+                    fogDist = dist
+                    break
+                end
+            else
+                fogDist = dist
+                break
+            end
+        end
+        table.insert(fogDists, fogDist)
+    end
+    print("FOG|" .. nm .. "|" .. cx .. "," .. cy .. "|" .. table.concat(fogDists, ","))
+end
+-- Pass 2: unclaimed luxury/strategic resources on revealed land
+for y = 0, h - 1 do
+    for x = 0, w - 1 do
+        local plot = Map.GetPlot(x, y)
+        if plot and vis:IsRevealed(plot:GetIndex()) and plot:GetOwner() == -1 then
+            local resIdx = plot:GetResourceType()
+            if resIdx >= 0 then
+                local res = GameInfo.Resources[resIdx]
+                if res and res.ResourceClassType ~= "RESOURCECLASS_BONUS" then
+                    -- Check tech visibility
+                    local visible = true
+                    if res.PrereqTech then
+                        local t = GameInfo.Technologies[res.PrereqTech]
+                        if t and not pTech:HasTech(t.Index) then visible = false end
+                    end
+                    if visible then
+                        print("UNCLAIMED|" .. res.ResourceType .. "|" .. x .. "," .. y .. "|" .. res.ResourceClassType)
+                    end
+                end
+            end
+        end
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_strategic_map_response(lines: list[str]) -> StrategicMapData:
+    """Parse FOG| and UNCLAIMED| lines from strategic map query."""
+    fog_boundaries: list[FogBoundary] = []
+    unclaimed: list[UnclaimedResource] = []
+
+    for line in lines:
+        if line.startswith("FOG|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                cx, cy = parts[2].split(",")
+                dists = [int(d) for d in parts[3].split(",")]
+                fog_boundaries.append(FogBoundary(
+                    city_name=parts[1],
+                    city_x=int(cx),
+                    city_y=int(cy),
+                    fog_distances=dists,
+                ))
+        elif line.startswith("UNCLAIMED|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                rx, ry = parts[2].split(",")
+                unclaimed.append(UnclaimedResource(
+                    resource_type=parts[1],
+                    x=int(rx),
+                    y=int(ry),
+                    resource_class=parts[3],
+                ))
+
+    return StrategicMapData(fog_boundaries=fog_boundaries, unclaimed_resources=unclaimed)
+
+
+def parse_minimap_response(lines: list[str]) -> MinimapData:
+    """Parse SIZE| and ROW| lines from minimap query."""
+    width, height = 0, 0
+    rows: dict[int, str] = {}
+    for line in lines:
+        if line.startswith("SIZE|"):
+            parts = line.split("|")
+            width = int(parts[1])
+            height = int(parts[2])
+        elif line.startswith("ROW|"):
+            parts = line.split("|", 2)
+            if len(parts) >= 3:
+                rows[int(parts[1])] = parts[2]
+    return MinimapData(width=width, height=height, rows=rows)
+
+
 def build_diplomacy_query() -> str:
     """Rich diplomacy query — runs in InGame context for GetDiplomaticAI access."""
     return f"""
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
 local states = {{"ALLIED","DECLARED_FRIEND","FRIENDLY","NEUTRAL","UNFRIENDLY","DENOUNCED","WAR"}}
-local checkActions = {{"DIPLOACTION_DIPLOMATIC_DELEGATION","DIPLOACTION_DECLARE_FRIENDSHIP","DIPLOACTION_DENOUNCE","DIPLOACTION_RESIDENT_EMBASSY","DIPLOACTION_OPEN_BORDERS"}}
+local checkActions = {{"DIPLOACTION_DIPLOMATIC_DELEGATION","DIPLOACTION_DECLARE_FRIENDSHIP","DIPLOACTION_DENOUNCE","DIPLOACTION_RESIDENT_EMBASSY","DIPLOACTION_OPEN_BORDERS","DIPLOACTION_MAKE_ALLIANCE"}}
 for i = 0, 62 do
     if i ~= me and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
         local cfg = PlayerConfigurations[i]
@@ -922,14 +1245,36 @@ for i = 0, 62 do
                     print("MOD|" .. i .. "|" .. mod.Score .. "|" .. txt)
                 end
             end
+            if stateIdx == 0 then
+                local ok3, aType = pcall(function() return pDiplo:GetAllianceType(i) end)
+                if ok3 and aType and aType >= 0 then
+                    local aNames = {{"MILITARY","RESEARCH","CULTURAL","ECONOMIC","RELIGIOUS"}}
+                    local aLevel = 1
+                    pcall(function() aLevel = pDiplo:GetAllianceLevel(i) or 1 end)
+                    print("ALLIANCE|" .. i .. "|" .. (aNames[aType+1] or tostring(aType)) .. "|" .. aLevel)
+                end
+            end
             local avail = {{}}
             for _, aName in ipairs(checkActions) do
                 local ok2, valid = pcall(function() return pDiplo:IsDiplomaticActionValid(aName, i, false) end)
                 if ok2 and valid then table.insert(avail, (aName:gsub("DIPLOACTION_", ""))) end
             end
             if #avail > 0 then print("ACTIONS|" .. i .. "|" .. table.concat(avail, ",")) end
+            local okPact, hasPact = pcall(function() return Players[i]:GetDiplomacy():HasDefensivePact(me) end)
+            if okPact and hasPact then print("PACT|" .. i .. "|DEFENSIVE") end
         else
             print("CIV|" .. i .. "|Unmet Civilization|Unknown Leader|" .. met .. "|" .. war .. "|UNKNOWN|0|0|0|0|0|0")
+        end
+    end
+end
+-- Scan for third-party defensive pacts
+for i = 0, 62 do
+    if i ~= me and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
+        for j = i+1, 62 do
+            if j ~= me and Players[j] and Players[j]:IsAlive() and Players[j]:IsMajor() and pDiplo:HasMet(j) then
+                local okP, hp = pcall(function() return Players[i]:GetDiplomacy():HasDefensivePact(j) end)
+                if okP and hp then print("PACT|" .. i .. "|" .. j .. "|DEFENSIVE") end
+            end
         end
     end
 end
@@ -989,6 +1334,15 @@ for tech in GameInfo.Technologies() do
         print("TECH|" .. Locale.Lookup(tech.Name) .. "|" .. tech.TechnologyType .. "|" .. cost .. "|" .. pct .. "|" .. turns .. "|" .. boostTag .. "|" .. boostDesc .. "|" .. unlockStr)
     end
 end
+local completedTechs = 0
+for tech in GameInfo.Technologies() do
+    if te:HasTech(tech.Index) then completedTechs = completedTechs + 1 end
+end
+local completedCivics = 0
+for civic in GameInfo.Civics() do
+    if cu:HasCivic(civic.Index) then completedCivics = completedCivics + 1 end
+end
+print("COMPLETED|" .. completedTechs .. "|" .. completedCivics)
 local curEra = Game.GetEras():GetCurrentEra()
 local prereqs = {{}}
 for row in GameInfo.CivicPrereqs() do
@@ -1062,6 +1416,7 @@ local fromX, fromY = unit:GetX(), unit:GetY()
 local params = {{}}
 params[UnitOperationTypes.PARAM_X] = {target_x}
 params[UnitOperationTypes.PARAM_Y] = {target_y}
+UI.LookAtPlot({target_x}, {target_y})
 UnitManager.RequestOperation(unit, UnitOperationTypes.MOVE_TO, params)
 print("OK:MOVING_TO|" .. {target_x} .. "," .. {target_y} .. "|from:" .. fromX .. "," .. fromY)
 print("{SENTINEL}")
@@ -1106,6 +1461,7 @@ local myHP = unit:GetMaxDamage() - unit:GetDamage()
 local params = {{}}
 params[UnitOperationTypes.PARAM_X] = {target_x}
 params[UnitOperationTypes.PARAM_Y] = {target_y}
+UI.LookAtPlot({target_x}, {target_y})
 -- Determine attack type
 local unitInfo = GameInfo.Units[unit:GetType()]
 local isRanged = UnitManager.CanStartOperation(unit, UnitOperationTypes.RANGE_ATTACK, nil, true)
@@ -1176,6 +1532,176 @@ print("{SENTINEL}")
 """
 
 
+def build_combat_estimate_query(unit_index: int, target_x: int, target_y: int) -> str:
+    """InGame context: gather combat stats for damage estimation (no attack executed)."""
+    return f"""
+{_lua_get_unit(unit_index)}
+local ux, uy = unit:GetX(), unit:GetY()
+local dist = Map.GetPlotDistance(ux, uy, {target_x}, {target_y})
+local unitInfo = GameInfo.Units[unit:GetType()]
+local attType = unitInfo and unitInfo.UnitType or "UNKNOWN"
+local attCS = unitInfo and unitInfo.Combat or 0
+local attRS = unitInfo and unitInfo.RangedCombat or 0
+local isRanged = attRS > 0 and dist > 1
+local effAttCS = isRanged and attRS or attCS
+-- Find defender
+local enemy = nil
+local tgtUnits = Map.GetUnitsAt({target_x}, {target_y})
+if tgtUnits then
+    for other in tgtUnits:Units() do
+        if other:GetOwner() ~= me then
+            local eInfo = GameInfo.Units[other:GetType()]
+            local eCombat = eInfo and eInfo.Combat or 0
+            if eCombat > 0 or enemy == nil then enemy = other end
+            if eCombat > 0 then break end
+        end
+    end
+end
+if enemy == nil then {_bail(f"ERR:NO_ENEMY|No hostile unit at ({target_x},{target_y})")} end
+local eInfo = GameInfo.Units[enemy:GetType()]
+local defType = eInfo and eInfo.UnitType or "UNKNOWN"
+local defCS = eInfo and eInfo.Combat or 0
+local enemyHP = enemy:GetMaxDamage() - enemy:GetDamage()
+local myHP = unit:GetMaxDamage() - unit:GetDamage()
+-- Gather modifiers
+local mods = {{}}
+local modTotal = 0
+-- Defender fortified?
+local ok1, ft = pcall(function() return enemy:GetFortifyTurns() end)
+if ok1 and ft and ft > 0 then
+    local bonus = math.min(ft * 3, 6)
+    table.insert(mods, "fortified +" .. bonus)
+    modTotal = modTotal + bonus
+end
+-- Defender on hills?
+local tgtPlot = Map.GetPlot({target_x}, {target_y})
+if tgtPlot and tgtPlot:IsHills() then
+    table.insert(mods, "hills +3")
+    modTotal = modTotal + 3
+end
+-- River crossing penalty (attacker crosses river for melee)
+if not isRanged and tgtPlot then
+    local attPlot = Map.GetPlot(ux, uy)
+    if attPlot and tgtPlot:IsRiverCrossingToPlot(attPlot) then
+        table.insert(mods, "river -2")
+        modTotal = modTotal - 2
+    end
+end
+local effDefCS = defCS + modTotal
+print("ESTIMATE|" .. attType .. "|" .. defType .. "|" .. effAttCS .. "|" .. effDefCS .. "|" .. (isRanged and "1" or "0") .. "|" .. table.concat(mods, ";") .. "|" .. myHP .. "|" .. enemyHP)
+print("{SENTINEL}")
+"""
+
+
+def parse_combat_estimate(lines: list[str], att_cs: int, def_cs: int) -> CombatEstimate | None:
+    """Parse ESTIMATE line and compute damage using Civ 6 formula."""
+    for line in lines:
+        if line.startswith("ESTIMATE|"):
+            p = line.split("|")
+            if len(p) < 9:
+                return None
+            eff_att = int(p[3])
+            eff_def = int(p[4])
+            is_ranged = p[5] == "1"
+            mods = [m for m in p[6].split(";") if m]
+            my_hp = int(p[7])
+            enemy_hp = int(p[8])
+            # Civ 6 damage formula: BASE * 10^((att-def)/30)
+            import math
+            base_damage = 24
+            if eff_att > 0 and eff_def > 0:
+                dmg_to_def = base_damage * (10 ** ((eff_att - eff_def) / 30))
+                dmg_to_att = base_damage * (10 ** ((eff_def - eff_att) / 30)) if not is_ranged else 0
+            else:
+                dmg_to_def = 0
+                dmg_to_att = 0
+            return CombatEstimate(
+                attacker_type=p[1],
+                defender_type=p[2],
+                attacker_cs=eff_att,
+                defender_cs=eff_def,
+                is_ranged=is_ranged,
+                modifiers=mods,
+                est_damage_to_defender=int(round(dmg_to_def)),
+                est_damage_to_attacker=int(round(dmg_to_att)),
+                defender_hp=enemy_hp,
+                attacker_hp=my_hp,
+            )
+    return None
+
+
+def build_city_attack(city_id: int, target_x: int, target_y: int) -> str:
+    """InGame context: fire city ranged attack at a target tile."""
+    return f"""
+{_lua_get_city(city_id)}
+local cx, cy = pCity:GetX(), pCity:GetY()
+local dist = Map.GetPlotDistance(cx, cy, {target_x}, {target_y})
+if dist > 2 then print("ERR:OUT_OF_RANGE|City range is 2, target is at distance " .. dist); print("{SENTINEL}"); return end
+local enemy = nil
+local pu = Map.GetUnitsAt({target_x}, {target_y})
+if pu then for other in pu:Units() do if other:GetOwner() ~= me then enemy = other end end end
+if not enemy then {_bail("ERR:NO_ENEMY|No hostile unit at target tile")} end
+local eInfo = GameInfo.Units[enemy:GetType()]
+local eName = eInfo and eInfo.UnitType or "UNKNOWN"
+local eHP = enemy:GetMaxDamage() - enemy:GetDamage()
+local params = {{}}
+params[CityCommandTypes.PARAM_X] = {target_x}
+params[CityCommandTypes.PARAM_Y] = {target_y}
+local canAttack = CityManager.CanStartCommand(pCity, CityCommandTypes.RANGE_ATTACK, true, params, false)
+if not canAttack then {_bail("ERR:CANNOT_ATTACK|City cannot fire (already fired this turn, no walls, or LOS blocked)")} end
+CityManager.RequestCommand(pCity, CityCommandTypes.RANGE_ATTACK, params)
+print("OK:CITY_RANGE_ATTACK|" .. Locale.Lookup(pCity:GetName()) .. " -> " .. eName .. "@{target_x},{target_y}|enemy_hp:" .. eHP)
+print("{SENTINEL}")
+"""
+
+
+def build_resolve_city_capture(action: str) -> str:
+    """InGame context: resolve a 'Keep or Free City' / 'Raze City' blocker.
+
+    action: 'keep', 'reject', 'raze', 'liberate_founder', 'liberate_previous'
+    Tries GetNextRebelledCity first (loyalty flip), then GetNextCapturedCity (conquest).
+    """
+    directive_map = {
+        "keep": "CityDestroyDirectives.KEEP",
+        "reject": "CityDestroyDirectives.REJECT",
+        "raze": "CityDestroyDirectives.RAZE",
+        "liberate_founder": "CityDestroyDirectives.LIBERATE_FOUNDER",
+        "liberate_previous": "CityDestroyDirectives.LIBERATE_PREVIOUS_OWNER",
+    }
+    directive = directive_map.get(action)
+    if not directive:
+        valid = ", ".join(directive_map.keys())
+        return f'print("ERR:INVALID_ACTION|Valid actions: {valid}"); print("{SENTINEL}")'
+
+    return f"""
+local me = Game.GetLocalPlayer()
+local player = Players[me]
+local city = player:GetCities():GetNextRebelledCity()
+local source = "rebelled"
+if city == nil then
+    city = player:GetCities():GetNextCapturedCity()
+    source = "captured"
+end
+if city == nil then
+    print("ERR:NO_PENDING_CITY|No rebelled or captured city pending decision")
+    print("{SENTINEL}"); return
+end
+local name = Locale.Lookup(city:GetName())
+local pop = city:GetPopulation()
+local cid = city:GetID()
+local params = {{}}
+params[UnitOperationTypes.PARAM_FLAGS] = {directive}
+local canDo = CityManager.CanStartCommand(city, CityCommandTypes.DESTROY, params)
+if not canDo then
+    print("ERR:CANNOT_" .. "{action.upper()}" .. "|Cannot {action} " .. name .. " (CanStartCommand returned false)")
+    print("{SENTINEL}"); return
+end
+CityManager.RequestCommand(city, CityCommandTypes.DESTROY, params)
+print("OK:{action.upper()}|" .. name .. " (pop " .. pop .. ", id:" .. cid .. ", " .. source .. ")")
+print("{SENTINEL}")
+"""
+
+
 def build_found_city(unit_index: int) -> str:
     return f"""
 {_lua_get_unit(unit_index)}
@@ -1200,6 +1726,7 @@ for i = 0, 62 do
         end
     end
 end
+UI.LookAtPlot(x, y)
 local params = {{}}
 params[UnitOperationTypes.PARAM_X] = x
 params[UnitOperationTypes.PARAM_Y] = y
@@ -1303,6 +1830,166 @@ for dy = -5, 5 do
 end
 table.sort(candidates, function(a, b) return a.score > b.score end)
 for i = 1, math.min(5, #candidates) do
+    local c = candidates[i]
+    print("SETTLE|" .. c.x .. "," .. c.y .. "|" .. c.score .. "|" .. c.f .. "|" .. c.p .. "|" .. c.water .. "|" .. c.def .. "|" .. c.res)
+end
+if #candidates == 0 then print("NONE") end
+print("{SENTINEL}")
+"""
+
+
+def build_minimap_query() -> str:
+    """GameCore context: minimal per-tile data for ASCII minimap rendering.
+
+    For each tile on the map, outputs one compact line:
+    x,y|owner|terrain_char|visibility
+    terrain_char: ~ water, ^ mountain, # hills, T forest/jungle, . flat, * resource
+    visibility: V=visible, R=revealed(fog), U=unexplored
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local vis = PlayersVisibility[me]
+local w, h = Map.GetGridSize()
+print("SIZE|" .. w .. "|" .. h)
+for y = 0, h - 1 do
+    local row = {{}}
+    for x = 0, w - 1 do
+        local plot = Map.GetPlot(x, y)
+        if not plot then
+            table.insert(row, "?")
+        elseif not vis:IsRevealed(plot:GetIndex()) then
+            table.insert(row, " ")
+        else
+            local ch = "."
+            if plot:IsWater() then ch = "~"
+            elseif plot:IsMountain() then ch = "^"
+            elseif plot:IsHills() then ch = "#"
+            else
+                local feat = plot:GetFeatureType()
+                if feat >= 0 then
+                    local f = GameInfo.Features[feat]
+                    if f and (f.FeatureType == "FEATURE_FOREST" or f.FeatureType == "FEATURE_JUNGLE") then ch = "T" end
+                end
+            end
+            local owner = plot:GetOwner()
+            if owner == me then
+                -- Our city on this tile?
+                local isCity = plot:IsCity()
+                if isCity then ch = "O"
+                else ch = string.upper(ch) end
+            elseif owner >= 0 and owner ~= 63 then
+                local isCity = plot:IsCity()
+                if isCity then ch = "X"
+                else ch = string.lower(ch) end
+            elseif owner == 63 then
+                ch = "!"
+            end
+            -- Resource marker (only if not already a special char)
+            if ch == "." or ch == "#" then
+                local resIdx = plot:GetResourceType()
+                if resIdx >= 0 then
+                    local res = GameInfo.Resources[resIdx]
+                    if res and res.ResourceClassType == "RESOURCECLASS_LUXURY" then ch = "+"
+                    elseif res and res.ResourceClassType == "RESOURCECLASS_STRATEGIC" then ch = "*" end
+                end
+            end
+            table.insert(row, ch)
+        end
+    end
+    print("ROW|" .. y .. "|" .. table.concat(row, ""))
+end
+print("{SENTINEL}")
+"""
+
+
+def build_global_settle_scan() -> str:
+    """GameCore context: scan all revealed, unowned tiles for settle viability.
+
+    Reuses the same scoring logic and SETTLE| output format as
+    build_settle_advisor_query, but searches the entire revealed map
+    rather than a radius around a settler. Returns top 10 candidates.
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local vis = PlayersVisibility[me]
+local pTech = Players[me]:GetTechs()
+local w, h = Map.GetGridSize()
+local allCities = {{}}
+for i = 0, 62 do
+    if Players[i] and Players[i]:IsAlive() then
+        local cities = Players[i]:GetCities()
+        if cities then
+            for _, c in cities:Members() do
+                table.insert(allCities, {{x=c:GetX(), y=c:GetY()}})
+            end
+        end
+    end
+end
+local classPrefix = {{RESOURCECLASS_STRATEGIC="S", RESOURCECLASS_LUXURY="L", RESOURCECLASS_BONUS="B"}}
+local function resVisible(resEntry)
+    if not resEntry.PrereqTech then return true end
+    local t = GameInfo.Technologies[resEntry.PrereqTech]
+    return t and pTech:HasTech(t.Index)
+end
+local candidates = {{}}
+for y = 0, h - 1 do
+    for x = 0, w - 1 do
+        local cPlot = Map.GetPlot(x, y)
+        if cPlot and vis:IsRevealed(cPlot:GetIndex()) and not cPlot:IsWater() and not cPlot:IsMountain() then
+            local tooClose = false
+            for _, city in ipairs(allCities) do
+                if Map.GetPlotDistance(x, y, city.x, city.y) <= 3 then tooClose = true; break end
+            end
+            if not tooClose then
+                local totalF, totalP, totalG = 0, 0, 0
+                local resList = {{}}
+                local luxCount, stratCount = 0, 0
+                for ry = -3, 3 do
+                    for rx = -3, 3 do
+                        local tx, ty = x + rx, y + ry
+                        local tPlot = Map.GetPlot(tx, ty)
+                        if tPlot and Map.GetPlotDistance(x, y, tx, ty) <= 3 then
+                            totalF = totalF + tPlot:GetYield(0)
+                            totalP = totalP + tPlot:GetYield(1)
+                            totalG = totalG + tPlot:GetYield(2)
+                            local rIdx = tPlot:GetResourceType()
+                            if rIdx >= 0 then
+                                local resEntry = GameInfo.Resources[rIdx]
+                                if resVisible(resEntry) then
+                                    local rName = resEntry.ResourceType:gsub("RESOURCE_", "")
+                                    local prefix = classPrefix[resEntry.ResourceClassType] or "B"
+                                    table.insert(resList, prefix .. ":" .. rName)
+                                    if prefix == "L" then luxCount = luxCount + 1
+                                    elseif prefix == "S" then stratCount = stratCount + 1 end
+                                end
+                            end
+                        end
+                    end
+                end
+                local waterType = "none"
+                if cPlot:IsFreshWater() then waterType = "fresh"
+                elseif cPlot:IsCoastalLand() then waterType = "coast" end
+                local defScore = 0
+                if cPlot:IsHills() then defScore = defScore + 2 end
+                if cPlot:IsRiver() then defScore = defScore + 1 end
+                for ady = -1, 1 do
+                    for adx = -1, 1 do
+                        if adx ~= 0 or ady ~= 0 then
+                            local ap = Map.GetPlot(x + adx, y + ady)
+                            if ap and ap:IsHills() and Map.GetPlotDistance(x, y, x+adx, y+ady) == 1 then defScore = defScore + 1 end
+                        end
+                    end
+                end
+                local score = totalF * 2 + totalP * 2 + totalG + luxCount * 4 + stratCount * 3 + defScore
+                if waterType == "fresh" then score = score + 5
+                elseif waterType == "coast" then score = score + 3 end
+                table.insert(candidates, {{x=x, y=y, score=score, f=totalF, p=totalP, water=waterType, def=defScore, res=table.concat(resList, ",")}})
+            end
+        end
+    end
+end
+table.sort(candidates, function(a, b) return a.score > b.score end)
+for i = 1, math.min(10, #candidates) do
     local c = candidates[i]
     print("SETTLE|" .. c.x .. "," .. c.y .. "|" .. c.score .. "|" .. c.f .. "|" .. c.p .. "|" .. c.water .. "|" .. c.def .. "|" .. c.res)
 end
@@ -1473,6 +2160,63 @@ print("{SENTINEL}")
 """
 
 
+def build_fortify_remaining_units() -> str:
+    """Fortify/heal combat units with remaining moves (InGame context).
+
+    Tries to fortify (or heal if damaged) combat units. Non-combat units
+    and units that can't fortify are left for skip_remaining_units to handle.
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local fortified = 0
+local healed = 0
+local healHash = GameInfo.UnitOperations["UNITOPERATION_HEAL"] and GameInfo.UnitOperations["UNITOPERATION_HEAL"].Hash
+for _, unit in Players[me]:GetUnits():Members() do
+    local x = unit:GetX()
+    if x ~= -9999 and unit:GetMovesRemaining() > 0 then
+        local info = GameInfo.Units[unit:GetType()]
+        local isCombat = info and info.Combat > 0
+        if isCombat then
+            if unit:GetDamage() > 0 and healHash then
+                local ok = pcall(function()
+                    if UnitManager.CanStartOperation(unit, healHash, nil, nil) then
+                        UnitManager.RequestOperation(unit, healHash, {{}})
+                        healed = healed + 1
+                    end
+                end)
+            else
+                local ok = pcall(function()
+                    if UnitManager.CanStartOperation(unit, UnitOperationTypes.FORTIFY, nil, nil) then
+                        UnitManager.RequestOperation(unit, UnitOperationTypes.FORTIFY, {{}})
+                        fortified = fortified + 1
+                    end
+                end)
+            end
+        end
+    end
+end
+print("OK:FORTIFIED|" .. fortified .. " fortified, " .. healed .. " healing")
+print("{SENTINEL}")
+"""
+
+
+def build_skip_remaining_units() -> str:
+    """Skip all units with moves remaining (GameCore context — FinishMoves for each)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local count = 0
+for _, unit in Players[me]:GetUnits():Members() do
+    local x = unit:GetX()
+    if x ~= -9999 and unit:GetMovesRemaining() > 0 then
+        UnitManager.FinishMoves(unit)
+        count = count + 1
+    end
+end
+print("OK:SKIPPED|" .. count .. " units")
+print("{SENTINEL}")
+"""
+
+
 def build_automate_explore(unit_index: int) -> str:
     """Automate a unit's exploration (InGame context)."""
     return f"""
@@ -1567,10 +2311,24 @@ if plot:GetOwner() ~= me then
     print("ERR:NOT_YOUR_TERRITORY|Tile at " .. unit:GetX() .. "," .. unit:GetY() .. " is not in your territory")
     print("{SENTINEL}"); return
 end
+UI.LookAtPlot(unit:GetX(), unit:GetY())
 local params = {{}}
 params[UnitOperationTypes.PARAM_X] = unit:GetX()
 params[UnitOperationTypes.PARAM_Y] = unit:GetY()
 params[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = imp.Hash
+if plot:IsImprovementPillaged() then
+    local repairHash = GameInfo.UnitOperations["UNITOPERATION_REPAIR"] and GameInfo.UnitOperations["UNITOPERATION_REPAIR"].Hash
+    if repairHash then
+        local rParams = {{}}
+        rParams[UnitOperationTypes.PARAM_X] = unit:GetX()
+        rParams[UnitOperationTypes.PARAM_Y] = unit:GetY()
+        if UnitManager.CanStartOperation(unit, repairHash, nil, rParams) then
+            UnitManager.RequestOperation(unit, repairHash, rParams)
+            print("OK:REPAIRING|{improvement_name}|" .. unit:GetX() .. "," .. unit:GetY())
+            print("{SENTINEL}"); return
+        end
+    end
+end
 if not UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, params) then
     local featIdx = plot:GetFeatureType()
     if featIdx >= 0 then
@@ -1650,21 +2408,35 @@ def build_produce_item(
     param_key = _ITEM_PARAM_MAP.get(item_type.upper(), "PARAM_UNIT_TYPE")
     # Extra params for district placement
     xy_params = ""
+    xy_check_params = ""
     if target_x is not None and target_y is not None:
         xy_params = f"tParams[CityOperationTypes.PARAM_X] = {target_x}\ntParams[CityOperationTypes.PARAM_Y] = {target_y}"
+        xy_check_params = f"tCheck[CityOperationTypes.PARAM_X] = {target_x}\ntCheck[CityOperationTypes.PARAM_Y] = {target_y}"
     return f"""
 {_lua_get_city(city_id)}
 local item = GameInfo.{table_name}["{item_name}"]
 if item == nil then {_bail(f"ERR:ITEM_NOT_FOUND|{item_name}")} end
 local bq = pCity:GetBuildQueue()
+local isCorrupted = bq:GetSize() > 0 and bq:GetCurrentProductionTypeHash() == 0
 if not bq:CanProduce(item.Hash, true) then
     {_bail(f"ERR:CANNOT_PRODUCE|{item_name} cannot be produced in this city")}
 end
+local tCheck = {{}}
+tCheck[CityOperationTypes.{param_key}] = item.Hash
+{xy_check_params}
+if not CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, tCheck, true) then
+    {_bail(f"ERR:CANNOT_START|{item_name} cannot start (stacking conflict, resource shortage, or tile unavailable)")}
+end
 local tParams = {{}}
 tParams[CityOperationTypes.{param_key}] = item.Hash
-tParams[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_REPLACE_AT
-tParams[CityOperationTypes.PARAM_QUEUE_DESTINATION_LOCATION] = 0
 {xy_params}
+if isCorrupted then
+    tParams[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_EXCLUSIVE
+else
+    tParams[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_REPLACE_AT
+    tParams[CityOperationTypes.PARAM_QUEUE_DESTINATION_LOCATION] = 0
+end
+UI.LookAtPlot(pCity:GetX(), pCity:GetY())
 CityManager.RequestOperation(pCity, CityOperationTypes.BUILD, tParams)
 local turnsLeft = bq:GetTurnsLeft(item.Hash)
 print("OK:PRODUCING|{item_name}|" .. turnsLeft .. " turns")
@@ -1725,6 +2497,7 @@ if not canBuy then
     print("ERR:CANNOT_PURCHASE|" .. reason)
     print("{SENTINEL}"); return
 end
+UI.LookAtPlot(pCity:GetX(), pCity:GetY())
 CityManager.RequestCommand(pCity, CityCommandTypes.PURCHASE, tParams)
 print("OK:PURCHASED|{item_name}|cost=" .. math.floor(cost) .. "g (had " .. math.floor(balance) .. "g)")
 print("{SENTINEL}")
@@ -1763,11 +2536,36 @@ print("{SENTINEL}")
 """
 
 
+def build_set_civic_gamecore(civic_name: str) -> str:
+    """Set civic via GameCore — fallback when InGame RequestPlayerOperation silently fails."""
+    return f"""
+local id = Game.GetLocalPlayer()
+local idx = nil
+for row in GameInfo.Civics() do
+    if row.CivicType == "{civic_name}" then idx = row.Index; break end
+end
+if idx == nil then print("ERR:CIVIC_NOT_FOUND|{civic_name}"); print("{SENTINEL}"); return end
+Players[id]:GetCulture():SetProgressingCivic(idx)
+print("OK:PROGRESSING_GC|{civic_name}")
+print("{SENTINEL}")
+"""
+
+
 def build_diplomacy_session_query() -> str:
-    """Check for open diplomacy sessions and return choices (InGame context)."""
+    """Check for open diplomacy sessions and return choices (InGame context).
+
+    Also reads the DiplomacyActionView UI controls to capture the leader's
+    actual dialogue text and reason/agenda subtext when a session is active.
+    """
     return f"""
 local me = Game.GetLocalPlayer()
 local found = false
+local dialogueText = ""
+local reasonText = ""
+local ctrl1 = ContextPtr:LookUpControl("/InGame/DiplomacyActionView/LeaderResponseText")
+local ctrl2 = ContextPtr:LookUpControl("/InGame/DiplomacyActionView/LeaderReasonText")
+if ctrl1 then local ok, t = pcall(ctrl1.GetText, ctrl1); if ok and t and t ~= "" then dialogueText = t end end
+if ctrl2 then local ok, t = pcall(ctrl2.GetText, ctrl2); if ok and t and t ~= "" then reasonText = t end end
 for i = 0, 62 do
     if i ~= me and Players[i] and Players[i]:IsAlive() then
         local sid = DiplomacyManager.FindOpenSessionID(me, i)
@@ -1775,7 +2573,7 @@ for i = 0, 62 do
             local cfg = PlayerConfigurations[i]
             local civName = Locale.Lookup(cfg:GetCivilizationShortDescription())
             local leaderName = Locale.Lookup(cfg:GetLeaderName())
-            print("SESSION|" .. sid .. "|" .. i .. "|" .. civName .. "|" .. leaderName)
+            print("SESSION|" .. sid .. "|" .. i .. "|" .. civName .. "|" .. leaderName .. "|" .. dialogueText .. "|" .. reasonText)
             found = true
         end
     end
@@ -1819,6 +2617,7 @@ local sid = DiplomacyManager.FindOpenSessionID(me, {other_player_id})
 if sid == nil or sid < 0 then print("ERR:NO_SESSION"); print("{SENTINEL}"); return end
 if "{response}" == "EXIT" then
     DiplomacyManager.CloseSession(sid)
+    LuaEvents.DiplomacyActionView_ShowIngameUI()
     print("OK:SESSION_CLOSED")
     print("{SENTINEL}"); return
 end
@@ -1828,11 +2627,14 @@ if stillOpen and stillOpen >= 0 then
     DiplomacyManager.CloseSession(stillOpen)
     local final = DiplomacyManager.FindOpenSessionID(me, {other_player_id})
     if final and final >= 0 then
+        LuaEvents.DiplomacyActionView_ShowIngameUI()
         print("OK:RESPONDED|{response}|SESSION_CONTINUES")
     else
+        LuaEvents.DiplomacyActionView_ShowIngameUI()
         print("OK:RESPONDED|{response}|SESSION_CLOSED_GOODBYE")
     end
 else
+    LuaEvents.DiplomacyActionView_ShowIngameUI()
     print("OK:RESPONDED|{response}|SESSION_CLOSED")
 end
 print("{SENTINEL}")
@@ -1842,10 +2644,27 @@ print("{SENTINEL}")
 def build_send_diplo_action(other_player_id: int, action_name: str) -> str:
     """Send a proactive diplomatic action and detect acceptance/rejection.
 
-    action_name is e.g. DIPLOMATIC_DELEGATION, DECLARE_FRIENDSHIP, DENOUNCE.
-    Checks pre-state, sends via RequestSession, then checks post-state.
+    action_name is e.g. DIPLOMATIC_DELEGATION, DECLARE_FRIENDSHIP, DENOUNCE,
+    RESIDENT_EMBASSY, OPEN_BORDERS.
+
+    Key discovery: RequestSession uses DIFFERENT action strings from DIPLOACTION_ names:
+    - DECLARE_FRIENDSHIP -> session string "DECLARE_FRIEND" (not "DECLARE_FRIENDSHIP")
+    - Others use same name as action_name
+
+    Flow: RequestSession -> 2x AddResponse(POSITIVE) -> CloseSession
+    No AddStatement needed (that crashes on mismatched session types).
     """
-    # Map action names to the state checks
+    # Map action_name to the correct RequestSession string
+    # Game source: DiplomacyActionView.lua line 472 uses "DECLARE_FRIEND"
+    session_string_map = {
+        "DECLARE_FRIENDSHIP": "DECLARE_FRIEND",
+        "DIPLOMATIC_DELEGATION": "DIPLOMATIC_DELEGATION",
+        "RESIDENT_EMBASSY": "RESIDENT_EMBASSY",
+        "DENOUNCE": "DENOUNCE",
+        "OPEN_BORDERS": "OPEN_BORDERS",
+    }
+    session_str = session_string_map.get(action_name, action_name)
+
     return f"""
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
@@ -1870,21 +2689,29 @@ end
 local preDel = pDiplo:HasDelegationAt(target)
 local preEmb = pDiplo:HasEmbassyAt(target)
 local preGold = Players[me]:GetTreasury():GetGoldBalance()
--- Send via RequestSession
-DiplomacyManager.RequestSession(me, target, action)
--- Check if a session opened (AI may respond with dialogue)
+local preVis = pDiplo:GetVisibilityOn(target)
+-- Clean stale sessions
+for i = 0, 20 do
+    if DiplomacyManager.IsSessionIDOpen(i) then DiplomacyManager.CloseSession(i) end
+end
+-- Open session with the correct action string
+DiplomacyManager.RequestSession(me, target, "{session_str}")
 local sid = DiplomacyManager.FindOpenSessionID(me, target)
 if sid and sid >= 0 then
-    -- Auto-respond POSITIVE to complete the action dialogue
-    for round = 1, 5 do
-        DiplomacyManager.AddResponse(sid, me, "POSITIVE")
-        sid = DiplomacyManager.FindOpenSessionID(me, target)
-        if not sid or sid < 0 then break end
+    -- Send 2 positive responses (dialogue + acceptance)
+    DiplomacyManager.AddResponse(sid, me, "POSITIVE")
+    DiplomacyManager.AddResponse(sid, me, "POSITIVE")
+    -- Close session if still open
+    sid = DiplomacyManager.FindOpenSessionID(me, target)
+    if sid and sid >= 0 then
         DiplomacyManager.CloseSession(sid)
-        sid = DiplomacyManager.FindOpenSessionID(me, target)
-        if not sid or sid < 0 then break end
     end
+else
+    -- Some actions are fire-and-forget (no session created)
+    -- This is normal for some action types
 end
+-- Restore UI (ShowIngameUI undoes HideIngameUI from RequestSession)
+LuaEvents.DiplomacyActionView_ShowIngameUI()
 -- Check post-state to detect acceptance/rejection
 local postDel = pDiplo:HasDelegationAt(target)
 local postEmb = pDiplo:HasEmbassyAt(target)
@@ -1903,9 +2730,22 @@ elseif action == "RESIDENT_EMBASSY" then
         print("OK:REJECTED|" .. name .. " rejected your embassy")
     end
 elseif action == "DECLARE_FRIENDSHIP" then
-    print("OK:SENT|Friendship declaration sent to " .. name)
+    local ai = Players[target]:GetDiplomaticAI()
+    local postState = ai:GetDiplomaticStateIndex(me)
+    if postState == 1 then
+        print("OK:ACCEPTED|" .. name .. " accepted your friendship declaration")
+    else
+        print("OK:REJECTED|" .. name .. " did not accept friendship (state=" .. tostring(postState) .. ")")
+    end
 elseif action == "DENOUNCE" then
     print("OK:SENT|Denounced " .. name)
+elseif action == "OPEN_BORDERS" then
+    local postVis = pDiplo:GetVisibilityOn(target)
+    if postVis > preVis then
+        print("OK:ACCEPTED|" .. name .. " accepted open borders")
+    else
+        print("OK:REJECTED|" .. name .. " did not accept open borders")
+    end
 else
     print("OK:SENT|" .. action .. " sent to " .. name)
 end
@@ -1987,6 +2827,110 @@ print("{SENTINEL}")
 # ---------------------------------------------------------------------------
 # Trade deal queries (InGame context)
 # ---------------------------------------------------------------------------
+
+
+def build_deal_options_query(other_player_id: int) -> str:
+    """Show what both sides can trade — resources, gold, favor, agreements (InGame)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local target = {other_player_id}
+local pDiplo = Players[me]:GetDiplomacy()
+if not Players[target] or not Players[target]:IsAlive() then {_bail(f"ERR:INVALID_PLAYER|Player {other_player_id} not found")} end
+if not pDiplo:HasMet(target) then {_bail(f"ERR:NOT_MET|Have not met player {other_player_id}")} end
+local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
+print("CIV|" .. target .. "|" .. name:gsub("|","/"))
+local ourGold = math.floor(Players[me]:GetTreasury():GetGoldBalance())
+local ourGPT = math.floor(Players[me]:GetTreasury():GetGoldYield() - Players[me]:GetTreasury():GetTotalMaintenance())
+local ourFavor = 0
+pcall(function() ourFavor = math.floor(Players[me]:GetFavor() or 0) end)
+local theirGold = math.floor(Players[target]:GetTreasury():GetGoldBalance())
+local theirGPT = math.floor(Players[target]:GetTreasury():GetGoldYield() - Players[target]:GetTreasury():GetTotalMaintenance())
+local theirFavor = 0
+pcall(function() theirFavor = math.floor(Players[target]:GetFavor() or 0) end)
+print("ECON|" .. ourGold .. "|" .. ourGPT .. "|" .. ourFavor .. "|" .. theirGold .. "|" .. theirGPT .. "|" .. theirFavor)
+for row in GameInfo.Resources() do
+    local ourAmt = Players[me]:GetResources():GetResourceAmount(row.Index)
+    local theirAmt = Players[target]:GetResources():GetResourceAmount(row.Index)
+    if ourAmt > 0 or theirAmt > 0 then
+        local rClass = row.ResourceClassType or ""
+        local rName = Locale.Lookup(row.Name)
+        print("RES|" .. rName:gsub("|","/") .. "|" .. row.ResourceType .. "|" .. rClass .. "|" .. ourAmt .. "|" .. theirAmt)
+    end
+end
+local hasOB = false
+pcall(function() hasOB = pDiplo:HasOpenBordersFrom(target) end)
+if not hasOB then pcall(function() hasOB = pDiplo:GetVisibilityOn(target) >= 2 end) end
+print("OB|" .. (hasOB and "1" or "0"))
+local ai = Players[target]:GetDiplomaticAI()
+local stateIdx = ai:GetDiplomaticStateIndex(me)
+local hasDiploService = false
+pcall(function()
+    local civic = GameInfo.Civics["CIVIC_DIPLOMATIC_SERVICE"]
+    if civic then hasDiploService = Players[me]:GetCulture():HasCivic(civic.Index) end
+end)
+local allianceEligible = (stateIdx == 1 and hasDiploService)
+local currentAlliance = ""
+if stateIdx == 0 then
+    local ok3, aType = pcall(function() return pDiplo:GetAllianceType(target) end)
+    if ok3 and aType and aType >= 0 then
+        local aNames = {{"MILITARY","RESEARCH","CULTURAL","ECONOMIC","RELIGIOUS"}}
+        currentAlliance = aNames[aType+1] or ""
+    end
+end
+print("ALLIANCE|" .. (allianceEligible and "1" or "0") .. "|" .. currentAlliance)
+print("{SENTINEL}")
+"""
+
+
+def parse_deal_options_response(lines: list[str]) -> DealOptions:
+    """Parse the deal options query response."""
+    opts = DealOptions(other_player_id=0, other_civ_name="")
+    for line in lines:
+        if line.startswith("CIV|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                opts.other_player_id = int(parts[1])
+                opts.other_civ_name = parts[2]
+        elif line.startswith("ECON|"):
+            parts = line.split("|")
+            if len(parts) >= 7:
+                opts.our_gold = int(parts[1])
+                opts.our_gpt = int(parts[2])
+                opts.our_favor = int(parts[3])
+                opts.their_gold = int(parts[4])
+                opts.their_gpt = int(parts[5])
+                opts.their_favor = int(parts[6])
+        elif line.startswith("RES|"):
+            parts = line.split("|")
+            if len(parts) >= 6:
+                name = parts[1]
+                res_type = parts[2]
+                res_class = parts[3]
+                our_amt = int(parts[4])
+                their_amt = int(parts[5])
+                is_luxury = "LUXURY" in res_class
+                is_strategic = "STRATEGIC" in res_class
+                if our_amt > 0:
+                    label = f"{name} x{our_amt}" if our_amt > 1 else name
+                    if is_luxury:
+                        opts.our_luxuries.append(label)
+                    elif is_strategic:
+                        opts.our_strategics.append(label)
+                if their_amt > 0:
+                    label = f"{name} x{their_amt}" if their_amt > 1 else name
+                    if is_luxury:
+                        opts.their_luxuries.append(label)
+                    elif is_strategic:
+                        opts.their_strategics.append(label)
+        elif line.startswith("OB|"):
+            opts.has_open_borders = line.split("|")[1] == "1"
+        elif line.startswith("ALLIANCE|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                opts.alliance_eligible = parts[1] == "1"
+                if parts[2]:
+                    opts.current_alliance = parts[2]
+    return opts
 
 
 def build_pending_deals_query() -> str:
@@ -2074,6 +3018,217 @@ for r = 1, 5 do
 end
 local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
 print("OK:DEAL_{verb}|" .. name)
+print("{SENTINEL}")
+"""
+
+
+def _lua_deal_item(from_var: str, item: dict) -> str:
+    """Generate Lua snippet to add one item to the working deal.
+
+    from_var: Lua variable name for the player ID (e.g. "me" or "target").
+    item: dict with keys type, amount, and optionally name, duration.
+    """
+    t = item["type"].upper()
+    amount = item.get("amount", 0)
+    duration = item.get("duration", 0)
+
+    if t == "GOLD":
+        return (
+            f"do local gi = deal:AddItemOfType(DealItemTypes.GOLD, {from_var}) "
+            f"if gi then gi:SetAmount({amount}) gi:SetDuration({duration}) end end"
+        )
+    elif t == "RESOURCE":
+        res_name = item["name"]
+        res_amount = item.get("amount", 1)
+        res_duration = item.get("duration", 30)
+        return (
+            f'do local res = GameInfo.Resources["{res_name}"] '
+            f"if res then local ri = deal:AddItemOfType(DealItemTypes.RESOURCES, {from_var}) "
+            f"if ri then ri:SetValueType(res.Index) ri:SetAmount({res_amount}) "
+            f"ri:SetDuration({res_duration}) end end end"
+        )
+    elif t == "FAVOR":
+        return (
+            f"do local fi = deal:AddItemOfType(DealItemTypes.FAVOR, {from_var}) "
+            f"if fi then fi:SetAmount({amount}) end end"
+        )
+    elif t == "AGREEMENT":
+        subtype = item["subtype"]  # "OPEN_BORDERS", "JOINT_WAR", "ALLIANCE"
+        return (
+            f"do local ai = deal:AddItemOfType(DealItemTypes.AGREEMENTS, {from_var}) "
+            f"if ai then ai:SetSubType(DealAgreementTypes.{subtype}) end end"
+        )
+    else:
+        return f'-- unsupported deal item type: {t}'
+
+
+def build_propose_trade(
+    other_player_id: int,
+    offer_items: list[dict],
+    request_items: list[dict],
+) -> str:
+    """Build a trade deal proposal and send it (InGame context).
+
+    offer_items: items we give to them (from us).
+    request_items: items we want from them.
+    Each item dict: {type: GOLD|RESOURCE|FAVOR|AGREEMENT, amount: int, name: str, duration: int, subtype: str}
+    """
+    offer_lua = " ".join(_lua_deal_item("me", item) for item in offer_items)
+    request_lua = " ".join(_lua_deal_item("target", item) for item in request_items)
+
+    return f"""
+local me = Game.GetLocalPlayer()
+local target = {other_player_id}
+local pDiplo = Players[me]:GetDiplomacy()
+if not pDiplo:HasMet(target) then {_bail("ERR:NOT_MET|Have not met player " + str(other_player_id))} end
+if pDiplo:IsAtWarWith(target) then {_bail("ERR:AT_WAR|Cannot trade while at war")} end
+local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
+if not DealManager.HasPendingDeal(me, target) then
+    DealManager.ClearWorkingDeal(DealDirection.OUTGOING, me, target)
+end
+local deal = DealManager.GetWorkingDeal(DealDirection.OUTGOING, me, target)
+if not deal then {_bail("ERR:NO_DEAL_OBJECT|Failed to get working deal")} end
+{offer_lua}
+{request_lua}
+DiplomacyManager.RequestSession(me, target, "MAKE_DEAL")
+DealManager.SendWorkingDeal(DealProposalAction.PROPOSED, me, target)
+local sid = DiplomacyManager.FindOpenSessionID(me, target)
+local result = "PROPOSED"
+if sid and sid >= 0 then
+    local ok, respDeal = pcall(function()
+        return DealManager.GetWorkingDeal(DealDirection.INCOMING, me, target)
+    end)
+    if ok and respDeal and respDeal:GetItemCount() and respDeal:GetItemCount() > 0 then
+        DealManager.SendWorkingDeal(DealProposalAction.ACCEPTED, me, target)
+        result = "ACCEPTED"
+    else
+        result = "REJECTED"
+    end
+    for r = 1, 5 do
+        sid = DiplomacyManager.FindOpenSessionID(me, target)
+        if not sid or sid < 0 then break end
+        DiplomacyManager.AddResponse(sid, me, "NEGATIVE")
+        sid = DiplomacyManager.FindOpenSessionID(me, target)
+        if not sid or sid < 0 then break end
+        DiplomacyManager.CloseSession(sid)
+    end
+end
+LuaEvents.DiplomacyActionView_ShowIngameUI()
+print("OK:" .. result .. "|Trade " .. result:lower() .. " with " .. name)
+print("{SENTINEL}")
+"""
+
+
+def build_form_alliance(other_player_id: int, alliance_type: str) -> str:
+    """Form an alliance with another civilization (InGame context).
+
+    alliance_type: MILITARY, RESEARCH, CULTURAL, ECONOMIC, RELIGIOUS
+    """
+    type_map = {"MILITARY": 0, "RESEARCH": 1, "CULTURAL": 2, "ECONOMIC": 3, "RELIGIOUS": 4}
+    type_idx = type_map.get(alliance_type.upper(), 0)
+    return f"""
+local me = Game.GetLocalPlayer()
+local target = {other_player_id}
+local pDiplo = Players[me]:GetDiplomacy()
+if not Players[target] or not Players[target]:IsAlive() then {_bail("ERR:INVALID_PLAYER|Player not found")} end
+if not pDiplo:HasMet(target) then {_bail("ERR:NOT_MET|Have not met this civilization")} end
+if pDiplo:IsAtWarWith(target) then {_bail("ERR:AT_WAR|Cannot ally while at war")} end
+local ai = Players[target]:GetDiplomaticAI()
+local stateIdx = ai:GetDiplomaticStateIndex(me)
+if stateIdx == 0 then {_bail("ERR:ALREADY_ALLIED|Already in an alliance")} end
+if stateIdx ~= 1 then {_bail("ERR:NOT_FRIENDS|Must be declared friends first")} end
+local hasDiploService = false
+pcall(function()
+    local civic = GameInfo.Civics["CIVIC_DIPLOMATIC_SERVICE"]
+    if civic then hasDiploService = Players[me]:GetCulture():HasCivic(civic.Index) end
+end)
+if not hasDiploService then {_bail("ERR:NO_CIVIC|Diplomatic Service civic required for alliances")} end
+local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
+if not DealManager.HasPendingDeal(me, target) then
+    DealManager.ClearWorkingDeal(DealDirection.OUTGOING, me, target)
+end
+local deal = DealManager.GetWorkingDeal(DealDirection.OUTGOING, me, target)
+if not deal then {_bail("ERR:NO_DEAL_OBJECT|Failed to get working deal")} end
+do local ai_item = deal:AddItemOfType(DealItemTypes.AGREEMENTS, me)
+if ai_item then ai_item:SetSubType(DealAgreementTypes.ALLIANCE) pcall(function() ai_item:SetValueType({type_idx}) end) end end
+DiplomacyManager.RequestSession(me, target, "MAKE_DEAL")
+DealManager.SendWorkingDeal(DealProposalAction.PROPOSED, me, target)
+local sid = DiplomacyManager.FindOpenSessionID(me, target)
+local result = "PROPOSED"
+if sid and sid >= 0 then
+    local ok, respDeal = pcall(function()
+        return DealManager.GetWorkingDeal(DealDirection.INCOMING, me, target)
+    end)
+    if ok and respDeal then
+        local itemCount = 0
+        pcall(function() itemCount = respDeal:GetItemCount() or 0 end)
+        if itemCount > 0 then
+            DealManager.SendWorkingDeal(DealProposalAction.ACCEPTED, me, target)
+            result = "ACCEPTED"
+        else
+            result = "REJECTED"
+        end
+    else
+        result = "REJECTED"
+    end
+    for r = 1, 5 do
+        sid = DiplomacyManager.FindOpenSessionID(me, target)
+        if not sid or sid < 0 then break end
+        DiplomacyManager.AddResponse(sid, me, "NEGATIVE")
+        sid = DiplomacyManager.FindOpenSessionID(me, target)
+        if not sid or sid < 0 then break end
+        DiplomacyManager.CloseSession(sid)
+    end
+end
+LuaEvents.DiplomacyActionView_ShowIngameUI()
+local postState = Players[target]:GetDiplomaticAI():GetDiplomaticStateIndex(me)
+if postState == 0 then
+    local aNames = {{"MILITARY","RESEARCH","CULTURAL","ECONOMIC","RELIGIOUS"}}
+    local typeName = "{alliance_type}"
+    local ok3, aType = pcall(function() return pDiplo:GetAllianceType(target) end)
+    if ok3 and aType and aType >= 0 then typeName = aNames[aType+1] or typeName end
+    print("OK:ACCEPTED|" .. typeName .. " alliance formed with " .. name)
+else
+    if result == "REJECTED" then
+        print("OK:REJECTED|" .. name .. " rejected the " .. "{alliance_type}" .. " alliance proposal")
+    else
+        print("OK:FAILED|Alliance proposal sent but status unclear (state=" .. tostring(postState) .. ")")
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def build_propose_peace(other_player_id: int) -> str:
+    """Propose white peace to a civilization we're at war with (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local target = {other_player_id}
+local pDiplo = Players[me]:GetDiplomacy()
+if not pDiplo:IsAtWarWith(target) then {_bail("ERR:NOT_AT_WAR|Not at war with player " + str(other_player_id))} end
+local canPeace = pDiplo:CanMakePeaceWith(target)
+if not canPeace then {_bail("ERR:CANNOT_MAKE_PEACE|10-turn war cooldown or other restriction")} end
+local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
+DiplomacyManager.RequestSession(me, target, "PROPOSE_PEACE_DEAL")
+local sid = DiplomacyManager.FindOpenSessionID(me, target)
+if not sid or sid < 0 then {_bail("ERR:NO_SESSION|Failed to open peace deal session")} end
+DealManager.ClearWorkingDeal(DealDirection.OUTGOING, me, target)
+DealManager.SendWorkingDeal(DealProposalAction.PROPOSED, me, target)
+for r = 1, 5 do
+    sid = DiplomacyManager.FindOpenSessionID(me, target)
+    if not sid or sid < 0 then break end
+    DiplomacyManager.AddResponse(sid, me, "POSITIVE")
+    sid = DiplomacyManager.FindOpenSessionID(me, target)
+    if not sid or sid < 0 then break end
+    DiplomacyManager.CloseSession(sid)
+end
+LuaEvents.DiplomacyActionView_ShowIngameUI()
+local stillWar = pDiplo:IsAtWarWith(target)
+if not stillWar then
+    print("OK:ACCEPTED|Peace established with " .. name)
+else
+    print("OK:REJECTED|" .. name .. " rejected your peace offer")
+end
 print("{SENTINEL}")
 """
 
@@ -2189,21 +3344,31 @@ local appointedTypes = {{}}
 for row in GameInfo.Governors() do
     if row.TransitionStrength and row.TransitionStrength > 0 and pGovs:HasGovernor(row.Hash) then
         appointedTypes[row.GovernorType] = true
-        local gov = pGovs:GetGovernor(row.Hash)
+        local g = pGovs:GetGovernor(row.Hash)
         local gName = Locale.Lookup(row.Name)
         local gTitle = Locale.Lookup(row.Title)
         local cityID = -1
         local cityName = "Unassigned"
         local established = "0"
         local turnsLeft = 0
-        local assignedCity = gov:GetAssignedCity()
+        local assignedCity = g:GetAssignedCity()
         if assignedCity then
             cityID = assignedCity:GetID()
             cityName = Locale.Lookup(assignedCity:GetName())
-            established = gov:IsEstablished() and "1" or "0"
-            if not gov:IsEstablished() then turnsLeft = gov:GetTurnsToEstablish() end
+            established = g:IsEstablished() and "1" or "0"
+            if not g:IsEstablished() then turnsLeft = g:GetTurnsToEstablish() end
         end
         print("APPOINTED|" .. row.GovernorType .. "|" .. gName:gsub("|","/") .. "|" .. gTitle:gsub("|","/") .. "|" .. cityID .. "|" .. cityName:gsub("|","/") .. "|" .. established .. "|" .. turnsLeft)
+        for promo in GameInfo.GovernorPromotionSets() do
+            if promo.GovernorType == row.GovernorType then
+                local promoRow = GameInfo.GovernorPromotions[promo.GovernorPromotion]
+                if promoRow and not g:HasPromotion(promoRow.Index) then
+                    local pName = Locale.Lookup(promoRow.Name)
+                    local pDesc = Locale.Lookup(promoRow.Description)
+                    print("GOV_PROMO|" .. row.GovernorType .. "|" .. promoRow.GovernorPromotionType .. "|" .. pName:gsub("|","/") .. "|" .. pDesc:gsub("|","/"))
+                end
+            end
+        end
     end
 end
 for gov in GameInfo.Governors() do
@@ -2254,6 +3419,33 @@ params[PlayerOperations.PARAM_CITY_DEST] = pCity:GetID()
 params[PlayerOperations.PARAM_PLAYER_ONE] = me
 UI.RequestPlayerOperation(me, PlayerOperations.ASSIGN_GOVERNOR, params)
 print("OK:ASSIGNED|" .. Locale.Lookup(gov.Name) .. " to " .. Locale.Lookup(pCity:GetName()))
+print("{SENTINEL}")
+"""
+
+
+def build_promote_governor(governor_type: str, promotion_type: str) -> str:
+    """Promote a governor with a new ability (InGame context).
+
+    Uses PROMOTE_GOVERNOR operation (NOT APPOINT_GOVERNOR).
+    Both governor and promotion use .Index (NOT .Hash).
+    Source: GovernorDetailsPanel.lua — SetVoid1(m_GovernorIndex), SetVoid2(kPromotion.Index)
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local pGovs = Players[me]:GetGovernors()
+local gov = GameInfo.Governors["{governor_type}"]
+if gov == nil then {_bail(f"ERR:GOVERNOR_NOT_FOUND|{governor_type}")} end
+if not pGovs:HasGovernor(gov.Hash) then {_bail(f"ERR:NOT_APPOINTED|{governor_type} not appointed")} end
+if not pGovs:CanPromoteGovernor(gov.Hash) then {_bail("ERR:CANNOT_PROMOTE|No governor points or no promotions available")} end
+local promo = GameInfo.GovernorPromotions["{promotion_type}"]
+if promo == nil then {_bail(f"ERR:PROMOTION_NOT_FOUND|{promotion_type}")} end
+local g = pGovs:GetGovernor(gov.Hash)
+if g:HasPromotion(promo.Index) then {_bail(f"ERR:ALREADY_PROMOTED|{promotion_type} already earned")} end
+local params = {{}}
+params[PlayerOperations.PARAM_GOVERNOR_TYPE] = gov.Index
+params[PlayerOperations.PARAM_GOVERNOR_PROMOTION_TYPE] = promo.Index
+UI.RequestPlayerOperation(me, PlayerOperations.PROMOTE_GOVERNOR, params)
+print("OK:PROMOTED|" .. Locale.Lookup(gov.Name) .. " with " .. Locale.Lookup(promo.Name))
 print("{SENTINEL}")
 """
 
@@ -2589,7 +3781,7 @@ local results = {{}}
 local dType = "{district_type}"
 for _, pIdx in ipairs(plotIndices) do
     local plot = Map.GetPlotByIndex(pIdx)
-    if plot then
+    if plot and not plot:IsWater() and not plot:IsImpassable() and not plot:IsMountain() then
         local px, py = plot:GetX(), plot:GetY()
         local adj_s, adj_p, adj_g, adj_f, adj_c = 0, 0, 0, 0, 0
         local mountains, jungles, forests, districts, rivers = 0, 0, 0, 0, 0
@@ -2751,6 +3943,7 @@ if balance < cost then
     print("ERR:INSUFFICIENT_GOLD|Need " .. cost .. " gold, have " .. math.floor(balance))
     print("{SENTINEL}"); return
 end
+UI.LookAtPlot({x}, {y})
 local tParams = {{}}
 tParams[CityCommandTypes.PARAM_PLOT_PURCHASE] = 1
 tParams[CityCommandTypes.PARAM_X] = {x}
@@ -2828,6 +4021,58 @@ local gp = Game.GetGreatPeople()
 if gp == nil then {_bail("ERR:NO_GP_SYSTEM|Great People system not available")} end
 local timeline = gp:GetTimeline()
 if timeline == nil then {_bail("ERR:NO_TIMELINE|No great people timeline")} end
+local function getAbility(ind)
+    if ind.ActionEffectTextOverride and ind.ActionEffectTextOverride ~= "" then
+        local ok, t = pcall(Locale.Lookup, ind.ActionEffectTextOverride)
+        if ok and t and t ~= "" and t ~= ind.ActionEffectTextOverride then return t end
+    end
+    local locKey = "LOC_GREATPERSON_" .. string.gsub(ind.GreatPersonIndividualType, "GREAT_PERSON_INDIVIDUAL_", "") .. "_ACTIVE"
+    local ok2, t2 = pcall(Locale.Lookup, locKey)
+    if ok2 and t2 and t2 ~= locKey and t2 ~= "" then return t2 end
+    local parts = {{}}
+    for mod in GameInfo.GreatPersonIndividualActionModifiers() do
+        if mod.GreatPersonIndividualType == ind.GreatPersonIndividualType then
+            local mrow = GameInfo.Modifiers[mod.ModifierId]
+            if mrow then
+                local amt = ""
+                for arg in GameInfo.ModifierArguments() do
+                    if arg.ModifierId == mod.ModifierId and arg.Name == "Amount" then amt = arg.Value end
+                end
+                local mt = mrow.ModifierType
+                if string.find(mt, "GRANT_YIELD") and amt ~= "" then
+                    local yt = ""
+                    for arg in GameInfo.ModifierArguments() do
+                        if arg.ModifierId == mod.ModifierId and arg.Name == "YieldType" then yt = string.gsub(arg.Value, "YIELD_", "") end
+                    end
+                    table.insert(parts, "+" .. amt .. " " .. yt)
+                elseif string.find(mt, "GRANT_PRODUCTION") and amt ~= "" then table.insert(parts, "+" .. amt .. " production toward current build")
+                elseif string.find(mt, "GRANT_INFLUENCE") and amt ~= "" then table.insert(parts, "+" .. amt .. " envoy tokens")
+                elseif string.find(mt, "GRANT_UNIT") then table.insert(parts, "free military unit")
+                elseif string.find(mt, "GRANT_TECH") then table.insert(parts, "free tech boost")
+                elseif string.find(mt, "ADJUST_SCIENCE") and amt ~= "" then table.insert(parts, "+" .. amt .. " science to adjacent tiles")
+                end
+            end
+        end
+    end
+    for mod in GameInfo.GreatPersonIndividualBirthModifiers() do
+        if mod.GreatPersonIndividualType == ind.GreatPersonIndividualType then
+            local mrow = GameInfo.Modifiers[mod.ModifierId]
+            if mrow then
+                local mt = mrow.ModifierType
+                if string.find(mt, "COMBAT_STRENGTH") then table.insert(parts, "combat bonus to nearby units (passive)")
+                elseif string.find(mt, "MOVEMENT") then table.insert(parts, "movement bonus to nearby units (passive)")
+                end
+            end
+        end
+    end
+    if ind.GreatWorkCollection and type(ind.GreatWorkCollection) == "table" then
+        local n = 0
+        for _ in pairs(ind.GreatWorkCollection) do n = n + 1 end
+        if n > 0 then table.insert(parts, "creates " .. n .. " Great Works") end
+    end
+    if #parts > 0 then return table.concat(parts, ", ") end
+    return ""
+end
 for _, entry in ipairs(timeline) do
     if entry.Class ~= nil and entry.Individual ~= nil then
     local classInfo = GameInfo.GreatPersonClasses[entry.Class]
@@ -2848,10 +4093,88 @@ for _, entry in ipairs(timeline) do
         if pGP then
             myPoints = pGP:GetPointsTotal(entry.Class)
         end
-        print("GP|" .. className .. "|" .. indivName .. "|" .. eraName .. "|" .. threshold .. "|" .. claimant .. "|" .. myPoints)
+        local ability = getAbility(indivInfo)
+        local goldCost = 0
+        local faithCost = 0
+        local canRecruit = false
+        pcall(function()
+            goldCost = gp:GetPatronizeCost(me, entry.Individual, 2)
+            faithCost = gp:GetPatronizeCost(me, entry.Individual, 5)
+            canRecruit = gp:CanRecruitPerson(me, entry.Individual)
+        end)
+        local costStr = "gold:" .. goldCost .. ",faith:" .. faithCost .. ",recruit:" .. tostring(canRecruit)
+        print("GP|" .. className .. "|" .. indivName .. "|" .. eraName .. "|" .. threshold .. "|" .. claimant .. "|" .. myPoints .. "|" .. ability .. "|" .. costStr .. "|" .. entry.Individual)
     end
     end
 end
+print("{SENTINEL}")
+"""
+
+
+def build_recruit_great_person(individual_id: int) -> str:
+    """Recruit a Great Person with accumulated GP points (InGame context)."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local gp = Game.GetGreatPeople()
+if not gp:CanRecruitPerson(me, {individual_id}) then
+    local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
+    local name = ind and Locale.Lookup(ind.Name) or "unknown"
+    print("ERR:CANNOT_RECRUIT|Not enough GP points to recruit " .. name)
+    print("{SENTINEL}"); return
+end
+local kParams = {{}}
+kParams[PlayerOperations.PARAM_GREAT_PERSON_INDIVIDUAL_TYPE] = {individual_id}
+UI.RequestPlayerOperation(me, PlayerOperations.RECRUIT_GREAT_PERSON, kParams)
+local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
+local name = ind and Locale.Lookup(ind.Name) or "unknown"
+print("OK:RECRUITED|" .. name)
+print("{SENTINEL}")
+"""
+
+
+def build_patronize_great_person(individual_id: int, yield_type: str = "YIELD_GOLD") -> str:
+    """Buy a Great Person with gold or faith (InGame context)."""
+    yield_idx = 2 if yield_type == "YIELD_GOLD" else 5  # YieldTypes.GOLD=2, FAITH=5
+    return f"""
+local me = Game.GetLocalPlayer()
+local gp = Game.GetGreatPeople()
+if not gp:CanPatronizePerson(me, {individual_id}, {yield_idx}) then
+    local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
+    local name = ind and Locale.Lookup(ind.Name) or "unknown"
+    local cost = gp:GetPatronizeCost(me, {individual_id}, {yield_idx})
+    print("ERR:CANNOT_PATRONIZE|Cannot buy " .. name .. " (cost: " .. cost .. " {yield_type.replace('YIELD_', '').lower()})")
+    print("{SENTINEL}"); return
+end
+local kParams = {{}}
+kParams[PlayerOperations.PARAM_GREAT_PERSON_INDIVIDUAL_TYPE] = {individual_id}
+kParams[PlayerOperations.PARAM_YIELD_TYPE] = {yield_idx}
+UI.RequestPlayerOperation(me, PlayerOperations.PATRONIZE_GREAT_PERSON, kParams)
+local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
+local name = ind and Locale.Lookup(ind.Name) or "unknown"
+local cost = gp:GetPatronizeCost(me, {individual_id}, {yield_idx})
+print("OK:PATRONIZED|" .. name .. "|cost:" .. cost .. " {yield_type.replace('YIELD_', '').lower()}")
+print("{SENTINEL}")
+"""
+
+
+def build_reject_great_person(individual_id: int) -> str:
+    """Pass on a Great Person (costs faith). InGame context."""
+    return f"""
+local me = Game.GetLocalPlayer()
+local gp = Game.GetGreatPeople()
+if not gp:CanRejectPerson(me, {individual_id}) then
+    local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
+    local name = ind and Locale.Lookup(ind.Name) or "unknown"
+    print("ERR:CANNOT_REJECT|Cannot reject " .. name)
+    print("{SENTINEL}"); return
+end
+local cost = gp:GetRejectCost(me, {individual_id})
+local kParams = {{}}
+kParams[PlayerOperations.PARAM_GREAT_PERSON_INDIVIDUAL_TYPE] = {individual_id}
+UI.RequestPlayerOperation(me, PlayerOperations.REJECT_GREAT_PERSON, kParams)
+local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
+local name = ind and Locale.Lookup(ind.Name) or "unknown"
+print("OK:REJECTED|" .. name .. "|faith_cost:" .. cost)
 print("{SENTINEL}")
 """
 
@@ -2861,16 +4184,240 @@ print("{SENTINEL}")
 # ---------------------------------------------------------------------------
 
 
-def build_trade_destinations_query(unit_index: int) -> str:
-    """List valid trade route destinations for a trader unit (InGame context).
+def build_trade_routes_query() -> str:
+    """Get trade route capacity, active routes with enriched data (InGame).
 
-    Checks MAKE_TRADE_ROUTE operation with each known city as target.
+    Reads route records from each city's GetOutgoingRoutes(), cross-references
+    with actual trader units to detect ghost routes.  Enriches each route with
+    yields, religious pressure, city-state quest status, and trading posts.
+
+    NOTE: Must run in InGame context for GetOutgoingRoutes() and TradeManager.
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local pTrade = Players[me]:GetTrade()
+local cap = pTrade:GetOutgoingRouteCapacity()
+local tm = Game.GetTradeManager()
+local qm = Game.GetQuestsManager()
+local tradeQI = GameInfo.Quests["QUEST_SEND_TRADE_ROUTE"]
+local tradeQIdx = tradeQI and tradeQI.Index or -1
+local yN = {{"F","P","G","S","C","A"}}
+local function fmtY(tbl)
+    if not tbl then return "" end
+    local s = ""
+    for _, e in ipairs(tbl) do
+        if e.Amount and e.Amount > 0 then
+            local idx = e.YieldIndex + 1
+            if idx >= 1 and idx <= 6 then
+                local amt = e.Amount
+                if amt == math.floor(amt) then amt = math.floor(amt) end
+                s = s .. yN[idx] .. amt
+            end
+        end
+    end
+    return s
+end
+-- Build set of valid trader unit IDs
+local traderUIDs = {{}}
+for _, unit in Players[me]:GetUnits():Members() do
+    local x = unit:GetX()
+    if x ~= -9999 then
+        local uType = unit:GetType()
+        if uType then
+            local uInfo = GameInfo.Units[uType]
+            if uInfo and uInfo.MakeTradeRoute then
+                traderUIDs[unit:GetID()] = true
+            end
+        end
+    end
+end
+-- Collect ALL route records; one route per unique (trader,dest) pair
+local seenRoutes = {{}}
+local activeCount = 0
+local ghostCount = 0
+for _, city in Players[me]:GetCities():Members() do
+    pcall(function()
+        local routes = city:GetTrade():GetOutgoingRoutes()
+        if not routes then return end
+        for _, r in ipairs(routes) do
+            local tid = r.TraderUnitID
+            local key = tid .. "_" .. r.DestinationCityPlayer .. "_" .. r.DestinationCityID
+            if seenRoutes[key] then return end
+            seenRoutes[key] = true
+            -- Ghost check: is the trader still a living trader?
+            if not traderUIDs[tid] then
+                ghostCount = ghostCount + 1
+            else
+                activeCount = activeCount + 1
+                -- Resolve names
+                local origCity = Players[r.OriginCityPlayer]:GetCities():FindID(r.OriginCityID)
+                local origName = origCity and Locale.Lookup(origCity:GetName()) or "?"
+                local destCity = Players[r.DestinationCityPlayer]:GetCities():FindID(r.DestinationCityID)
+                local destName = destCity and Locale.Lookup(destCity:GetName()) or "?"
+                local isDom = r.DestinationCityPlayer == me
+                local ownerName = "Domestic"
+                if not isDom then
+                    pcall(function()
+                        ownerName = Locale.Lookup(PlayerConfigurations[r.DestinationCityPlayer]:GetCivilizationShortDescription())
+                    end)
+                end
+                -- City-state + quest
+                local isCS = false
+                pcall(function() isCS = Players[r.DestinationCityPlayer]:GetInfluence():CanReceiveInfluence() end)
+                local hasQ = false
+                if isCS and tradeQIdx >= 0 then
+                    pcall(function() hasQ = qm:HasActiveQuestFromPlayer(me, r.DestinationCityPlayer, tradeQIdx) end)
+                end
+                -- Trading post
+                local hasTP = false
+                if destCity then pcall(function() hasTP = destCity:GetTrade():HasActiveTradingPost(me) end) end
+                -- Religious pressure (bidirectional)
+                local pOut, relOut, pIn, relIn = 0, "", 0, ""
+                if origCity then
+                    local majRel = origCity:GetReligion():GetMajorityReligion()
+                    if majRel >= 0 then
+                        pcall(function() relOut = Locale.Lookup(GameInfo.Religions[majRel].Name) end)
+                        pcall(function()
+                            pOut = tm:CalculateDestinationReligiousPressureFromPotentialRoute(r.OriginCityPlayer, r.OriginCityID, r.DestinationCityPlayer, r.DestinationCityID, majRel)
+                        end)
+                    end
+                end
+                if destCity then
+                    local destRel = destCity:GetReligion():GetMajorityReligion()
+                    if destRel >= 0 then
+                        pcall(function() relIn = Locale.Lookup(GameInfo.Religions[destRel].Name) end)
+                        pcall(function()
+                            pIn = tm:CalculateOriginReligiousPressureFromPotentialRoute(r.OriginCityPlayer, r.OriginCityID, r.DestinationCityPlayer, r.DestinationCityID, destRel)
+                        end)
+                    end
+                end
+                -- Yields
+                local oy = fmtY(r.OriginYields)
+                local dy = fmtY(r.DestinationYields)
+                print("ROUTE|" .. tid .. "|" .. origName .. "|" .. destName .. "|" .. ownerName .. "|" .. (isDom and "1" or "0") .. "|" .. (isCS and "1" or "0") .. "|" .. (hasQ and "1" or "0") .. "|" .. (hasTP and "1" or "0") .. "|" .. pOut .. "|" .. relOut .. "|" .. pIn .. "|" .. relIn .. "|" .. oy .. "|" .. dy)
+            end
+        end
+    end)
+end
+-- List idle traders (not on any route)
+local routedTraders = {{}}
+for k, _ in pairs(seenRoutes) do
+    local tid = tonumber(k:match("^(%d+)_"))
+    if tid then routedTraders[tid] = true end
+end
+for _, unit in Players[me]:GetUnits():Members() do
+    local x = unit:GetX()
+    if x ~= -9999 then
+        local uType = unit:GetType()
+        if uType then
+            local uInfo = GameInfo.Units[uType]
+            if uInfo and uInfo.MakeTradeRoute then
+                local uid = unit:GetID()
+                if not routedTraders[uid] then
+                    print("IDLE_TRADER|" .. uid .. "|" .. x .. "," .. unit:GetY())
+                end
+            end
+        end
+    end
+end
+print("TRADE_STATUS|" .. cap .. "|" .. activeCount .. "|" .. ghostCount)
+print("{SENTINEL}")
+"""
+
+
+def build_trade_destinations_query(unit_index: int) -> str:
+    """List valid trade route destinations with yields, quests, and pressure.
+
+    Tries CanStartOperation first.  If ALL destinations fail (capacity bug
+    from stale route counts), falls back to listing reachable cities directly.
+    Enriches each destination with yield preview, religious pressure,
+    city-state quest status, and trading post info.
     """
     return f"""
 {_lua_get_unit(unit_index)}
 local opInfo = GameInfo.UnitOperations["UNITOPERATION_MAKE_TRADE_ROUTE"]
 if opInfo == nil then {_bail("ERR:NO_TRADE_OP|MAKE_TRADE_ROUTE operation not found")} end
 local opHash = opInfo.Hash
+local ux, uy = unit:GetX(), unit:GetY()
+local tm = Game.GetTradeManager()
+local qm = Game.GetQuestsManager()
+local tradeQI = GameInfo.Quests["QUEST_SEND_TRADE_ROUTE"]
+local tradeQIdx = tradeQI and tradeQI.Index or -1
+local yN = {{"F","P","G","S","C","A"}}
+-- Calculate* returns flat array of 6 numbers [food,prod,gold,sci,cul,faith]
+local function sumFlat(...)
+    local s = {{0,0,0,0,0,0}}
+    for _, t in ipairs({{...}}) do
+        if t then for j = 1, 6 do s[j] = s[j] + (t[j] or 0) end end
+    end
+    return s
+end
+local function fmtFlat(arr)
+    if not arr then return "" end
+    local s = ""
+    for j = 1, 6 do
+        local v = arr[j]
+        if v and v > 0 then
+            if v == math.floor(v) then v = math.floor(v) end
+            s = s .. yN[j] .. v
+        end
+    end
+    return s
+end
+-- Find origin city (city the trader is standing in)
+local origCity = CityManager.GetCityAt(ux, uy)
+local origCID = origCity and origCity:GetID() or 0
+local majRel = -1
+local relName = ""
+if origCity then
+    majRel = origCity:GetReligion():GetMajorityReligion()
+    if majRel >= 0 then
+        pcall(function() relName = Locale.Lookup(GameInfo.Religions[majRel].Name) end)
+    end
+end
+local function enrichDest(i, city, cx, cy, isDom)
+    local civ = "Domestic"
+    if not isDom then
+        pcall(function() civ = Locale.Lookup(PlayerConfigurations[i]:GetCivilizationShortDescription()) end)
+    end
+    local isCS = false
+    pcall(function() isCS = Players[i]:GetInfluence():CanReceiveInfluence() end)
+    local hasQ = false
+    if isCS and tradeQIdx >= 0 then
+        pcall(function() hasQ = qm:HasActiveQuestFromPlayer(me, i, tradeQIdx) end)
+    end
+    local hasTP = false
+    pcall(function() hasTP = city:GetTrade():HasActiveTradingPost(me) end)
+    -- Religious pressure (bidirectional)
+    local pOut, pIn, relIn = 0, 0, ""
+    if majRel >= 0 then
+        pcall(function()
+            pOut = tm:CalculateDestinationReligiousPressureFromPotentialRoute(me, origCID, i, city:GetID(), majRel)
+        end)
+    end
+    local destRel = city:GetReligion():GetMajorityReligion()
+    if destRel >= 0 then
+        pcall(function() relIn = Locale.Lookup(GameInfo.Religions[destRel].Name) end)
+        pcall(function()
+            pIn = tm:CalculateOriginReligiousPressureFromPotentialRoute(me, origCID, i, city:GetID(), destRel)
+        end)
+    end
+    -- Yield preview: Calculate* returns flat arrays of 6 numbers
+    local oy, dy = "", ""
+    pcall(function()
+        local y1 = tm:CalculateOriginYieldsFromPotentialRoute(me, origCID, i, city:GetID())
+        local y2 = tm:CalculateOriginYieldsFromPath(me, origCID, i, city:GetID())
+        local y3 = tm:CalculateOriginYieldsFromModifiers(me, origCID, i, city:GetID())
+        oy = fmtFlat(sumFlat(y1, y2, y3))
+    end)
+    pcall(function()
+        local d1 = tm:CalculateDestinationYieldsFromPotentialRoute(me, origCID, i, city:GetID())
+        local d2 = tm:CalculateDestinationYieldsFromPath(me, origCID, i, city:GetID())
+        local d3 = tm:CalculateDestinationYieldsFromModifiers(me, origCID, i, city:GetID())
+        dy = fmtFlat(sumFlat(d1, d2, d3))
+    end)
+    print("TDEST|" .. Locale.Lookup(city:GetName()) .. "|" .. civ .. "|" .. cx .. "," .. cy .. "|" .. (isDom and "1" or "0") .. "|" .. (isCS and "1" or "0") .. "|" .. (hasQ and "1" or "0") .. "|" .. (hasTP and "1" or "0") .. "|" .. pOut .. "|" .. relName .. "|" .. pIn .. "|" .. relIn .. "|" .. oy .. "|" .. dy)
+end
 local found = 0
 for i = 0, 62 do
     if Players[i]:IsAlive() and i ~= 63 then
@@ -2881,30 +4428,152 @@ for i = 0, 62 do
             tParams[UnitOperationTypes.PARAM_Y] = cy
             local can = UnitManager.CanStartOperation(unit, opHash, nil, tParams, true)
             if can then
-                local civ = "OWN"
-                local domestic = "1"
-                if i ~= me then
-                    civ = Locale.Lookup(PlayerConfigurations[i]:GetCivilizationShortDescription())
-                    domestic = "0"
-                end
-                print("TDEST|" .. Locale.Lookup(city:GetName()) .. "|" .. civ .. "|" .. cx .. "," .. cy .. "|" .. domestic)
+                enrichDest(i, city, cx, cy, i == me)
                 found = found + 1
             end
         end
     end
 end
-if found == 0 then print("NONE") end
+if found == 0 then
+    print("WARN:CAPACITY_BUG|CanStartOperation blocked all. Listing cities directly.")
+    for i = 0, 62 do
+        if Players[i]:IsAlive() and i ~= 63 then
+            local atWar = false
+            if i ~= me then
+                pcall(function()
+                    local pDiplo = Players[me]:GetDiplomacy()
+                    if pDiplo then atWar = pDiplo:IsAtWarWith(i) end
+                end)
+            end
+            if not atWar then
+                for _, city in Players[i]:GetCities():Members() do
+                    local cx, cy = city:GetX(), city:GetY()
+                    if cx ~= ux or cy ~= uy then
+                        enrichDest(i, city, cx, cy, i == me)
+                    end
+                end
+            end
+        end
+    end
+end
 print("{SENTINEL}")
 """
 
 
+def _parse_compact_yields(s: str) -> str:
+    """Convert compact yield string like 'F3P2G4' to 'Food:3 Prod:2 Gold:4'.
+
+    Aggregates duplicates (e.g. 'G2G3' -> 'Gold:5') since yield previews
+    combine multiple sources (districts, path bonuses, modifiers).
+    """
+    if not s:
+        return ""
+    _names = {"F": "Food", "P": "Prod", "G": "Gold", "S": "Sci", "C": "Cul", "A": "Faith"}
+    totals: dict[str, float] = {}
+    i = 0
+    while i < len(s):
+        letter = s[i]
+        i += 1
+        num = ""
+        while i < len(s) and (s[i].isdigit() or s[i] == "."):
+            num += s[i]
+            i += 1
+        if letter in _names and num:
+            totals[letter] = totals.get(letter, 0) + float(num)
+    parts = []
+    for letter in "FPGSCA":
+        if letter in totals:
+            val = totals[letter]
+            if val == int(val):
+                parts.append(f"{_names[letter]}:{int(val)}")
+            else:
+                parts.append(f"{_names[letter]}:{val}")
+    return " ".join(parts)
+
+
+def parse_trade_routes_response(lines: list[str]) -> TradeRouteStatus:
+    """Parse ROUTE|, IDLE_TRADER|, and TRADE_STATUS| lines.
+
+    ROUTE format: ROUTE|uid|orig|dest|owner|isDom|isCS|hasQ|hasTP|pOut|relOut|pIn|relIn|origY|destY
+    IDLE format:  IDLE_TRADER|uid|x,y
+    STATUS:       TRADE_STATUS|cap|active|ghosts
+    """
+    capacity = 0
+    active = 0
+    ghost = 0
+    traders: list[TraderInfo] = []
+    for line in lines:
+        if line.startswith("TRADE_STATUS|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                capacity = int(parts[1])
+                active = int(parts[2])
+                ghost = int(parts[3])
+        elif line.startswith("ROUTE|"):
+            parts = line.split("|")
+            if len(parts) >= 15:
+                uid = int(parts[1])
+                traders.append(TraderInfo(
+                    unit_id=uid,
+                    x=0, y=0,  # active traders don't need position
+                    has_moves=False,
+                    on_route=True,
+                    route_origin=parts[2],
+                    route_dest=parts[3],
+                    route_owner=parts[4],
+                    is_domestic=parts[5] == "1",
+                    is_city_state=parts[6] == "1",
+                    has_quest=parts[7] == "1",
+                    origin_yields=_parse_compact_yields(parts[13]),
+                    dest_yields=_parse_compact_yields(parts[14]),
+                    pressure_out=float(parts[9]) if parts[9] else 0.0,
+                    religion_out=parts[10],
+                    pressure_in=float(parts[11]) if parts[11] else 0.0,
+                    religion_in=parts[12],
+                ))
+        elif line.startswith("IDLE_TRADER|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                uid = int(parts[1])
+                xy = parts[2].split(",")
+                traders.append(TraderInfo(
+                    unit_id=uid,
+                    x=int(xy[0]), y=int(xy[1]),
+                    has_moves=True,
+                    on_route=False,
+                ))
+    return TradeRouteStatus(capacity=capacity, active_count=active, traders=traders, ghost_count=ghost)
+
+
 def parse_trade_destinations_response(lines: list[str]) -> list[TradeDestination]:
-    """Parse TDEST| lines from build_trade_destinations_query."""
+    """Parse TDEST| lines with enriched data.
+
+    Format: TDEST|name|owner|x,y|isDom|isCS|hasQ|hasTP|pOut|relOut|pIn|relIn|origY|destY
+    """
     results: list[TradeDestination] = []
     for line in lines:
         if line.startswith("TDEST|"):
             parts = line.split("|")
-            if len(parts) >= 5:
+            if len(parts) >= 14:
+                coords = parts[3].split(",")
+                results.append(TradeDestination(
+                    city_name=parts[1],
+                    owner_name=parts[2],
+                    x=int(coords[0]),
+                    y=int(coords[1]),
+                    is_domestic=parts[4] == "1",
+                    is_city_state=parts[5] == "1",
+                    has_quest=parts[6] == "1",
+                    has_trading_post=parts[7] == "1",
+                    origin_yields=_parse_compact_yields(parts[12]),
+                    dest_yields=_parse_compact_yields(parts[13]),
+                    pressure_out=float(parts[8]) if parts[8] else 0.0,
+                    religion_out=parts[9],
+                    pressure_in=float(parts[10]) if parts[10] else 0.0,
+                    religion_in=parts[11],
+                ))
+            elif len(parts) >= 5:
+                # Fallback for old format
                 coords = parts[3].split(",")
                 results.append(TradeDestination(
                     city_name=parts[1],
@@ -2917,21 +4586,36 @@ def parse_trade_destinations_response(lines: list[str]) -> list[TradeDestination
 
 
 def build_make_trade_route(unit_index: int, target_x: int, target_y: int) -> str:
-    """Start a trade route from a trader to a target city (InGame context)."""
+    """Start a trade route from a trader to a target city (InGame context).
+
+    Bypasses CanStartOperation which falsely blocks routes when
+    CountOutgoingRoutes() returns stale/inflated counts (ghost route bug).
+    Validates manually then calls RequestOperation directly.
+    """
     return f"""
 {_lua_get_unit(unit_index)}
+if unit:GetMovesRemaining() == 0 then {_bail("ERR:NO_MOVES|Trader has no moves remaining")} end
+local destCity = CityManager.GetCityAt({target_x}, {target_y})
+if destCity == nil then {_bail("ERR:NO_CITY|No city at ({target_x},{target_y})")} end
 local opInfo = GameInfo.UnitOperations["UNITOPERATION_MAKE_TRADE_ROUTE"]
 if opInfo == nil then {_bail("ERR:NO_TRADE_OP|MAKE_TRADE_ROUTE operation not found")} end
-local opHash = opInfo.Hash
 local tParams = {{}}
 tParams[UnitOperationTypes.PARAM_X] = {target_x}
 tParams[UnitOperationTypes.PARAM_Y] = {target_y}
-local can = UnitManager.CanStartOperation(unit, opHash, nil, tParams, true)
-if not can then {_bail("ERR:CANNOT_TRADE|Cannot start trade route to ({target_x},{target_y})")} end
-UnitManager.RequestOperation(unit, opHash, tParams)
-local destCity = CityManager.GetCityAt({target_x}, {target_y})
-local destName = destCity and Locale.Lookup(destCity:GetName()) or "({target_x},{target_y})"
-print("OK:TRADE_ROUTE_STARTED|to " .. destName .. " at ({target_x},{target_y})")
+UI.LookAtPlot({target_x}, {target_y})
+UnitManager.RequestOperation(unit, opInfo.Hash, tParams)
+local destName = Locale.Lookup(destCity:GetName())
+local engineCount = 0
+local cap = 0
+pcall(function()
+    engineCount = Players[me]:GetTrade():CountOutgoingRoutes()
+    cap = Players[me]:GetTrade():GetOutgoingRouteCapacity()
+end)
+if engineCount > cap then
+    print("OK:TRADE_ROUTE_STARTED_WARN|to " .. destName .. " at ({target_x},{target_y}) — WARNING: engine route count (" .. engineCount .. ") exceeds capacity (" .. cap .. "). Route may be cancelled next turn. Save+reload to fix ghost routes.")
+else
+    print("OK:TRADE_ROUTE_STARTED|to " .. destName .. " at ({target_x},{target_y})")
+end
 print("{SENTINEL}")
 """
 
@@ -3215,7 +4899,11 @@ for i = 0, 62 do
         local relCities = st:GetNumCitiesFollowingReligion()
         local stay = p:GetCulture():GetStaycationers()
         local hasRel = p:GetReligion():GetReligionTypeCreated() >= 0
-        print("PLAYER|" .. i .. "|" .. name .. "|" .. p:GetScore() .. "|" .. sciVP .. "|" .. sciNeeded .. "|" .. diploVP .. "|" .. tourism .. "|" .. milStr .. "|" .. techs .. "|" .. civics .. "|" .. relCities .. "|" .. stay .. "|" .. tostring(hasRel))
+        local nCities = 0; for _ in p:GetCities():Members() do nCities = nCities + 1 end
+        local pSci = p:GetTechs():GetScienceYield()
+        local pCulYield = p:GetCulture():GetCultureYield()
+        local pGold = p:GetTreasury():GetGoldYield() - p:GetTreasury():GetTotalMaintenance()
+        print("PLAYER|" .. i .. "|" .. name .. "|" .. p:GetScore() .. "|" .. sciVP .. "|" .. sciNeeded .. "|" .. diploVP .. "|" .. tourism .. "|" .. milStr .. "|" .. techs .. "|" .. civics .. "|" .. relCities .. "|" .. stay .. "|" .. tostring(hasRel) .. "|" .. nCities .. "|" .. string.format("%.1f", pSci) .. "|" .. string.format("%.1f", pCulYield) .. "|" .. string.format("%.1f", pGold))
 
         -- Culture dominance (from our perspective)
         if i ~= me then
@@ -3271,6 +4959,10 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
                 religion_cities=int(p[11]),
                 staycationers=int(p[12]),
                 has_religion=p[13] == "true",
+                num_cities=int(p[14]) if len(p) > 14 else 0,
+                science_yield=float(p[15]) if len(p) > 15 else 0.0,
+                culture_yield=float(p[16]) if len(p) > 16 else 0.0,
+                gold_yield=float(p[17]) if len(p) > 17 else 0.0,
             ))
         elif line.startswith("CULTURE|"):
             p = line.split("|")
@@ -3392,6 +5084,8 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     if len(parts) < 13:
         raise ValueError(f"Overview response has {len(parts)} fields, expected 13: {lines[0]}")
     rankings: list[ScoreEntry] = []
+    explored_land = 0
+    total_land = 0
     for line in lines[1:]:
         if line.startswith("RANK|"):
             rp = line.split("|")
@@ -3401,6 +5095,11 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
                     civ_name=rp[2],
                     score=int(rp[3]),
                 ))
+        elif line.startswith("EXPLORE|"):
+            ep = line.split("|")
+            if len(ep) >= 3:
+                explored_land = int(ep[1])
+                total_land = int(ep[2])
     return GameOverview(
         turn=int(parts[0]),
         player_id=int(parts[1]),
@@ -3417,6 +5116,9 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         num_units=int(parts[12]),
         score=int(parts[13]) if len(parts) > 13 else 0,
         diplomatic_favor=int(parts[14]) if len(parts) > 14 else 0,
+        favor_per_turn=int(float(parts[15])) if len(parts) > 15 else 0,
+        explored_land=explored_land,
+        total_land=total_land,
         rankings=rankings if rankings else None,
     )
 
@@ -3448,8 +5150,8 @@ def parse_units_response(lines: list[str]) -> list[UnitInfo]:
             unit_type=parts[3],
             x=int(x_str),
             y=int(y_str),
-            moves_remaining=int(moves_cur),
-            max_moves=int(moves_max),
+            moves_remaining=int(float(moves_cur)),
+            max_moves=int(float(moves_max)),
             health=int(hp_cur),
             max_health=int(hp_max),
             combat_strength=cs,
@@ -3465,9 +5167,16 @@ def parse_units_response(lines: list[str]) -> list[UnitInfo]:
     return units
 
 
-def parse_cities_response(lines: list[str]) -> list[CityInfo]:
+def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
+    """Returns (cities, distance_lines) where distance_lines are 'A|B|N' strings."""
     cities = []
+    distances: list[str] = []
     for line in lines:
+        if line.startswith("DIST|"):
+            p = line.split("|")
+            if len(p) >= 4:
+                distances.append(f"{p[1]} <-> {p[2]}: {p[3]} tiles")
+            continue
         parts = line.split("|")
         if len(parts) < 14:
             continue
@@ -3503,8 +5212,11 @@ def parse_cities_response(lines: list[str]) -> list[CityInfo]:
             garrison_max_hp=gar_max,
             wall_hp=wall_hp,
             wall_max_hp=wall_max,
+            attack_targets=[t for t in (parts[18].split(";") if len(parts) > 18 else []) if t],
+            pillaged_districts=[d for d in (parts[19].split(";") if len(parts) > 19 else []) if d],
+            districts=[d for d in (parts[20].split(";") if len(parts) > 20 else []) if d],
         ))
-    return cities
+    return cities, distances
 
 
 def parse_map_response(lines: list[str]) -> list[TileInfo]:
@@ -3544,6 +5256,16 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
                     "RESOURCECLASS_BONUS": "bonus",
                 }
                 resource_class = _CLASS_MAP.get(res_parts[1])
+        # Parse improvement — may have :PILLAGED suffix
+        imp_raw = parts[7]
+        imp_name = None
+        imp_pillaged = False
+        if imp_raw != "none":
+            if imp_raw.endswith(":PILLAGED"):
+                imp_name = imp_raw[:-9]  # strip ":PILLAGED"
+                imp_pillaged = True
+            else:
+                imp_name = imp_raw
         tiles.append(TileInfo(
             x=int(x_str),
             y=int(y_str),
@@ -3553,13 +5275,14 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
             is_hills=parts[4] == "1",
             is_river=parts[5] == "1",
             is_coastal=parts[6] == "1",
-            improvement=None if parts[7] == "none" else parts[7],
+            improvement=imp_name,
             owner_id=int(parts[8]),
             visibility=visibility,
             is_fresh_water=is_fresh_water,
             yields=yields,
             units=unit_list,
             resource_class=resource_class,
+            is_pillaged=imp_pillaged,
         ))
     return tiles
 
@@ -3599,12 +5322,38 @@ def parse_diplomacy_response(lines: list[str]) -> list[CivInfo]:
                         text=parts[3],
                     ))
                     civs[pid].relationship_score += int(parts[2])
+        elif line.startswith("ALLIANCE|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                pid = int(parts[1])
+                if pid in civs:
+                    civs[pid].alliance_type = parts[2]
+                    if len(parts) >= 4:
+                        try:
+                            civs[pid].alliance_level = int(parts[3])
+                        except ValueError:
+                            pass
         elif line.startswith("ACTIONS|"):
             parts = line.split("|")
             if len(parts) >= 3:
                 pid = int(parts[1])
                 if pid in civs:
                     civs[pid].available_actions = parts[2].split(",")
+        elif line.startswith("PACT|"):
+            parts = line.split("|")
+            if len(parts) == 3:
+                # PACT|pid|DEFENSIVE — pact between us and pid
+                pid = int(parts[1])
+                if pid in civs:
+                    # Mark that this civ has a defensive pact (with us)
+                    pass  # We don't track pacts with us specially
+            elif len(parts) == 4:
+                # PACT|pid1|pid2|DEFENSIVE — third-party pact
+                pid1, pid2 = int(parts[1]), int(parts[2])
+                if pid1 in civs:
+                    civs[pid1].defensive_pacts.append(pid2)
+                if pid2 in civs:
+                    civs[pid2].defensive_pacts.append(pid1)
     return list(civs.values())
 
 
@@ -3615,9 +5364,15 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
     current_civic_turns = -1
     available_techs: list[str] = []
     available_civics: list[str] = []
+    completed_tech_count = 0
+    completed_civic_count = 0
 
     for line in lines:
-        if line.startswith("CURRENT|"):
+        if line.startswith("COMPLETED|"):
+            parts = line.split("|")
+            completed_tech_count = int(parts[1]) if len(parts) > 1 else 0
+            completed_civic_count = int(parts[2]) if len(parts) > 2 else 0
+        elif line.startswith("CURRENT|"):
             parts = line.split("|")
             current_research = parts[1]
             current_research_turns = int(parts[2])
@@ -3654,6 +5409,8 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
         current_civic_turns=current_civic_turns,
         available_techs=available_techs,
         available_civics=available_civics,
+        completed_tech_count=completed_tech_count,
+        completed_civic_count=completed_civic_count,
     )
 
 
@@ -3672,6 +5429,8 @@ def parse_diplomacy_sessions(lines: list[str]) -> list[DiplomacySession]:
                     other_civ_name=parts[3],
                     other_leader_name=parts[4],
                     choices=[],
+                    dialogue_text=parts[5] if len(parts) > 5 else "",
+                    reason_text=parts[6] if len(parts) > 6 else "",
                 ))
     return sessions
 
@@ -3919,12 +5678,14 @@ def parse_policies_response(lines: list[str]) -> GovernmentStatus:
 
 
 def parse_governors_response(lines: list[str]) -> GovernorStatus:
-    """Parse STATUS|, APPOINTED|, AVAILABLE| lines from build_governors_query."""
+    """Parse STATUS|, APPOINTED|, GOV_PROMO|, AVAILABLE| lines from build_governors_query."""
     pts_avail = 0
     pts_spent = 0
     can_appoint = False
     appointed: list[AppointedGovernor] = []
     available: list[GovernorInfo] = []
+    # Collect promotions keyed by governor_type, then attach after
+    promos_by_gov: dict[str, list[GovernorPromotion]] = {}
 
     for line in lines:
         if line.startswith("STATUS|"):
@@ -3944,6 +5705,15 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
                     is_established=parts[6] == "1",
                     turns_to_establish=int(parts[7]) if len(parts) >= 8 else 0,
                 ))
+        elif line.startswith("GOV_PROMO|"):
+            parts = line.split("|")
+            if len(parts) >= 5:
+                gov_type = parts[1]
+                promos_by_gov.setdefault(gov_type, []).append(GovernorPromotion(
+                    promotion_type=parts[2],
+                    name=parts[3],
+                    description=parts[4],
+                ))
         elif line.startswith("AVAILABLE|"):
             parts = line.split("|")
             if len(parts) >= 4:
@@ -3952,6 +5722,10 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
                     name=parts[2],
                     title=parts[3],
                 ))
+
+    # Attach promotions to their governors
+    for gov in appointed:
+        gov.available_promotions = promos_by_gov.get(gov.governor_type, [])
 
     return GovernorStatus(
         points_available=pts_avail,
@@ -4150,6 +5924,22 @@ def parse_great_people_response(lines: list[str]) -> list[GreatPersonInfo]:
         if line.startswith("GP|"):
             parts = line.split("|")
             if len(parts) >= 7:
+                ability = parts[7] if len(parts) >= 8 else ""
+                gold_cost = 0
+                faith_cost = 0
+                can_recruit = False
+                individual_id = 0
+                if len(parts) >= 10:
+                    cost_str = parts[8]  # "gold:X,faith:Y,recruit:true/false"
+                    for kv in cost_str.split(","):
+                        k, _, v = kv.partition(":")
+                        if k == "gold":
+                            gold_cost = int(float(v)) if v else 0
+                        elif k == "faith":
+                            faith_cost = int(float(v)) if v else 0
+                        elif k == "recruit":
+                            can_recruit = v == "true"
+                    individual_id = int(float(parts[9]))
                 results.append(GreatPersonInfo(
                     class_name=parts[1],
                     individual_name=parts[2],
@@ -4157,5 +5947,10 @@ def parse_great_people_response(lines: list[str]) -> list[GreatPersonInfo]:
                     cost=int(float(parts[4])),
                     claimant=parts[5],
                     player_points=int(float(parts[6])),
+                    ability=ability,
+                    gold_cost=gold_cost,
+                    faith_cost=faith_cost,
+                    can_recruit=can_recruit,
+                    individual_id=individual_id,
                 ))
     return results

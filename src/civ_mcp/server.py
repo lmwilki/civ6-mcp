@@ -19,6 +19,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.utilities.types import Image
 
 from civ_mcp.connection import GameConnection, LuaError
+from civ_mcp import game_launcher
 from civ_mcp.game_state import GameState
 from civ_mcp.logger import GameLogger
 from civ_mcp.web_api import create_app
@@ -143,7 +144,12 @@ async def get_cities(ctx: Context) -> str:
     Each city shows its id (needed for production commands).
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_cities", {}, lambda: _narrate(gs.get_cities, gs.narrate_cities))
+
+    async def _run():
+        cities, distances = await gs.get_cities()
+        return gs.narrate_cities(cities, distances)
+
+    return await _logged(ctx, "get_cities", {}, _run)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -201,6 +207,39 @@ async def get_settle_advisor(ctx: Context, unit_id: int) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+async def get_minimap(ctx: Context) -> str:
+    """Get an ASCII minimap of the entire game world.
+
+    Shows territory ownership, cities, terrain, and resources at a glance.
+    Legend: O=your city, X=enemy city, !=barbarian, +=luxury, *=strategic,
+    UPPER=your territory, lower=enemy territory, ~=water, ^=mountain,
+    #=hills, T=forest/jungle, .=flat land, space=unexplored.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_minimap", {},
+                         lambda: _narrate(gs.get_minimap, gs.narrate_minimap))
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_global_settle_advisor(ctx: Context) -> str:
+    """Find the best settle locations across the entire revealed map.
+
+    Unlike get_settle_advisor (which searches near a specific settler),
+    this scans all revealed land for the top 10 settle candidates.
+    Use this when deciding WHERE to send a settler, not just where to settle.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        candidates = await gs.get_global_settle_scan()
+        if not candidates:
+            return "No valid settle locations found on revealed map."
+        return gs.narrate_settle_candidates(candidates)
+
+    return await _logged(ctx, "get_global_settle_advisor", {}, _run)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
 async def get_empire_resources(ctx: Context) -> str:
     """Get a summary of all resources in and near your empire.
 
@@ -214,6 +253,19 @@ async def get_empire_resources(ctx: Context) -> str:
         return gs.narrate_empire_resources(stockpiles, owned, nearby, luxuries)
 
     return await _logged(ctx, "get_empire_resources", {}, _run)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_strategic_map(ctx: Context) -> str:
+    """Get fog-of-war boundaries and unclaimed resources across the map.
+
+    Shows how far explored territory extends from each city (in 6 directions),
+    highlighting directions that need exploration. Also lists unclaimed luxury
+    and strategic resources on revealed but unowned land.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_strategic_map", {},
+                         lambda: _narrate(gs.get_strategic_map, gs.narrate_strategic_map))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -333,6 +385,22 @@ async def assign_governor(ctx: Context, governor_type: str, city_id: int) -> str
     gs = _get_game(ctx)
     return await _logged(ctx, "assign_governor", {"governor_type": governor_type, "city_id": city_id},
                          lambda: gs.assign_governor(governor_type, city_id))
+
+
+@mcp.tool()
+async def promote_governor(ctx: Context, governor_type: str, promotion_type: str) -> str:
+    """Promote a governor with a new ability.
+
+    Args:
+        governor_type: The governor type (from get_governors output)
+        promotion_type: The promotion type (from get_governors output, shown under each governor)
+
+    Requires available governor points. Use get_governors to see available promotions.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "promote_governor",
+                         {"governor_type": governor_type, "promotion_type": promotion_type},
+                         lambda: gs.promote_governor(governor_type, promotion_type))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -472,6 +540,26 @@ async def choose_dedication(ctx: Context, dedication_index: int) -> str:
                          lambda: gs.choose_dedication(dedication_index))
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_deal_options(ctx: Context, other_player_id: int) -> str:
+    """See what both sides can trade — like opening the trade screen.
+
+    Args:
+        other_player_id: The player ID (from get_diplomacy output)
+
+    Shows gold, resources, favor, open borders status, and alliance eligibility
+    for both you and the other civilization. Use before propose_trade to see
+    what's available.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        opts = await gs.get_deal_options(other_player_id)
+        return GameState.narrate_deal_options(opts)
+
+    return await _logged(ctx, "get_deal_options", {"other_player_id": other_player_id}, _run)
+
+
 @mcp.tool()
 async def respond_to_deal(ctx: Context, other_player_id: int, accept: bool) -> str:
     """Accept or reject a pending trade deal.
@@ -485,6 +573,96 @@ async def respond_to_deal(ctx: Context, other_player_id: int, accept: bool) -> s
     gs = _get_game(ctx)
     return await _logged(ctx, "respond_to_deal", {"other_player_id": other_player_id, "accept": accept},
                          lambda: gs.respond_to_deal(other_player_id, accept))
+
+
+@mcp.tool()
+async def propose_trade(
+    ctx: Context,
+    other_player_id: int,
+    offer_gold: int = 0,
+    offer_gold_per_turn: int = 0,
+    offer_resources: str = "",
+    offer_favor: int = 0,
+    offer_open_borders: bool = False,
+    request_gold: int = 0,
+    request_gold_per_turn: int = 0,
+    request_resources: str = "",
+    request_favor: int = 0,
+    request_open_borders: bool = False,
+    joint_war_target: int = 0,
+) -> str:
+    """Propose a trade deal to another civilization.
+
+    Args:
+        other_player_id: The player ID (from get_diplomacy output)
+        offer_gold: Lump sum gold to give them
+        offer_gold_per_turn: Gold per turn to give them (30-turn duration)
+        offer_resources: Comma-separated resource types to offer, e.g. "RESOURCE_SILK,RESOURCE_TEA"
+        offer_favor: Diplomatic favor to offer
+        offer_open_borders: True to offer our open borders
+        request_gold: Lump sum gold to request from them
+        request_gold_per_turn: Gold per turn to request (30-turn duration)
+        request_resources: Comma-separated resource types to request
+        request_favor: Diplomatic favor to request from them
+        request_open_borders: True to request their open borders
+        joint_war_target: Player ID of a third civ to declare joint war against
+
+    Examples: Gift 100 gold: offer_gold=100. Trade silk for 3 gpt: offer_resources="RESOURCE_SILK", request_gold_per_turn=3.
+    Mutual open borders: offer_open_borders=True, request_open_borders=True.
+    Trade favor for gold: offer_favor=20, request_gold=100.
+    """
+    gs = _get_game(ctx)
+
+    offer_items: list[dict] = []
+    request_items: list[dict] = []
+    if offer_gold > 0:
+        offer_items.append({"type": "GOLD", "amount": offer_gold, "duration": 0})
+    if offer_gold_per_turn > 0:
+        offer_items.append({"type": "GOLD", "amount": offer_gold_per_turn, "duration": 30})
+    for res in (r.strip() for r in offer_resources.split(",") if r.strip()):
+        offer_items.append({"type": "RESOURCE", "name": res, "amount": 1, "duration": 30})
+    if offer_favor > 0:
+        offer_items.append({"type": "FAVOR", "amount": offer_favor})
+    if offer_open_borders:
+        offer_items.append({"type": "AGREEMENT", "subtype": "OPEN_BORDERS"})
+    if request_gold > 0:
+        request_items.append({"type": "GOLD", "amount": request_gold, "duration": 0})
+    if request_gold_per_turn > 0:
+        request_items.append({"type": "GOLD", "amount": request_gold_per_turn, "duration": 30})
+    for res in (r.strip() for r in request_resources.split(",") if r.strip()):
+        request_items.append({"type": "RESOURCE", "name": res, "amount": 1, "duration": 30})
+    if request_favor > 0:
+        request_items.append({"type": "FAVOR", "amount": request_favor})
+    if request_open_borders:
+        request_items.append({"type": "AGREEMENT", "subtype": "OPEN_BORDERS"})
+    if joint_war_target > 0:
+        # Joint war is mutual — both sides commit
+        offer_items.append({"type": "AGREEMENT", "subtype": "JOINT_WAR"})
+        request_items.append({"type": "AGREEMENT", "subtype": "JOINT_WAR"})
+
+    if not offer_items and not request_items:
+        return "Error: must specify at least one offer or request item"
+
+    return await _logged(
+        ctx, "propose_trade",
+        {"other_player_id": other_player_id, "offer_items": offer_items, "request_items": request_items},
+        lambda: gs.propose_trade(other_player_id, offer_items, request_items),
+    )
+
+
+@mcp.tool()
+async def propose_peace(ctx: Context, other_player_id: int) -> str:
+    """Propose white peace to a civilization you're at war with.
+
+    Args:
+        other_player_id: The player ID (from get_diplomacy output)
+
+    Requires being at war and past the 10-turn war cooldown.
+    The AI may accept or reject based on war score and relationship.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "propose_peace", {"other_player_id": other_player_id},
+                         lambda: gs.propose_peace(other_player_id))
 
 
 @mcp.tool()
@@ -549,6 +727,65 @@ async def send_diplomatic_action(ctx: Context, other_player_id: int, action: str
     return await _logged(ctx, "send_diplomatic_action",
                          {"other_player_id": other_player_id, "action": action},
                          lambda: gs.send_diplomatic_action(other_player_id, action))
+
+
+@mcp.tool()
+async def form_alliance(ctx: Context, other_player_id: int, alliance_type: str = "MILITARY") -> str:
+    """Form an alliance with another civilization.
+
+    Args:
+        other_player_id: The player ID (from get_diplomacy output)
+        alliance_type: One of: MILITARY, RESEARCH, CULTURAL, ECONOMIC, RELIGIOUS
+
+    Requires declared friendship and Diplomatic Service civic.
+    Use get_deal_options to check alliance eligibility first.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "form_alliance",
+                         {"other_player_id": other_player_id, "alliance_type": alliance_type},
+                         lambda: gs.form_alliance(other_player_id, alliance_type.upper()))
+
+
+@mcp.tool()
+async def execute_city_action(
+    ctx: Context,
+    city_id: int,
+    action: str,
+    target_x: Optional[int] = None,
+    target_y: Optional[int] = None,
+) -> str:
+    """Issue a command to a city.
+
+    Args:
+        city_id: City ID (from get_cities output)
+        action: Currently supported: 'attack' (city ranged attack)
+        target_x: Target X coordinate (required for attack)
+        target_y: Target Y coordinate (required for attack)
+
+    For attack: city must have walls and not have fired this turn.
+    Range is 2 tiles from city center.
+
+    For captured/disloyal city decisions (city_id is ignored, uses pending city):
+    - 'keep': Keep the city (works for both captured and loyalty-flipped cities)
+    - 'reject': Reject/free a disloyal city (loyalty flip only)
+    - 'raze': Raze a captured city (military conquest only)
+    - 'liberate_founder': Liberate to original founder
+    - 'liberate_previous': Liberate to previous owner
+    """
+    gs = _get_game(ctx)
+    match action:
+        case "attack":
+            if target_x is None or target_y is None:
+                return "Error: attack requires target_x and target_y"
+            return await _logged(ctx, "city_attack",
+                                 {"city_id": city_id, "x": target_x, "y": target_y},
+                                 lambda: gs.city_attack(city_id, target_x, target_y))
+        case "keep" | "reject" | "raze" | "liberate_founder" | "liberate_previous":
+            return await _logged(ctx, "resolve_city_capture",
+                                 {"action": action},
+                                 lambda: gs.resolve_city_capture(action))
+        case _:
+            return f"Error: Unknown city action '{action}'. Available: attack, keep, reject, raze, liberate_founder, liberate_previous"
 
 
 @mcp.tool()
@@ -639,6 +876,17 @@ async def execute_unit_action(
 
 
 @mcp.tool()
+async def skip_remaining_units(ctx: Context) -> str:
+    """Skip all units that still have moves remaining.
+
+    Useful after diplomacy encounters invalidate all standing orders.
+    Uses GameCore FinishMoves on each unit — fast, reliable, no async issues.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "skip_remaining_units", {}, lambda: gs.skip_remaining_units())
+
+
+@mcp.tool()
 async def set_city_production(
     ctx: Context, city_id: int, item_type: str, item_name: str,
     target_x: int | None = None, target_y: int | None = None,
@@ -712,6 +960,18 @@ async def end_turn(ctx: Context) -> str:
 # ---------------------------------------------------------------------------
 # Trade routes
 # ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_trade_routes(ctx: Context) -> str:
+    """Get trade route capacity, active routes, and trader status.
+
+    Shows how many routes are active vs capacity, and lists all trader
+    units with their positions and whether they're idle or on a route.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "get_trade_routes", {},
+                         lambda: _narrate(gs.get_trade_routes, gs.narrate_trade_routes))
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -838,6 +1098,52 @@ async def get_great_people(ctx: Context) -> str:
         return gs.narrate_great_people(gp)
 
     return await _logged(ctx, "get_great_people", {}, _run)
+
+
+@mcp.tool()
+async def recruit_great_person(ctx: Context, individual_id: int) -> str:
+    """Recruit a Great Person using accumulated GP points.
+
+    Args:
+        individual_id: The individual's ID (from get_great_people output, shown after ability)
+
+    Requires enough Great Person points for that class.
+    The GP spawns in your capital. Use get_great_people to check [CAN RECRUIT] status.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "recruit_great_person", {"id": individual_id},
+                         lambda: gs.recruit_great_person(individual_id))
+
+
+@mcp.tool()
+async def patronize_great_person(ctx: Context, individual_id: int, yield_type: str = "YIELD_GOLD") -> str:
+    """Buy a Great Person instantly with gold or faith.
+
+    Args:
+        individual_id: The individual's ID (from get_great_people output)
+        yield_type: YIELD_GOLD (default) or YIELD_FAITH
+
+    Costs shown in get_great_people output under "Patronize:".
+    Requires enough gold/faith to cover the cost.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "patronize_great_person", {"id": individual_id, "yield": yield_type},
+                         lambda: gs.patronize_great_person(individual_id, yield_type))
+
+
+@mcp.tool()
+async def reject_great_person(ctx: Context, individual_id: int) -> str:
+    """Pass on a Great Person (skip to the next one in that class).
+
+    Args:
+        individual_id: The individual's ID (from get_great_people output)
+
+    Costs faith. The next Great Person in that class becomes available.
+    Use when you don't want the current GP and want to save points for a better one.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "reject_great_person", {"id": individual_id},
+                         lambda: gs.reject_great_person(individual_id))
 
 
 # ---------------------------------------------------------------------------
@@ -1018,6 +1324,116 @@ if let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String:
         return Image(data=Path(tmp_path).read_bytes(), format="png")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Save / Load
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def quicksave(ctx: Context) -> str:
+    """Quicksave the current game.
+
+    Creates a quicksave that can be loaded later with load_save.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "quicksave", {}, gs.quicksave)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def list_saves(ctx: Context) -> str:
+    """List available save files (normal, autosave, quicksave).
+
+    Returns indexed list of saves. Use load_save(save_index=N) to load one.
+    Call this before load_save to see what's available.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "list_saves", {}, gs.list_saves)
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def load_save(ctx: Context, save_index: int) -> str:
+    """Load a save file by index from the most recent list_saves() result.
+
+    Args:
+        save_index: Index number from list_saves output (1-based)
+
+    The game will reload entirely. Wait ~10 seconds after calling this,
+    then use get_game_overview to verify the loaded state.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "load_save", {"save_index": save_index},
+                         lambda: gs.load_save(save_index))
+
+
+# ---------------------------------------------------------------------------
+# Game Lifecycle (kill / launch / load from menu)
+# ---------------------------------------------------------------------------
+# These tools do NOT require a FireTuner connection — they manage the game
+# process itself. Hardcoded to Civ 6 only (no arbitrary system commands).
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def kill_game(ctx: Context) -> str:
+    """Kill the Civ 6 game process and wait for Steam to deregister.
+
+    Only kills Civ 6 processes. Waits ~10 seconds for Steam to deregister
+    so the game can be relaunched cleanly.
+    """
+    return await game_launcher.kill_game()
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def launch_game(ctx: Context) -> str:
+    """Launch Civ 6 via Steam.
+
+    Starts the game and waits for the process to appear (~15-30 seconds).
+    The game will be at the main menu after launch — use load_save or
+    restart_and_load to load a specific save.
+
+    NOTE: FireTuner connection is NOT available at the main menu.
+    Only in-game MCP tools work after a save is loaded.
+    """
+    return await game_launcher.launch_game()
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def load_save_from_menu(ctx: Context, save_name: str | None = None) -> str:
+    """Navigate the main menu to load a save via OCR-guided clicking.
+
+    Args:
+        save_name: Autosave name (e.g. "AutoSave_0221"). If not provided,
+                   loads the most recent autosave.
+
+    Requires the game to be running and at the main menu. Uses macOS Vision
+    OCR to find and click menu elements. Takes 30-90 seconds.
+
+    After loading, wait ~10 seconds then call get_game_overview to verify.
+
+    Requires pyobjc: uv pip install 'civ6-mcp[launcher]'
+    """
+    return await game_launcher.load_save_from_menu(save_name)
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def restart_and_load(ctx: Context, save_name: str | None = None) -> str:
+    """Full game recovery: kill, relaunch, and load a save.
+
+    Args:
+        save_name: Autosave name (e.g. "AutoSave_0221"). If not provided,
+                   loads the most recent autosave.
+
+    This is the recommended tool for recovering from game hangs (e.g. AI turn
+    processing stuck in infinite loop). Takes 60-120 seconds total:
+    1. Kills the game process
+    2. Waits for Steam to deregister (~10s)
+    3. Relaunches via Steam (~15-30s for process start + main menu)
+    4. Navigates menus via OCR to load the save (~30-60s)
+
+    After completion, wait ~10 seconds then call get_game_overview to verify.
+    """
+    return await game_launcher.restart_and_load(save_name)
 
 
 async def _narrate(query_fn: Callable[[], Awaitable[Any]], narrate_fn: Callable[..., str]) -> str:
