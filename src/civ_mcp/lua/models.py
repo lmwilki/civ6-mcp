@@ -29,6 +29,7 @@ class RivalSnapshot:
     faith: float
     sci_vp: int
     diplo_vp: int
+    stockpiles: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -288,6 +289,7 @@ class TurnSnapshot:
     cities: dict[int, CitySnapshot]    # keyed by city_id
     current_research: str
     current_civic: str
+    stockpiles: list[ResourceStockpile] = field(default_factory=list)
 
 
 @dataclass

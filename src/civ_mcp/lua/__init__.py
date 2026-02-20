@@ -142,6 +142,7 @@ from civ_mcp.lua.cities import (  # noqa: F401
 from civ_mcp.lua.map import (  # noqa: F401
     build_district_advisor_query,
     build_empire_resources_query,
+    build_stockpile_query,
     build_found_city,
     build_global_settle_scan,
     build_map_area_query,
@@ -153,6 +154,7 @@ from civ_mcp.lua.map import (  # noqa: F401
     build_verify_city_at,
     parse_district_advisor_response,
     parse_empire_resources_response,
+    parse_stockpile_response,
     parse_map_response,
     parse_minimap_response,
     parse_purchasable_tiles_response,

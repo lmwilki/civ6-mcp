@@ -908,6 +908,13 @@ class GameState:
         city_lines = await self.conn.execute_write(lq.build_cities_query())
         cities, _ = lq.parse_cities_response(city_lines)
 
+        try:
+            stk_lines = await self.conn.execute_write(lq.build_stockpile_query())
+            stockpiles = lq.parse_stockpile_response(stk_lines)
+        except Exception:
+            log.debug("Stockpile query failed", exc_info=True)
+            stockpiles = []
+
         return lq.TurnSnapshot(
             turn=overview.turn,
             units={u.unit_id: u for u in units},
@@ -924,6 +931,7 @@ class GameState:
             },
             current_research=overview.current_research,
             current_civic=overview.current_civic,
+            stockpiles=stockpiles,
         )
 
     @staticmethod
@@ -999,6 +1007,18 @@ class GameState:
                 message=f"Civic complete: {before.current_civic}! Now: {after.current_civic}.",
             ))
 
+        # --- Stockpile events ---
+        before_stk = {s.name: s for s in before.stockpiles}
+        after_stk = {s.name: s for s in after.stockpiles}
+        for name, sa in after_stk.items():
+            sb = before_stk.get(name)
+            if sb and sb.amount > 0 and sa.amount == 0:
+                net = sa.per_turn - sa.demand + sa.imported
+                events.append(lq.TurnEvent(
+                    priority=2, category="resources",
+                    message=f"DEPLETED: {name} stockpile hit 0 ({net:+d}/t) — units requiring {name} may be disbanded.",
+                ))
+
         events.sort(key=lambda e: e.priority)
         return events
 
@@ -1008,9 +1028,19 @@ class GameState:
         turn_after: int,
         events: list[lq.TurnEvent],
         notifications: list[lq.GameNotification],
+        stockpiles: list[lq.ResourceStockpile] | None = None,
     ) -> str:
         """Format turn events and notifications into a scannable report."""
         lines = [f"Turn {turn_before} -> {turn_after}"]
+
+        if stockpiles:
+            visible = [s for s in stockpiles if s.amount > 0 or s.per_turn > 0 or s.demand > 0]
+            if visible:
+                parts = []
+                for s in visible:
+                    net = s.per_turn - s.demand + s.imported
+                    parts.append(f"{s.name} {s.amount}/{s.cap} ({net:+d}/t)")
+                lines.append(f"Resources: {', '.join(parts)}")
 
         if events:
             lines.append("")

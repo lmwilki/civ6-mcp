@@ -739,4 +739,7 @@ async def execute_end_turn(gs: GameState) -> str:
                 ))
 
     events.sort(key=lambda e: e.priority)
-    return gs._build_turn_report(turn_before, turn_after, events, notifications)
+    return gs._build_turn_report(
+        turn_before, turn_after, events, notifications,
+        snap_after.stockpiles if snap_after else None,
+    )

@@ -1092,6 +1092,13 @@ async def end_turn(
                 "era_score": ov.era_score,
                 "leader_score": leader_score,
             }
+            # Own strategic resource stockpiles from post-turn snapshot
+            if gs._last_snapshot and gs._last_snapshot.stockpiles:
+                score["stockpiles"] = {
+                    s.name: {"amount": s.amount, "per_turn": s.per_turn, "demand": s.demand}
+                    for s in gs._last_snapshot.stockpiles
+                    if s.amount > 0 or s.per_turn > 0 or s.demand > 0
+                }
         except Exception:
             log.warning("Diary: failed to capture overview", exc_info=True)
 
@@ -1106,6 +1113,7 @@ async def end_turn(
                     "sci": r.sci, "cul": r.cul, "gold": r.gold,
                     "mil": r.mil, "techs": r.techs, "civics": r.civics,
                     "faith": r.faith, "sci_vp": r.sci_vp, "diplo_vp": r.diplo_vp,
+                    "stockpiles": r.stockpiles,
                 }
                 for r in rival_snaps
             ]

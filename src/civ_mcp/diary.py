@@ -49,7 +49,15 @@ def format_diary_entry(e: dict) -> str:
         f"Explored: {s.get('exploration_pct', '?')}% | "
         f"Era: {s.get('era', '?')} ({s.get('era_score', '?')})"
     )
+    stk = s.get("stockpiles")
+    stk_line = ""
+    if stk:
+        parts = []
+        for name, v in stk.items():
+            net = v.get("per_turn", 0) - v.get("demand", 0)
+            parts.append(f"{name}: {v['amount']} ({net:+d}/t)")
+        stk_line = "\n  Resources: " + ", ".join(parts)
     # NOTE: "rivals" key exists in JSONL for research/analysis but is
     # intentionally NOT displayed here — the agent shouldn't see hidden AI stats.
     ref_lines = "\n".join(f"  {k}: {v}" for k, v in r.items())
-    return f"{header}\n{score_line}\n{ref_lines}"
+    return f"{header}\n{score_line}{stk_line}\n{ref_lines}"

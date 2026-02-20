@@ -897,6 +897,48 @@ def parse_settle_advisor_response(lines: list[str]) -> list[SettleCandidate]:
     return candidates
 
 
+def build_stockpile_query() -> str:
+    """Lightweight strategic resource stockpile query (InGame context).
+
+    Only emits STOCKPILE lines — no tile scanning. Used for turn snapshots.
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local pRes = Players[me]:GetResources()
+for row in GameInfo.Resources() do
+    if row.ResourceClassType == "RESOURCECLASS_STRATEGIC" and pRes:IsResourceVisible(row.Index) then
+        local amt = pRes:GetResourceAmount(row.Index)
+        local cap = pRes:GetResourceStockpileCap(row.Index)
+        local accum = pRes:GetResourceAccumulationPerTurn(row.Index)
+        local demand = pRes:GetUnitResourceDemandPerTurn(row.Index)
+        local imported = pRes:GetResourceImportPerTurn(row.Index)
+        local rName = row.ResourceType:gsub("RESOURCE_", "")
+        print("STOCKPILE|" .. rName .. "|" .. amt .. "|" .. cap .. "|" .. accum .. "|" .. demand .. "|" .. imported)
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_stockpile_response(lines: list[str]) -> list[ResourceStockpile]:
+    """Parse STOCKPILE lines into ResourceStockpile objects."""
+    stockpiles = []
+    for line in lines:
+        if line.startswith("STOCKPILE|"):
+            parts = line.split("|")
+            if len(parts) < 7:
+                continue
+            stockpiles.append(ResourceStockpile(
+                name=parts[1],
+                amount=int(parts[2]),
+                cap=int(parts[3]),
+                per_turn=int(parts[4]),
+                demand=int(parts[5]),
+                imported=int(parts[6]),
+            ))
+    return stockpiles
+
+
 def parse_empire_resources_response(
     lines: list[str],
 ) -> tuple[list[ResourceStockpile], list[OwnedResource], list[NearbyResource], dict[str, int]]:

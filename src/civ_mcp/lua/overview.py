@@ -311,7 +311,8 @@ def build_rival_snapshot_query() -> str:
     """Lightweight per-rival stats for diary power curves. InGame context.
 
     Output: one RIVAL| line per met major civ (excluding self).
-    Format: RIVAL|pid|name|score|cities|pop|sci|cul|gold|mil|techs|civics|faith|sciVP|diploVP
+    Format: RIVAL|pid|name|score|cities|pop|sci|cul|gold|mil|techs|civics|faith|sciVP|diploVP|resources
+    resources: comma-separated RESOURCE:amount pairs for non-zero stockpiles, e.g. IRON:5,HORSES:2
     """
     return (
         'local me = Game.GetLocalPlayer() '
@@ -335,10 +336,22 @@ def build_rival_snapshot_query() -> str:
         '    local diploVP = st:GetDiplomaticVictoryPoints() '
         '    local faith = 0 '
         '    pcall(function() faith = p:GetReligion():GetFaithBalance() end) '
+        '    local resStr = "" '
+        '    local pRes = p:GetResources() '
+        '    for row in GameInfo.Resources() do '
+        '      if row.ResourceClassType == "RESOURCECLASS_STRATEGIC" then '
+        '        local amt = 0 '
+        '        pcall(function() amt = pRes:GetResourceAmount(row.Index) end) '
+        '        if amt and amt > 0 then '
+        '          local rName = row.ResourceType:gsub("RESOURCE_", "") '
+        '          resStr = resStr .. (resStr ~= "" and "," or "") .. rName .. ":" .. amt '
+        '        end '
+        '      end '
+        '    end '
         '    print("RIVAL|" .. i .. "|" .. name .. "|" .. score .. "|" .. nCities .. "|" .. totalPop '
         '      .. "|" .. string.format("%.1f", sci) .. "|" .. string.format("%.1f", cul) '
         '      .. "|" .. string.format("%.1f", gold) .. "|" .. mil .. "|" .. techs .. "|" .. civics '
-        '      .. "|" .. string.format("%.1f", faith) .. "|" .. sciVP .. "|" .. diploVP) '
+        '      .. "|" .. string.format("%.1f", faith) .. "|" .. sciVP .. "|" .. diploVP .. "|" .. resStr) '
         '  end '
         'end '
         f'print("{SENTINEL}")'
@@ -354,6 +367,15 @@ def parse_rival_snapshot_response(lines: list[str]) -> list[RivalSnapshot]:
         p = line.split("|")
         if len(p) < 15:
             continue
+        stockpiles = {}
+        if len(p) > 15 and p[15]:
+            for pair in p[15].split(","):
+                if ":" in pair:
+                    k, v = pair.split(":", 1)
+                    try:
+                        stockpiles[k] = int(v)
+                    except ValueError:
+                        pass
         rivals.append(RivalSnapshot(
             id=int(p[1]),
             name=p[2],
@@ -369,5 +391,6 @@ def parse_rival_snapshot_response(lines: list[str]) -> list[RivalSnapshot]:
             faith=round(float(p[12]), 1),
             sci_vp=int(float(p[13])),
             diplo_vp=int(float(p[14])),
+            stockpiles=stockpiles,
         ))
     return rivals
