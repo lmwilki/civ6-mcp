@@ -63,7 +63,19 @@ for i, u in Players[me]:GetUnits():Members() do
                 end
             end
             local opStr = table.concat(availOps, ",")
-            print(uid.."|"..name.."|"..x.."|"..y.."|"..rank.."|"..xp.."|"..moves.."|"..cityName.."|"..cityOwner.."|"..opStr)
+            -- Current mission: GetSpyOperation returns Index; look up name in GameInfo
+            local currentOp = "none"
+            local ok_op, opIdx = pcall(function() return u:GetSpyOperation() end)
+            if ok_op and opIdx and opIdx >= 0 then
+                for row in GameInfo.UnitOperations() do
+                    if row.Index == opIdx then
+                        -- Strip "UNITOPERATION_SPY_" prefix for readability
+                        currentOp = row.OperationType:gsub("UNITOPERATION_SPY_", ""):gsub("UNITOPERATION_", "")
+                        break
+                    end
+                end
+            end
+            print(uid.."|"..name.."|"..x.."|"..y.."|"..rank.."|"..xp.."|"..moves.."|"..cityName.."|"..cityOwner.."|"..opStr.."|"..currentOp)
         end
     end
 end
@@ -92,6 +104,7 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
             city_owner = int(parts[8])
             ops_str = parts[9].strip()
             available_ops = [op for op in ops_str.split(",") if op]
+            current_mission = parts[10].strip() if len(parts) > 10 else "none"
             spies.append(SpyInfo(
                 unit_id=uid,
                 unit_index=uid % 65536,
@@ -104,6 +117,7 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
                 city_name=city_name,
                 city_owner=city_owner,
                 available_ops=available_ops,
+                current_mission=current_mission,
             ))
         except (ValueError, IndexError):
             continue

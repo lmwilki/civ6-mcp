@@ -71,9 +71,10 @@ def narrate_spies(spies: list[lq.SpyInfo]) -> str:
             owner_tag = " [own]" if s.city_owner == 0 else ""
             loc = f"{s.city_name}{owner_tag} ({s.x},{s.y})"
         ops = ", ".join(s.available_ops) if s.available_ops else "none"
+        mission_tag = f" | mission: {s.current_mission}" if s.current_mission != "none" else ""
         lines.append(
             f"  id:{s.unit_id} [{rank_name}] {s.name} — at {loc} | moves:{s.moves}"
-            f" | xp:{s.xp} | ops: {ops}"
+            f" | xp:{s.xp}{mission_tag} | ops: {ops}"
         )
     lines.append("")
     lines.append("Actions:")

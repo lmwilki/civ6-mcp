@@ -113,6 +113,7 @@ class SpyInfo:
     city_name: str  # city at current position, or "none"
     city_owner: int  # player ID of city owner, or -1
     available_ops: list[str]  # e.g. ["TRAVEL", "COUNTERSPY"]
+    current_mission: str = "none"  # active mission e.g. "COUNTERSPY", or "none"
 
 
 @dataclass
