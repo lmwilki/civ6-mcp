@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from civ_mcp import lua as lq
+import civ_mcp.narrate as nr
 from civ_mcp.connection import LuaError
 
 if TYPE_CHECKING:
@@ -108,11 +109,7 @@ async def execute_end_turn(gs: GameState) -> str:
     try:
         deals = await gs.get_pending_deals()
         if deals:
-            civ_names = [d.other_civ_name for d in deals]
-            return (
-                f"Cannot end turn: incoming trade deal from {', '.join(civ_names)}. "
-                f"Use get_pending_trades to review, then respond_to_trade to accept/reject."
-            )
+            return "Cannot end turn: incoming trade deal pending.\n" + nr.narrate_pending_deals(deals)
     except Exception:
         log.debug("Pending deal check failed", exc_info=True)
 
@@ -598,11 +595,7 @@ async def execute_end_turn(gs: GameState) -> str:
         try:
             mid_deals = await gs.get_pending_deals()
             if mid_deals:
-                civ_names = [d.other_civ_name for d in mid_deals]
-                return (
-                    f"Turn paused — incoming trade deal from {', '.join(civ_names)}. "
-                    f"Use get_pending_trades to review, then respond_to_trade to accept/reject."
-                )
+                return "Turn paused — incoming trade deal:\n" + nr.narrate_pending_deals(mid_deals)
         except Exception:
             log.debug("Mid-turn deal check failed", exc_info=True)
 
@@ -689,10 +682,10 @@ async def execute_end_turn(gs: GameState) -> str:
     # Check for pending trade deals (AI may propose during their turn)
     try:
         deals = await gs.get_pending_deals()
-        for d in deals:
+        if deals:
             events.append(lq.TurnEvent(
                 priority=2, category="diplomacy",
-                message=f"Trade deal offered by {d.other_player_name} ({d.other_leader_name}). Use get_pending_trades to review.",
+                message=nr.narrate_pending_deals(deals),
             ))
     except Exception:
         log.debug("Trade deal check failed", exc_info=True)
