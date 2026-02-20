@@ -97,9 +97,12 @@ def build_set_policies(assignments: dict[int, str]) -> str:
         pre_checks.append(
             f'local pe_{slot_idx} = GameInfo.Policies["{policy_type}"]; '
             f"if pe_{slot_idx} == nil then {_bail(f'ERR:POLICY_NOT_FOUND|{policy_type}')} end; "
-            # CanSlotPolicy pre-check (reliable before UNLOCK_POLICIES)
+            # CanSlotPolicy pre-check (reliable before UNLOCK_POLICIES).
+            # CanSlotPolicy returns false when the policy is already in that exact slot,
+            # so we also check alreadyThere to avoid false positives on replace-in-place.
             f"local canSlot_{slot_idx} = pCulture:CanSlotPolicy(pe_{slot_idx}.Index, {slot_idx}); "
-            f"if not canSlot_{slot_idx} then "
+            f"local alreadyThere_{slot_idx} = (pCulture:GetSlotPolicy({slot_idx}) == pe_{slot_idx}.Index); "
+            f"if not canSlot_{slot_idx} and not alreadyThere_{slot_idx} then "
             f'local pType_{slot_idx} = pe_{slot_idx}.GovernmentSlotType or "unknown"; '
             f"local st_{slot_idx} = pCulture:GetSlotType({slot_idx}); "
             f'local sName_{slot_idx} = slotNames[st_{slot_idx}] or ("type_" .. st_{slot_idx}); '

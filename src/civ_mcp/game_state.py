@@ -633,7 +633,7 @@ class GameState:
         lua = lq.build_set_policies(assignments)
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
-        if not result.startswith("ERR"):
+        if not result.startswith("Error"):
             # Post-verify: RequestPolicyChanges can silently no-op (e.g. during era transitions)
             status = await self.get_policies()
             slot_map = {s.slot_index: s.current_policy for s in status.slots}
