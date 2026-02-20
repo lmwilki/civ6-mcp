@@ -170,7 +170,7 @@ Civilization VI        <- Game is the TCP server
 
 The server maintains a persistent TCP connection to Civ 6 via the FireTuner debug protocol. It generates Lua code, executes it inside the game's two Lua VMs (GameCore for reading state, InGame for issuing commands), parses the output, and returns narrated text to the LLM.
 
-The repo includes an [AGENTS.md](AGENTS.md) playbook (symlinked as `CLAUDE.md` for Claude Code) with detailed instructions for agents: turn loop, combat, diplomacy, common pitfalls. See [DEVLOG.md](DEVLOG.md) for the full development story, including reverse-engineering the FireTuner protocol and the many API quirks discovered along the way.
+The repo includes an [AGENTS.md](AGENTS.md) playbook (symlinked as `CLAUDE.md` for Claude Code) with detailed instructions for agents: turn loop, combat, diplomacy, common pitfalls. See the [devlog](docs/devlog/) for the full development story, including reverse-engineering the FireTuner protocol and the many API quirks discovered along the way.
 
 ## Requirements
 
