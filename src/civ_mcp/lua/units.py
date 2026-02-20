@@ -430,7 +430,8 @@ for pid = 0, 63 do
                         local name = entry and entry.UnitType or "UNKNOWN"
                         local hp = bu:GetMaxDamage() - bu:GetDamage()
                         local brs = entry and entry.RangedCombat or 0
-                        print("THREAT|" .. pid .. "|" .. ownerName:gsub("|","/") .. "|" .. name .. "|" .. bx .. "," .. by .. "|" .. hp .. "/" .. bu:GetMaxDamage() .. "|CS:" .. bcs .. "|RS:" .. brs .. "|dist:" .. minDist)
+                        local isCS = Players[pid]:IsMajor() and "0" or "1"
+                        print("THREAT|" .. pid .. "|" .. ownerName:gsub("|","/") .. "|" .. name .. "|" .. bx .. "," .. by .. "|" .. hp .. "/" .. bu:GetMaxDamage() .. "|CS:" .. bcs .. "|RS:" .. brs .. "|dist:" .. minDist .. "|cs:" .. isCS)
                         found = true
                     end
                 end
@@ -638,15 +639,21 @@ if plot:IsImprovementPillaged() then
         end
     end
 end
-if not UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, params) then
-    local featIdx = plot:GetFeatureType()
-    if featIdx >= 0 then
-        local feat = GameInfo.Features[featIdx]
-        local featName = feat and Locale.Lookup(feat.Name) or ("feature " .. featIdx)
-        {_bail_lua(f'"ERR:CANNOT_IMPROVE|Cannot build {improvement_name} here — " .. featName .. " on tile may need tech to remove"')}
-    else
-        {_bail(f"ERR:CANNOT_IMPROVE|Builder cannot build {improvement_name} here (check tech requirements or tile type)")}
+if unit:GetMovesRemaining() <= 0 then
+    print("ERR:CANNOT_IMPROVE|Builder has no moves remaining this turn")
+    print("{SENTINEL}"); return
+end
+local canBuild, opResult = UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, params, true)
+if not canBuild then
+    local reasons = {{}}
+    if opResult and opResult.FailureReasons then
+        for _, r in ipairs(opResult.FailureReasons) do
+            table.insert(reasons, tostring(r))
+        end
     end
+    local reasonStr = #reasons > 0 and table.concat(reasons, "; ") or "unknown reason"
+    print("ERR:CANNOT_IMPROVE|" .. reasonStr)
+    print("{SENTINEL}"); return
 end
 UnitManager.RequestOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, params)
 print("OK:IMPROVING|{improvement_name}|" .. unit:GetX() .. "," .. unit:GetY())
@@ -724,6 +731,7 @@ def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
                 distance=dist,
                 owner_id=int(parts[1]),
                 owner_name=parts[2],
+                is_city_state=len(parts) > 9 and parts[9].startswith("cs:") and parts[9][3:] == "1",
             ))
         elif len(parts) >= 7:
             # Legacy format fallback: THREAT|unit_type|x,y|hp/max|CS:n|RS:n|dist:n

@@ -91,7 +91,24 @@ for i, c in Players[me]:GetCities():Members() do
         loyPT = cult:GetLoyaltyPerTurn()
         loyFlip = cult:GetTurnsToConversion()
     end
-    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax .. "|" .. table.concat(cityTargets, ";") .. "|" .. table.concat(pillDistricts, ";") .. "|" .. table.concat(distLocs, ";") .. "|" .. string.format("%.1f|%.1f|%.1f|%d", loy, loyMax, loyPT, loyFlip) .. "|" .. string.format("%.1f|%.1f|%d", g:GetFoodSurplus(), g:GetFood(), g:GetGrowthThreshold()) .. "|" .. table.concat(pillBuildings, ";"))
+    local garrisonUnit = ""
+    local garFound = false
+    local garUnitsAt = Map.GetUnitsAt(c:GetX(), c:GetY())
+    if garUnitsAt then
+        for gu in garUnitsAt:Units() do
+            if not garFound and gu:GetOwner() == me then
+                local guInfo = GameInfo.Units[gu:GetType()]
+                if guInfo then
+                    local fc = guInfo.FormationClass
+                    if fc == "FORMATION_CLASS_LAND_COMBAT" or fc == "FORMATION_CLASS_NAVAL_COMBAT" then
+                        garrisonUnit = guInfo.UnitType
+                        garFound = true
+                    end
+                end
+            end
+        end
+    end
+    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax .. "|" .. table.concat(cityTargets, ";") .. "|" .. table.concat(pillDistricts, ";") .. "|" .. table.concat(distLocs, ";") .. "|" .. string.format("%.1f|%.1f|%.1f|%d", loy, loyMax, loyPT, loyFlip) .. "|" .. string.format("%.1f|%.1f|%d", g:GetFoodSurplus(), g:GetFood(), g:GetGrowthThreshold()) .. "|" .. table.concat(pillBuildings, ";") .. "|" .. garrisonUnit)
 end
 for i = 1, #cityCoords do for j = i + 1, #cityCoords do
     local d = Map.GetPlotDistance(cityCoords[i].x, cityCoords[i].y, cityCoords[j].x, cityCoords[j].y)
@@ -510,6 +527,7 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
             food_stored=float(parts[26]) if len(parts) > 26 else 0.0,
             growth_threshold=int(parts[27]) if len(parts) > 27 else 0,
             pillaged_buildings=[b for b in (parts[28].split(";") if len(parts) > 28 else []) if b],
+            garrison_unit=parts[29] if len(parts) > 29 else "",
         ))
     return cities, distances
 

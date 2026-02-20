@@ -111,7 +111,8 @@ def narrate_units(
             if owner_id == 63:
                 label = f"Barbarian ({len(owner_threats)} unit{'s' if len(owner_threats) != 1 else ''}):"
             else:
-                label = f"{owner_name} ({len(owner_threats)} unit{'s' if len(owner_threats) != 1 else ''}):"
+                cs_tag = " (city-state)" if owner_threats[0].is_city_state else ""
+                label = f"{owner_name}{cs_tag} ({len(owner_threats)} unit{'s' if len(owner_threats) != 1 else ''}):"
             lines.append(f"  {label}")
             for t in sorted(owner_threats, key=lambda t: t.distance):
                 rs_str = f" RS:{t.ranged_strength}" if t.ranged_strength > 0 else ""
@@ -141,6 +142,11 @@ def narrate_cities(cities: list[lq.CityInfo], distances: list[str] | None = None
             defense = f" | HP:{c.garrison_hp}/{c.garrison_max_hp} Def:{c.defense_strength}"
         elif c.defense_strength > 0:
             defense = f" | Def:{c.defense_strength}"
+        garrison_str = c.garrison_unit.replace("UNIT_", "") if c.garrison_unit else "none"
+        if defense:
+            defense += f" Gar:{garrison_str}"
+        else:
+            defense = f" | Gar:{garrison_str}"
         loyalty_str = ""
         if c.loyalty_per_turn < 0 or c.loyalty < 75:
             flip_info = f", flips in {c.turns_to_loyalty_flip} turns" if c.turns_to_loyalty_flip > 0 else ""

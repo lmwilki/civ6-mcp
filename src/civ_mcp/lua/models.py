@@ -132,6 +132,7 @@ class CityInfo:
     loyalty_max: float = 100.0
     loyalty_per_turn: float = 0.0
     turns_to_loyalty_flip: int = 0
+    garrison_unit: str = ""
 
 
 @dataclass
@@ -421,6 +422,7 @@ class ThreatInfo:
     distance: int
     owner_id: int = 63
     owner_name: str = "Barbarian"
+    is_city_state: bool = False
 
 
 @dataclass
