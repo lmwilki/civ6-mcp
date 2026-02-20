@@ -231,10 +231,6 @@ local ut = info and info.UnitType or "UNKNOWN"
 local promClass = info and info.PromotionClass or ""
 print("UNIT|" .. {unit_index} .. "|" .. (unit:GetID() % 65536) .. "|" .. ut)
 local exp = unit:GetExperience()
-local heldPromos = {{}}
-pcall(function()
-    for _, p in ipairs(exp:GetPromotions()) do heldPromos[p] = true end
-end)
 local prereqMap = {{}}
 for row in GameInfo.UnitPromotionPrereqs() do
     local pt = row.UnitPromotion
@@ -243,14 +239,14 @@ for row in GameInfo.UnitPromotionPrereqs() do
 end
 for promo in GameInfo.UnitPromotions() do
     if promo.PromotionClass == promClass then
-        if not heldPromos[promo.Index] then
+        if not exp:HasPromotion(promo.Index) then
             local prereqs = prereqMap[promo.UnitPromotionType]
             local prereqMet = true
             if prereqs and #prereqs > 0 then
                 prereqMet = false
                 for _, reqType in ipairs(prereqs) do
                     local reqInfo = GameInfo.UnitPromotions[reqType]
-                    if reqInfo and heldPromos[reqInfo.Index] then
+                    if reqInfo and exp:HasPromotion(reqInfo.Index) then
                         prereqMet = true
                         break
                     end
