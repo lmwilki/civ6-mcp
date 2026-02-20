@@ -384,16 +384,21 @@ launcher = [
     { name = "pyobjc-framework-quartz" },
     { name = "pyobjc-framework-vision" },
 ]
+launcher-macos = [
+    { name = "pyobjc-framework-quartz" },
+    { name = "pyobjc-framework-vision" },
+]
 
 [package.metadata]
 requires-dist = [
+    { name = "civ6-mcp", extras = ["launcher-macos"], marker = "extra == 'launcher'" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.128" },
     { name = "inspect-ai", marker = "extra == 'evals'", specifier = ">=0.3.170" },
     { name = "mcp", specifier = ">=1.20" },
-    { name = "pyobjc-framework-quartz", marker = "extra == 'launcher'", specifier = ">=11.0" },
-    { name = "pyobjc-framework-vision", marker = "extra == 'launcher'", specifier = ">=11.0" },
+    { name = "pyobjc-framework-quartz", marker = "extra == 'launcher-macos'", specifier = ">=11.0" },
+    { name = "pyobjc-framework-vision", marker = "extra == 'launcher-macos'", specifier = ">=11.0" },
 ]
-provides-extras = ["evals", "launcher"]
+provides-extras = ["evals", "launcher-macos", "launcher"]
 
 [[package]]
 name = "click"

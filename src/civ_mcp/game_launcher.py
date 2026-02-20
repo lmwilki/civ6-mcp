@@ -7,8 +7,10 @@ Safety guardrails for automated agents:
 - No config file modifications, no arbitrary system commands
 - All process/file interactions are scoped to Civ 6 only
 
-Requires: pyobjc-framework-Quartz, pyobjc-framework-Vision
-Install with: uv pip install 'civ6-mcp[launcher]'
+Platform support:
+- macOS: fully supported (process mgmt, OCR, window automation)
+  Install with: uv pip install 'civ6-mcp[launcher-macos]'
+- Windows: process mgmt + save discovery (GUI automation not yet implemented)
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import glob
 import logging
 import os
 import subprocess
+import sys
 import time
 
 log = logging.getLogger(__name__)
@@ -28,11 +31,21 @@ log = logging.getLogger(__name__)
 
 STEAM_APP_ID = "289070"
 _ALLOWED_PROCESS_PATTERNS = ("Civ6",)  # pkill -f pattern — only matches Civ 6
-_PROCESS_NAMES = ("Civ6_Exe_Child", "Civ6_Exe", "Civ6")  # for window detection
-SAVE_DIR = os.path.expanduser(
-    "~/Library/Application Support/Sid Meier's Civilization VI/"
-    "Sid Meier's Civilization VI/Saves/Single/auto"
-)
+
+if sys.platform == "darwin":
+    _PROCESS_NAMES = ("Civ6_Exe_Child", "Civ6_Exe", "Civ6")
+    SAVE_DIR = os.path.expanduser(
+        "~/Library/Application Support/Sid Meier's Civilization VI/"
+        "Sid Meier's Civilization VI/Saves/Single/auto"
+    )
+elif sys.platform == "win32":
+    _PROCESS_NAMES = ("Civ6_Exe_Child.exe", "Civ6_Exe.exe", "CivilizationVI.exe")
+    SAVE_DIR = os.path.expanduser(
+        "~/Documents/My Games/Sid Meier's Civilization VI/Saves/Single/auto"
+    )
+else:
+    _PROCESS_NAMES = ()
+    SAVE_DIR = ""
 
 # How long to wait after kill for Steam to deregister the game
 _KILL_SETTLE_SECONDS = 10
@@ -44,6 +57,13 @@ _MAIN_MENU_WAIT_SECONDS = 15
 
 def _require_gui_deps():
     """Import and return GUI dependencies, raising clear error if missing."""
+    if sys.platform == "win32":
+        raise NotImplementedError(
+            "Windows GUI automation not yet implemented. "
+            "Process management and save discovery work; OCR/click do not."
+        )
+    if sys.platform != "darwin":
+        raise NotImplementedError(f"GUI automation not supported on {sys.platform}")
     try:
         import Quartz
         import Vision
@@ -52,7 +72,7 @@ def _require_gui_deps():
     except ImportError:
         raise RuntimeError(
             "Game launcher requires pyobjc GUI dependencies. "
-            "Install with: uv pip install 'civ6-mcp[launcher]'"
+            "Install with: uv pip install 'civ6-mcp[launcher-macos]'"
         )
 
 
@@ -62,11 +82,22 @@ def _require_gui_deps():
 
 def is_game_running() -> bool:
     """Check if Civ 6 is running."""
-    r = subprocess.run(
-        ["pgrep", "-f", _ALLOWED_PROCESS_PATTERNS[0]],
-        capture_output=True,
-    )
-    return r.returncode == 0
+    if sys.platform == "darwin":
+        r = subprocess.run(
+            ["pgrep", "-f", _ALLOWED_PROCESS_PATTERNS[0]],
+            capture_output=True,
+        )
+        return r.returncode == 0
+    elif sys.platform == "win32":
+        for name in _PROCESS_NAMES:
+            r = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {name}", "/NH"],
+                capture_output=True, text=True,
+            )
+            if name.lower() in r.stdout.lower():
+                return True
+        return False
+    raise NotImplementedError(f"is_game_running not supported on {sys.platform}")
 
 
 def _kill_game_sync() -> str:
@@ -74,7 +105,13 @@ def _kill_game_sync() -> str:
     if not is_game_running():
         return "Game is not running."
 
-    subprocess.run(["pkill", "-9", "-f", "Civ6"], capture_output=True)
+    if sys.platform == "darwin":
+        subprocess.run(["pkill", "-9", "-f", "Civ6"], capture_output=True)
+    elif sys.platform == "win32":
+        for name in _PROCESS_NAMES:
+            subprocess.run(["taskkill", "/IM", name, "/F"], capture_output=True)
+    else:
+        raise NotImplementedError(f"kill not supported on {sys.platform}")
     log.info("Killed Civ 6, waiting %ds for Steam to deregister", _KILL_SETTLE_SECONDS)
 
     # Wait for process to actually die
@@ -96,7 +133,12 @@ def _launch_game_sync() -> str:
     if is_game_running():
         return "Game is already running."
 
-    subprocess.run(["open", f"steam://run/{STEAM_APP_ID}"])
+    if sys.platform == "darwin":
+        subprocess.run(["open", f"steam://run/{STEAM_APP_ID}"])
+    elif sys.platform == "win32":
+        os.startfile(f"steam://run/{STEAM_APP_ID}")  # noqa: S606 — hardcoded Steam URL
+    else:
+        raise NotImplementedError(f"launch not supported on {sys.platform}")
     log.info("Launched Civ 6 via Steam, waiting for process...")
 
     for i in range(_LAUNCH_TIMEOUT_SECONDS):
@@ -115,7 +157,9 @@ def _launch_game_sync() -> str:
 # ---------------------------------------------------------------------------
 
 def _screenshot(path: str = "/tmp/civ_ocr_nav.png") -> str:
-    """Take a screenshot of the entire screen."""
+    """Take a screenshot of the entire screen (macOS only)."""
+    if sys.platform != "darwin":
+        raise NotImplementedError(f"Screenshot not supported on {sys.platform}")
     subprocess.run(["screencapture", "-x", path], check=True)
     return path
 
@@ -149,7 +193,9 @@ def _ocr(image_path: str) -> list[tuple[str, int, int, int, int]]:
 
 
 def _get_game_window() -> tuple[int, int, int, int] | None:
-    """Get game window bounds (x, y, w, h) via AppleScript."""
+    """Get game window bounds (x, y, w, h) via AppleScript (macOS only)."""
+    if sys.platform != "darwin":
+        raise NotImplementedError(f"Window detection not supported on {sys.platform}")
     for proc in _PROCESS_NAMES:
         r = subprocess.run([
             "osascript", "-e",
@@ -214,7 +260,9 @@ def _click(x: int, y: int) -> None:
 
 
 def _bring_to_front() -> None:
-    """Bring the game window to front."""
+    """Bring the game window to front (macOS only)."""
+    if sys.platform != "darwin":
+        raise NotImplementedError(f"Window focus not supported on {sys.platform}")
     for proc in _PROCESS_NAMES:
         r = subprocess.run([
             "osascript", "-e",

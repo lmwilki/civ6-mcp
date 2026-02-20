@@ -23,10 +23,11 @@ dependencies = [
 
 [project.optional-dependencies]
 evals = ["inspect-ai>=0.3.170"]
-launcher = [
+launcher-macos = [
     "pyobjc-framework-Quartz>=11.0",
     "pyobjc-framework-Vision>=11.0",
 ]
+launcher = ["civ6-mcp[launcher-macos]"]  # backward compat alias
 
 [project.urls]
 Homepage = "https://github.com/lmwilki/civ6-mcp"

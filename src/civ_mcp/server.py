@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 import time
 from contextlib import asynccontextmanager
@@ -1573,6 +1574,13 @@ async def screenshot(ctx: Context) -> Image:
     Useful for verifying game state, reading UI elements, or checking
     map positions that are hard to describe with data alone.
     """
+    if sys.platform == "win32":
+        raise NotImplementedError(
+            "Windows screenshot not yet implemented — needs mss and pywin32"
+        )
+    if sys.platform != "darwin":
+        raise NotImplementedError(f"Screenshot not supported on {sys.platform}")
+
     # Find the Civ 6 window ID via Swift/CoreGraphics
     swift_code = """
 import CoreGraphics
