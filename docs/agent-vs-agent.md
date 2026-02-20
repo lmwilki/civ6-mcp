@@ -1,5 +1,7 @@
 # Agent vs Agent: Multi-Agent Play via Single-Player Puppeteering
 
+> **Status: Proposal** — Design document. Not yet implemented.
+
 ## Overview
 
 This document describes how to make two (or more) AI agents play Civilization VI against each other using a single game instance in single-player mode. One agent plays normally as the human player; the other agent "puppeteers" an AI player by intercepting its turn and issuing commands through GameCore and temporary local-player switching.
