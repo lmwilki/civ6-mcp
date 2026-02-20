@@ -3,7 +3,7 @@
 import Link from "next/link"
 
 interface NavBarProps {
-  active: "timeline" | "dashboard"
+  active: "timeline" | "dashboard" | "diary"
   connected?: boolean
   turn?: number | null
 }
@@ -36,6 +36,16 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
               }`}
             >
               Dashboard
+            </Link>
+            <Link
+              href="/diary"
+              className={`text-sm transition-colors ${
+                active === "diary"
+                  ? "font-semibold text-gold-dark"
+                  : "text-marble-500 hover:text-marble-700"
+              }`}
+            >
+              Diary
             </Link>
           </nav>
         </div>
