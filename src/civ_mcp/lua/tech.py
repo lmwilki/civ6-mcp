@@ -114,7 +114,7 @@ for civic in GameInfo.Civics() do
                 for _, pType in ipairs(prereqs[civic.CivicType]) do
                     local pEntry = GameInfo.Civics[pType]
                     if pEntry and not cu:HasCivic(pEntry.Index) then
-                        table.insert(missing, Locale.Lookup(pEntry.Name):gsub("|", "/"))
+                        table.insert(missing, (Locale.Lookup(pEntry.Name):gsub("|", "/")))
                     end
                 end
             end
