@@ -625,7 +625,7 @@ if plot:GetOwner() ~= me then {_bail_lua('"ERR:NOT_YOUR_TERRITORY|Tile at " .. u
 local params = {{}}
 params[UnitOperationTypes.PARAM_X] = unit:GetX()
 params[UnitOperationTypes.PARAM_Y] = unit:GetY()
-params[UnitOperationTypes.BUILD_IMPROVEMENT] = imp.Hash
+params[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = imp.Hash
 if plot:IsImprovementPillaged() then
     local repairHash = GameInfo.UnitOperations["UNITOPERATION_REPAIR"] and GameInfo.UnitOperations["UNITOPERATION_REPAIR"].Hash
     if repairHash then

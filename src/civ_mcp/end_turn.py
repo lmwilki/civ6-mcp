@@ -413,49 +413,80 @@ async def execute_end_turn(gs: GameState) -> str:
                 # --- Stale promotion notifications ---
                 # GameCore SetPromotion doesn't clear InGame notification.
                 # If no units actually need promotion, auto-dismiss.
+                # NOTE: exp:CanPromote() is nil in InGame — must use GameCore (execute_read).
                 if blocking_type == "ENDTURN_BLOCKING_UNIT_PROMOTION":
                     try:
-                        promo_lines = await gs.conn.execute_write(
+                        # Step 1: GameCore check — CanPromote() works here.
+                        # Mirrors build_unit_promotions_query logic across all units.
+                        check_lines = await gs.conn.execute_read(
                             f'local me = Game.GetLocalPlayer(); '
                             f'local anyNeed = false; '
+                            f'local prereqMap = {{}}; '
+                            f'for row in GameInfo.UnitPromotionPrereqs() do '
+                            f'  local pt = row.UnitPromotion; '
+                            f'  if not prereqMap[pt] then prereqMap[pt] = {{}} end; '
+                            f'  table.insert(prereqMap[pt], row.PrereqUnitPromotion) '
+                            f'end; '
                             f'for i, u in Players[me]:GetUnits():Members() do '
                             f'  if u:GetX() ~= -9999 then '
-                            f'    local ok, exp = pcall(function() return u:GetExperience() end); '
-                            f'    if ok and exp then '
+                            f'    local exp = u:GetExperience(); '
+                            f'    if exp then '
                             f'      local xp = exp:GetExperiencePoints(); '
-                            f'      local threshold = exp:GetExperienceForNextLevel(); '
-                            f'      if xp >= threshold then '
-                            f'        local promoCount = 0; '
-                            f'        local ok2, pl = pcall(function() return exp:GetPromotions() end); '
-                            f'        if ok2 and pl then promoCount = #pl end; '
-                            f'        local lvl = 1; '
-                            f'        local ok3, l = pcall(function() return exp:GetLevel() end); '
-                            f'        if ok3 and l then lvl = l end; '
-                            f'        if promoCount < lvl then anyNeed = true end '
-                            f'      end '
-                            f'    end '
-                            f'  end '
-                            f'  if anyNeed then break end '
-                            f'end; '
-                            f'if not anyNeed then '
-                            f'  local list = NotificationManager.GetList(me); '
-                            f'  if list then '
-                            f'    for _, nid in ipairs(list) do '
-                            f'      local e = NotificationManager.Find(me, nid); '
-                            f'      if e and not e:IsDismissed() then '
-                            f'        local bt = e:GetEndTurnBlocking(); '
-                            f'        if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then '
-                            f'          pcall(function() NotificationManager.SendActivated(me, nid) end); '
-                            f'          pcall(function() NotificationManager.Dismiss(me, nid) end) '
+                            f'      local thresh = exp:GetExperienceForNextLevel(); '
+                            f'      if xp >= thresh then '
+                            f'        local ui = GameInfo.Units[u:GetType()]; '
+                            f'        local promClass = ui and ui.PromotionClass or ""; '
+                            f'        if promClass ~= "" then '
+                            f'          for promo in GameInfo.UnitPromotions() do '
+                            f'            if promo.PromotionClass == promClass '
+                            f'               and not exp:HasPromotion(promo.Index) then '
+                            f'              local prereqs = prereqMap[promo.UnitPromotionType]; '
+                            f'              local prereqMet = true; '
+                            f'              if prereqs and #prereqs > 0 then '
+                            f'                prereqMet = false; '
+                            f'                for _, reqType in ipairs(prereqs) do '
+                            f'                  local reqInfo = GameInfo.UnitPromotions[reqType]; '
+                            f'                  if reqInfo and exp:HasPromotion(reqInfo.Index) then '
+                            f'                    prereqMet = true; break '
+                            f'                  end '
+                            f'                end '
+                            f'              end; '
+                            f'              if prereqMet then '
+                            f'                local canP = false; '
+                            f'                pcall(function() canP = exp:CanPromote(promo.Index) end); '
+                            f'                if canP then anyNeed = true; break end '
+                            f'              end '
+                            f'            end '
+                            f'          end '
                             f'        end '
                             f'      end '
                             f'    end '
-                            f'  end '
-                            f'  print("AUTO_CLEARED") '
-                            f'else print("UNITS_NEED_PROMO") end; '
+                            f'  end; '
+                            f'  if anyNeed then break end '
+                            f'end; '
+                            f'print(anyNeed and "NEEDS_PROMO" or "NO_PROMO_NEEDED"); '
                             f'print("{lq.SENTINEL}")'
                         )
-                        if any("AUTO_CLEARED" in l for l in promo_lines):
+                        needs_promo = any("NEEDS_PROMO" in l for l in check_lines)
+                        if not needs_promo:
+                            # Step 2: InGame dismiss — NotificationManager is InGame-only.
+                            await gs.conn.execute_write(
+                                f'local me = Game.GetLocalPlayer(); '
+                                f'local list = NotificationManager.GetList(me); '
+                                f'if list then '
+                                f'  for _, nid in ipairs(list) do '
+                                f'    local e = NotificationManager.Find(me, nid); '
+                                f'    if e and not e:IsDismissed() then '
+                                f'      local bt = e:GetEndTurnBlocking(); '
+                                f'      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then '
+                                f'        pcall(function() NotificationManager.SendActivated(me, nid) end); '
+                                f'        pcall(function() NotificationManager.Dismiss(me, nid) end) '
+                                f'      end '
+                                f'    end '
+                                f'  end '
+                                f'end; '
+                                f'print("{lq.SENTINEL}")'
+                            )
                             resolved_any = True
                             continue
                     except Exception:
@@ -580,14 +611,25 @@ async def execute_end_turn(gs: GameState) -> str:
         try:
             mid_sessions = await gs.get_diplomacy_sessions()
             if mid_sessions:
+                # DiplomacyActionView text can take 1-2s to populate after session
+                # opens during AI processing. If text is empty, retry once.
+                if any(not s.dialogue_text for s in mid_sessions):
+                    await asyncio.sleep(2.0)
+                    mid_sessions = await gs.get_diplomacy_sessions()
                 session_info = []
                 for s in mid_sessions:
                     phase = "goodbye" if s.buttons == "GOODBYE" else "active"
                     session_info.append(f"{s.other_civ_name} ({s.other_leader_name}) [{phase}]")
-                return (
-                    f"Turn paused — AI diplomatic proposal from {', '.join(session_info)}. "
-                    f"Use respond_to_diplomacy to handle it, then end_turn again."
-                )
+                lines = [
+                    f"Turn paused — AI diplomatic proposal from {', '.join(session_info)}.",
+                ]
+                for s in mid_sessions:
+                    if s.dialogue_text:
+                        lines.append(f'{s.other_civ_name} says: "{s.dialogue_text}"')
+                    if s.reason_text:
+                        lines.append(f"Reason: {s.reason_text}")
+                lines.append("Use respond_to_diplomacy to handle it, then end_turn again.")
+                return "\n".join(lines)
         except Exception:
             log.debug("Mid-turn diplomacy check failed", exc_info=True)
 

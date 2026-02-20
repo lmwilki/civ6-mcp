@@ -259,9 +259,27 @@ if not valid then
     if results and results.FailureReasons then
         local parts = {{}}
         for _, r in ipairs(results.FailureReasons) do
-            table.insert(parts, Locale.Lookup(r))
+            local s = tostring(r or "")
+            -- Check for obsolete civic reason key before Locale lookup
+            if s:find("OBSOLETE_CIVIC") or s:find("ObsoleteCivic") then
+                table.insert(parts, "obsolete (Diplomatic Service civic researched — use embassy instead)")
+            else
+                local loc = Locale.Lookup(s)
+                if loc and loc ~= "" then table.insert(parts, loc) else table.insert(parts, s) end
+            end
         end
-        reasons = table.concat(parts, "; ")
+        if #parts > 0 then reasons = table.concat(parts, "; ") end
+    end
+    -- Fallback: if still "unknown", check for delegation-obsoleted-by-civic case
+    if reasons == "unknown" and action == "DIPLOMATIC_DELEGATION" then
+        local dipSvcCivic = GameInfo.Civics["CIVIC_DIPLOMATIC_SERVICE"]
+        if dipSvcCivic then
+            local hasCivic = false
+            pcall(function() hasCivic = Players[me]:GetCulture():HasCivic(dipSvcCivic.Index) end)
+            if hasCivic then
+                reasons = "obsolete (Diplomatic Service civic researched — use embassy instead)"
+            end
+        end
     end
     {_bail_lua('"ERR:INVALID|" .. reasons')}
 end
@@ -283,8 +301,8 @@ if sid and sid >= 0 then
     -- Send 2 positive responses (dialogue + acceptance)
     DiplomacyManager.AddResponse(sid, me, "POSITIVE")
     DiplomacyManager.AddResponse(sid, me, "POSITIVE")
-    -- Don't force-close; ShowIngameUI below handles UI restoration.
-    -- The C++ engine handles session lifecycle through its own callbacks.
+    -- Close session so C++ commits the state change synchronously before our post-check.
+    DiplomacyManager.CloseSession(sid)
 else
     -- Some actions are fire-and-forget (no session created)
     -- This is normal for some action types
@@ -312,11 +330,17 @@ elseif action == "RESIDENT_EMBASSY" then
         print("OK:REJECTED|" .. name .. " rejected your embassy")
     end
 elseif action == "DECLARE_FRIENDSHIP" then
-    local ai = Players[target]:GetDiplomaticAI()
-    local postState = ai:GetDiplomaticStateIndex(me)
-    if postState == 1 then
+    -- GetDiplomaticStateIndex is stale same-frame after CloseSession.
+    -- Use post-check: if DECLARE_FRIENDSHIP is now invalid, the friendship was successfully declared.
+    local accepted = false
+    pcall(function()
+        local sv, _ = pDiplo:IsDiplomaticActionValid(fullAction, target, false)
+        accepted = not sv  -- action became invalid = friendship now active
+    end)
+    if accepted then
         print("OK:ACCEPTED|" .. name .. " accepted your friendship declaration")
     else
+        local ai = Players[target]:GetDiplomaticAI()
         local modTotal = 0
         local modDetails = {{}}
         pcall(function()
