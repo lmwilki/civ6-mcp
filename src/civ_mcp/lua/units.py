@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_unit_gamecore
+from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_unit, _lua_get_unit_gamecore
 from civ_mcp.lua.models import CombatEstimate, ThreatInfo, UnitInfo
 
 
