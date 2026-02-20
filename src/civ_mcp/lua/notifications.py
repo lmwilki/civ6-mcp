@@ -67,6 +67,26 @@ if list then
             if entry and not entry:IsDismissed() then
                 local typeName = entry:GetTypeName() or "UNKNOWN"
                 local msg = (entry:GetMessage() or ""):gsub("|", "/")
+                if typeName:find("WONDER") then
+                    pcall(function()
+                        local wx, wy = entry:GetLocation()
+                        if wx and wx >= 0 then
+                            local wPlot = Map.GetPlot(wx, wy)
+                            if wPlot then
+                                local wOwner = wPlot:GetOwner()
+                                if wOwner and wOwner >= 0 and PlayerConfigurations[wOwner] then
+                                    local civShort = Locale.Lookup(PlayerConfigurations[wOwner]:GetCivilizationShortDescription())
+                                    if civShort then msg = msg .. " [" .. civShort .. "]" end
+                                end
+                                local dt = wPlot:GetDistrictType()
+                                if dt and dt >= 0 and GameInfo.Districts[dt] then
+                                    local dName = Locale.Lookup(GameInfo.Districts[dt].Name)
+                                    if dName then msg = msg .. " (" .. dName .. ")" end
+                                end
+                            end
+                        end
+                    end)
+                end
                 local turn = entry:GetAddedTurn() or -1
                 local x, y = -1, -1
                 pcall(function() x, y = entry:GetLocation() end)
