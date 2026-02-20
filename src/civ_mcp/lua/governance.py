@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_city, _lua_get_unit_gamecore
+from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_city, _lua_get_unit, _lua_get_unit_gamecore
 from civ_mcp.lua.models import AppointedGovernor, CityStateInfo, DedicationChoice, DedicationStatus, EnvoyStatus, GovernmentStatus, GovernorInfo, GovernorPromotion, GovernorStatus, PolicyInfo, PolicySlot, PromotionOption, UnitPromotionStatus
 
 
@@ -342,12 +342,27 @@ def build_unit_upgrade_query(unit_index: int) -> str:
 local info = GameInfo.Units[unit:GetType()]
 local ut = info and info.UnitType or "UNKNOWN"
 local params = {{}}
-local canUpgrade = UnitManager.CanStartCommand(unit, UnitCommandTypes.UPGRADE, params, true)
+local canUpgrade, upgradeResult = UnitManager.CanStartCommand(unit, UnitCommandTypes.UPGRADE, params, true)
 local upgCol = info.UpgradeUnitCollection
 local upgradeType = ""
 if upgCol and #upgCol > 0 then upgradeType = upgCol[1].UpgradeUnit or "" end
 if not canUpgrade then
-    {_bail_lua('"ERR:CANNOT_UPGRADE|" .. ut .. (upgradeType ~= "" and (" -> " .. upgradeType) or "") .. " cannot be upgraded right now (missing tech, resources, gold, or no upgrade path)"')}
+    local reasons = ""
+    if upgradeResult then
+        for _, v in pairs(upgradeResult) do
+            if type(v) == "table" then
+                for _, reason in pairs(v) do
+                    if type(reason) == "string" then
+                        local clean = reason:gsub("%[ICON_[^%]]*%]", ""):gsub("%s+", " ")
+                        reasons = reasons .. (reasons ~= "" and "; " or "") .. clean
+                    end
+                end
+            end
+        end
+    end
+    local suffix = upgradeType ~= "" and (" -> " .. upgradeType) or ""
+    local msg = ut .. suffix .. (reasons ~= "" and (" | " .. reasons) or " | cannot upgrade (missing tech, resources, gold, or no path)")
+    {_bail_lua('"ERR:CANNOT_UPGRADE|" .. msg')}
 end
 if upgradeType == "" then {_bail_lua('"ERR:NO_UPGRADE_PATH|" .. ut .. " has no upgrade"')} end
 local upInfo = GameInfo.Units[upgradeType]
@@ -369,13 +384,26 @@ local ut = info and info.UnitType or "UNKNOWN"
 local upgCol = info and info.UpgradeUnitCollection
 local upType = (upgCol and #upgCol > 0) and upgCol[1].UpgradeUnit or ""
 local params = {{}}
-if not UnitManager.CanStartCommand(unit, UnitCommandTypes.UPGRADE, params, true) then
+local canUpgrade, upgradeResult = UnitManager.CanStartCommand(unit, UnitCommandTypes.UPGRADE, params, true)
+if not canUpgrade then
     local cost = 0
     pcall(function() cost = unit:GetUpgradeCost() end)
     local gold = Players[me]:GetTreasury():GetGoldBalance()
     local detail = ut
     if upType ~= "" then detail = detail .. " -> " .. upType end
     detail = detail .. " | cost:" .. math.floor(cost) .. "g have:" .. math.floor(gold) .. "g"
+    if upgradeResult then
+        for _, v in pairs(upgradeResult) do
+            if type(v) == "table" then
+                for _, reason in pairs(v) do
+                    if type(reason) == "string" then
+                        local clean = reason:gsub("%[ICON_[^%]]*%]", ""):gsub("%s+", " ")
+                        detail = detail .. " | " .. clean
+                    end
+                end
+            end
+        end
+    end
     {_bail_lua('"ERR:CANNOT_UPGRADE|" .. detail')}
 end
 if upType == "" then upType = "UNKNOWN" end
