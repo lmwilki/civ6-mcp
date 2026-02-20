@@ -642,8 +642,9 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
         if line.startswith("STATUS|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                pts_avail = int(parts[1])
+                pts_total = int(parts[1])
                 pts_spent = int(parts[2])
+                pts_avail = pts_total - pts_spent
                 can_appoint = parts[3] == "1"
         elif line.startswith("APPOINTED|"):
             parts = line.split("|")
