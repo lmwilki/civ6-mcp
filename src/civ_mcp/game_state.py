@@ -503,7 +503,16 @@ class GameState:
             await self.conn.execute_write(close_lua)
             return f"OK:RESPONDED|{response.upper()}|SESSION_CLOSED (auto-closed goodbye phase)"
 
-        return f"OK:RESPONDED|{response.upper()}|SESSION_CONTINUES"
+        # Include the new dialogue text so the agent can see what the leader said
+        post_reason = ""
+        for s in post_sessions:
+            if s.other_player_id == other_player_id:
+                post_reason = s.reason_text
+                break
+        dialogue_note = f"\nLeader says: \"{post_text}\""
+        if post_reason:
+            dialogue_note += f"\nReason/agenda: \"{post_reason}\""
+        return f"OK:RESPONDED|{response.upper()}|SESSION_CONTINUES{dialogue_note}"
 
     async def send_diplomatic_action(self, other_player_id: int, action: str) -> str:
         if action.upper() == "OPEN_BORDERS":
