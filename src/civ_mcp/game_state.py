@@ -8,7 +8,9 @@ import the same GameState class but expose different tool subsets.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 
 from civ_mcp.connection import GameConnection
 from civ_mcp import lua as lq
@@ -129,14 +131,27 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
         # Post-move: read actual position from GameCore (move is async in InGame)
-        if result.startswith("OK:MOVING_TO") or result.startswith("OK:CAPTURE_MOVE"):
+        if result.startswith("MOVING_TO") or result.startswith("CAPTURE_MOVE"):
             try:
                 pos_lines = await self.conn.execute_read(
                     lq.build_unit_position_query(unit_index))
                 for line in pos_lines:
                     if line.startswith("POS|") and "GONE" not in line:
                         parts = line.split("|")
-                        result += f"|now_at:{parts[1]},{parts[2]}"
+                        now_x, now_y = int(parts[1]), int(parts[2])
+                        result += f"|now_at:{now_x},{now_y}"
+                        from_match = re.search(r"\|from:(\d+),(\d+)", result)
+                        if from_match:
+                            from_x = int(from_match.group(1))
+                            from_y = int(from_match.group(2))
+                            if now_x == from_x and now_y == from_y:
+                                result += "|BLOCKED (unit did not move — impassable terrain, border, or no path)"
+                            else:
+                                tgt_match = re.search(r"(?:MOVING_TO|CAPTURE_MOVE)\|(\d+),(\d+)", result)
+                                if tgt_match:
+                                    tx, ty = int(tgt_match.group(1)), int(tgt_match.group(2))
+                                    if (now_x, now_y) != (tx, ty):
+                                        result += f"|STOPPED_MID_PATH (moves exhausted)"
                         break
             except Exception:
                 pass
@@ -440,8 +455,6 @@ class GameState:
         return lq.parse_diplomacy_sessions(lines)
 
     async def diplomacy_respond(self, other_player_id: int, response: str) -> str:
-        import asyncio
-
         # Capture dialogue text BEFORE response to detect goodbye phase
         pre_sessions = await self.get_diplomacy_sessions()
         pre_text = ""
@@ -674,7 +687,6 @@ class GameState:
         result = _action_result(lines)
         if result.startswith("OK:ENVOY_SENT"):
             # Verify token actually decremented (async race condition workaround)
-            import asyncio
             await asyncio.sleep(0.1)
             try:
                 verify_lines = await self.conn.execute_write(
@@ -1052,7 +1064,10 @@ class GameState:
 
         # Use the enriched is_action_required field from the parser
         action_required = [n for n in notifications if n.is_action_required]
-        info_notifs = [n for n in notifications if not n.is_action_required]
+        # Only show informational notifications from the last 2 turns — older ones
+        # are stale (e.g. "Wonder Completed" from 3 turns ago) and clutter the report.
+        recent_cutoff = (turn_after or 0) - 2
+        info_notifs = [n for n in notifications if not n.is_action_required and n.turn >= recent_cutoff]
 
         if action_required:
             lines.append("")
