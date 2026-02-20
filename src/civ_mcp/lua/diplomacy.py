@@ -298,7 +298,9 @@ local postEmb = pDiplo:HasEmbassyAt(target)
 local postGold = Players[me]:GetTreasury():GetGoldBalance()
 local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
 if action == "DIPLOMATIC_DELEGATION" then
-    if postDel and not preDel then
+    -- Use gold delta as the reliable indicator: HasDelegationAt updates async
+    -- (game state not committed until next frame), but gold deduction is synchronous.
+    if preGold - postGold > 0 then
         print("OK:ACCEPTED|" .. name .. " accepted your delegation (cost " .. string.format("%.0f", preGold - postGold) .. " gold)")
     else
         print("OK:REJECTED|" .. name .. " rejected your delegation")
