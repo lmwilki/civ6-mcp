@@ -618,8 +618,9 @@ async def execute_end_turn(gs: GameState) -> str:
                     mid_sessions = await gs.get_diplomacy_sessions()
                 session_info = []
                 for s in mid_sessions:
-                    phase = "goodbye" if s.buttons == "GOODBYE" else "active"
+                    phase = "deal" if s.deal_summary else ("goodbye" if s.buttons == "GOODBYE" else "active")
                     session_info.append(f"{s.other_civ_name} ({s.other_leader_name}) [{phase}]")
+                has_deal = any(s.deal_summary for s in mid_sessions)
                 lines = [
                     f"Turn paused — AI diplomatic proposal from {', '.join(session_info)}.",
                 ]
@@ -628,7 +629,12 @@ async def execute_end_turn(gs: GameState) -> str:
                         lines.append(f'{s.other_civ_name} says: "{s.dialogue_text}"')
                     if s.reason_text:
                         lines.append(f"Reason: {s.reason_text}")
-                lines.append("Use respond_to_diplomacy to handle it, then end_turn again.")
+                    if s.deal_summary:
+                        lines.append(f"Deal from {s.other_civ_name}: {s.deal_summary}")
+                if has_deal:
+                    lines.append("Use respond_to_trade(other_player_id=X, accept=True/False) to handle it, then end_turn again.")
+                else:
+                    lines.append("Use respond_to_diplomacy to handle it, then end_turn again.")
                 return "\n".join(lines)
         except Exception:
             log.debug("Mid-turn diplomacy check failed", exc_info=True)

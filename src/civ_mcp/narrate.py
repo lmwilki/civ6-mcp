@@ -532,7 +532,10 @@ def narrate_diplomacy_sessions(sessions: list[lq.DiplomacySession]) -> str:
         if s.buttons:
             lines.append(f"  Buttons: {s.buttons}")
         # Phase-appropriate guidance
-        if s.buttons == "GOODBYE":
+        if s.deal_summary:
+            lines.append(f"  Deal: {s.deal_summary}")
+            lines.append(f"  This is a DEAL proposal — use respond_to_trade(other_player_id={s.other_player_id}, accept=True/False)")
+        elif s.buttons == "GOODBYE":
             lines.append("  Phase: GOODBYE — respond with POSITIVE or NEGATIVE (auto-closes)")
         else:
             lines.append("  Respond with: POSITIVE (friendly) or NEGATIVE (dismissive)")

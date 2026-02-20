@@ -269,6 +269,7 @@ class DiplomacySession:
     dialogue_text: str = ""    # leader's spoken text (from UI controls)
     reason_text: str = ""      # agenda/reason subtext
     buttons: str = ""          # semicolon-separated visible button labels; "GOODBYE" if goodbye phase
+    deal_summary: str = ""     # human-readable deal content when AI proposes a deal (e.g. "They offer: Research Alliance (25 turns)")
 
 
 @dataclass
