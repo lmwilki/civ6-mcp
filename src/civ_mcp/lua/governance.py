@@ -85,22 +85,38 @@ def build_set_policies(assignments: dict[int, str]) -> str:
     """Set policy cards in government slots (InGame context).
 
     assignments maps slot_index -> policy_type string.
-    Two-step: UNLOCK_POLICIES first, then RequestPolicyChanges.
+    Three-step: pre-checks (before UNLOCK), UNLOCK_POLICIES, then RequestPolicyChanges.
+
+    Pre-checks run before UNLOCK_POLICIES because CanSlotPolicy is reliable there.
+    It becomes stale same-frame after UNLOCK_POLICIES in the same Lua string.
     """
-    add_entries = []
+    pre_checks = []  # policy lookup + CanSlotPolicy + type check — BEFORE UNLOCK_POLICIES
+    add_entries = []  # addList[slot] = hash — AFTER UNLOCK_POLICIES
+
     for slot_idx, policy_type in assignments.items():
-        add_entries.append(
+        pre_checks.append(
             f'local pe_{slot_idx} = GameInfo.Policies["{policy_type}"]; '
             f"if pe_{slot_idx} == nil then {_bail(f'ERR:POLICY_NOT_FOUND|{policy_type}')} end; "
+            # CanSlotPolicy pre-check (reliable before UNLOCK_POLICIES)
+            f"local canSlot_{slot_idx} = pCulture:CanSlotPolicy(pe_{slot_idx}.Index, {slot_idx}); "
+            f"if not canSlot_{slot_idx} then "
+            f'local pType_{slot_idx} = pe_{slot_idx}.GovernmentSlotType or "unknown"; '
+            f"local st_{slot_idx} = pCulture:GetSlotType({slot_idx}); "
+            f'local sName_{slot_idx} = slotNames[st_{slot_idx}] or ("type_" .. st_{slot_idx}); '
+            f'{_bail_lua(f""" "ERR:CANNOT_SLOT|{policy_type} (" .. pType_{slot_idx} .. ") rejected for slot {slot_idx} (" .. sName_{slot_idx} .. ")" """)} end; '
+            # Belt-and-suspenders type string check, now covers Economic/Military/Diplomatic (sType < 3)
             f"local sType_{slot_idx} = pCulture:GetSlotType({slot_idx}); "
             f"local pSlot_{slot_idx} = slotTypeMap[pe_{slot_idx}.GovernmentSlotType] or -1; "
-            f"if sType_{slot_idx} < 2 and pSlot_{slot_idx} ~= sType_{slot_idx} then "
+            f"if sType_{slot_idx} < 3 and pSlot_{slot_idx} ~= sType_{slot_idx} "
+            f"  and pe_{slot_idx}.GovernmentSlotType ~= 'SLOT_WILDCARD' then "
             f'local sName = slotNames[sType_{slot_idx}] or "unknown"; '
             f'local pType = pe_{slot_idx}.GovernmentSlotType or "unknown"; '
-            f'{_bail_lua(f""" "ERR:SLOT_MISMATCH|{policy_type} (" .. pType .. ") cannot go in slot {slot_idx} (" .. sName .. ")" """)} end; '
-            f"addList[{slot_idx}] = pe_{slot_idx}.Hash"
+            f'{_bail_lua(f""" "ERR:SLOT_MISMATCH|{policy_type} (" .. pType .. ") cannot go in slot {slot_idx} (" .. sName .. ")" """)} end'
         )
-    add_lua = " ".join(add_entries)
+        add_entries.append(f"addList[{slot_idx}] = pe_{slot_idx}.Hash")
+
+    pre_lua = "; ".join(pre_checks)
+    add_lua = "; ".join(add_entries)
 
     return f"""
 local me = Game.GetLocalPlayer()
@@ -109,6 +125,7 @@ local numSlots = pCulture:GetNumPolicySlots()
 if numSlots <= 0 then {_bail("ERR:NO_GOVERNMENT|No government selected")} end
 local slotNames = {{[0]="Economic", [1]="Military", [2]="Diplomatic", [3]="Wildcard", [4]="Wildcard"}}
 local slotTypeMap = {{SLOT_ECONOMIC=0, SLOT_MILITARY=1, SLOT_DIPLOMATIC=2, SLOT_WILDCARD=3, SLOT_GREAT_PERSON=4}}
+{pre_lua}
 UI.RequestPlayerOperation(me, PlayerOperations.UNLOCK_POLICIES, {{}})
 local clearList = {{}}
 for s = 0, numSlots - 1 do table.insert(clearList, s) end

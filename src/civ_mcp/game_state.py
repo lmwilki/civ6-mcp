@@ -632,7 +632,22 @@ class GameState:
     async def set_policies(self, assignments: dict[int, str]) -> str:
         lua = lq.build_set_policies(assignments)
         lines = await self.conn.execute_write(lua)
-        return _action_result(lines)
+        result = _action_result(lines)
+        if not result.startswith("ERR"):
+            # Post-verify: RequestPolicyChanges can silently no-op (e.g. during era transitions)
+            status = await self.get_policies()
+            slot_map = {s.slot_index: s.current_policy for s in status.slots}
+            mismatches = [
+                f"slot {idx} (wanted {pol}, got {slot_map.get(idx) or 'EMPTY'})"
+                for idx, pol in assignments.items()
+                if slot_map.get(idx) != pol
+            ]
+            if mismatches:
+                result += (
+                    f"\nWARN:SILENT_FAILURE — engine rejected: {', '.join(mismatches)}. "
+                    "Try a different policy or retry next turn."
+                )
+        return result
 
     # ------------------------------------------------------------------
     # Governor methods (InGame context)
