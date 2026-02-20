@@ -34,6 +34,7 @@ class GameLogger:
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.session_id = uuid.uuid4().hex[:8]
+        self.session_path = self.path.parent / f"game_log_{self.session_id}.jsonl"
         self._lock = asyncio.Lock()
         self._turn: int | None = None
 
@@ -69,6 +70,8 @@ class GameLogger:
 
         line = json.dumps(entry, separators=(",", ":")) + "\n"
         async with self._lock:
+            with open(self.session_path, "a") as f:
+                f.write(line)
             with open(self.path, "a") as f:
                 f.write(line)
 

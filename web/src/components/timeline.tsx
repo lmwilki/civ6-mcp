@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { memo, useEffect, useMemo, useRef } from "react"
 import { TurnDivider } from "./turn-divider"
 import { LogEntry } from "./log-entry"
 import { groupByTurn } from "@/lib/types"
@@ -11,6 +11,8 @@ interface TimelineProps {
   live: boolean
 }
 
+const MemoLogEntry = memo(LogEntry)
+
 export function Timeline({ entries, live }: TimelineProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -20,7 +22,7 @@ export function Timeline({ entries, live }: TimelineProps) {
     }
   }, [entries.length, live])
 
-  const groups = groupByTurn(entries)
+  const groups = useMemo(() => groupByTurn(entries), [entries])
 
   if (entries.length === 0) {
     return (
@@ -47,7 +49,7 @@ export function Timeline({ entries, live }: TimelineProps) {
               {group.entries.map((entry, i) => (
                 <div key={entry.line}>
                   {i > 0 && <div className="mx-4 h-px bg-marble-300/30" />}
-                  <LogEntry entry={entry} />
+                  <MemoLogEntry entry={entry} />
                 </div>
               ))}
             </div>

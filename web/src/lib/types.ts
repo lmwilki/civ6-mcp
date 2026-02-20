@@ -12,6 +12,23 @@ export interface LogEntry {
   line: number
 }
 
+export interface SessionInfo {
+  session: string
+  count: number
+  first_ts: number
+  last_ts: number
+  min_turn: number | null
+  max_turn: number | null
+}
+
+/** Classify tools into visual categories */
+export function getToolCategory(tool?: string): "query" | "action" | "turn" | "error" {
+  if (!tool) return "query"
+  if (tool === "end_turn") return "turn"
+  if (tool.startsWith("get_") || tool === "screenshot") return "query"
+  return "action"
+}
+
 export interface TurnEvent {
   priority: string
   category: string

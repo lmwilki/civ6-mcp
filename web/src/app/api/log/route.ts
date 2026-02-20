@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import { readFileSync, existsSync } from "fs"
-import { homedir } from "os"
 import { join } from "path"
-
-function getLogPath(): string {
-  return process.env.CIV6_LOG_PATH || join(homedir(), ".civ6-mcp", "game_log.jsonl")
-}
+import { getLogDir, getLogPath } from "./shared"
 
 export async function GET(req: NextRequest) {
   const after = parseInt(req.nextUrl.searchParams.get("after") || "0", 10)
-  const limit = parseInt(req.nextUrl.searchParams.get("limit") || "500", 10)
+  const limit = parseInt(req.nextUrl.searchParams.get("limit") || "2000", 10)
+  const session = req.nextUrl.searchParams.get("session")
 
-  const logPath = getLogPath()
+  // If a session is specified, read its dedicated file directly (no filtering needed)
+  // Otherwise fall back to the central log
+  let logPath: string
+  if (session) {
+    const sessionFile = join(getLogDir(), `game_log_${session}.jsonl`)
+    logPath = existsSync(sessionFile) ? sessionFile : getLogPath()
+  } else {
+    logPath = getLogPath()
+  }
+
   if (!existsSync(logPath)) {
     return NextResponse.json([])
   }
@@ -24,6 +30,8 @@ export async function GET(req: NextRequest) {
     for (let i = after; i < lines.length && entries.length < limit; i++) {
       try {
         const entry = JSON.parse(lines[i])
+        // When reading central log without a session file, still filter
+        if (session && entry.session !== session) continue
         entry.line = i + 1
         entries.push(entry)
       } catch {
@@ -31,7 +39,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(entries)
+    return NextResponse.json(entries, {
+      headers: { "X-Total-Lines": String(lines.length) },
+    })
   } catch {
     return NextResponse.json([])
   }

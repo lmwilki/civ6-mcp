@@ -3,15 +3,8 @@
 import { useState } from "react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { EventChip } from "./event-chip"
+import { getToolCategory } from "@/lib/types"
 import type { LogEntry as LogEntryType } from "@/lib/types"
-
-/** Classify tools into visual categories */
-function getToolCategory(tool?: string): "query" | "action" | "turn" | "error" {
-  if (!tool) return "query"
-  if (tool === "end_turn") return "turn"
-  if (tool.startsWith("get_") || tool === "screenshot") return "query"
-  return "action"
-}
 
 const borderStyles: Record<string, string> = {
   query: "border-l-marble-300",
