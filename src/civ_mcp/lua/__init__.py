@@ -18,6 +18,12 @@ works identically to the old monolithic ``lua_queries`` module.
 
 # Re-export helpers & sentinel
 from civ_mcp.lua._helpers import SENTINEL  # noqa: F401
+from civ_mcp.lua.espionage import (  # noqa: F401
+    build_get_spies_query,
+    build_spy_mission,
+    build_spy_travel,
+    parse_spies_response,
+)
 from civ_mcp.lua.cities import (  # noqa: F401
     build_cities_query,
     build_city_attack,
@@ -168,6 +174,7 @@ from civ_mcp.lua.models import (  # noqa: F401
     RivalSnapshot,
     ScoreEntry,
     SettleCandidate,
+    SpyInfo,
     StrategicMapData,
     TechCivicStatus,
     TechOption,

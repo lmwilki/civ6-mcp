@@ -175,6 +175,68 @@ async def get_units(ctx: Context) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+async def get_spies(ctx: Context) -> str:
+    """List all your spy units with position, rank, city, and available missions.
+
+    Shows each spy's composite id (needed for spy_action), current location,
+    rank (Recruit/Agent/Special Agent/Senior Agent), XP, and which operations
+    are available at their current position.
+
+    Note: offensive missions only become available once the spy has physically
+    arrived in the target city. Use spy_action with action='travel' first.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        spies = await gs.get_spies()
+        return nr.narrate_spies(spies)
+
+    return await _logged(ctx, "get_spies", {}, _run)
+
+
+@mcp.tool()
+async def spy_action(
+    ctx: Context,
+    unit_id: int,
+    action: str,
+    target_x: int,
+    target_y: int,
+) -> str:
+    """Send a spy to a city or launch a spy mission.
+
+    Args:
+        unit_id: The spy's composite ID (from get_spies output)
+        action: 'travel' to move spy to a city, or a mission type to launch a mission.
+            Mission types: COUNTERSPY, GAIN_SOURCES, SIPHON_FUNDS, STEAL_TECH_BOOST,
+            SABOTAGE_PRODUCTION, GREAT_WORK_HEIST, RECRUIT_PARTISANS,
+            NEUTRALIZE_GOVERNOR, FABRICATE_SCANDAL
+        target_x: X coordinate of the target city tile
+        target_y: Y coordinate of the target city tile
+
+    Travel notes:
+        - Valid targets: your own cities and city-states only.
+        - Allied civ cities are NOT valid travel targets.
+        - Travel is queued end-of-turn; spy position updates after turn ends.
+
+    Mission notes:
+        - Spy must be physically IN the target city to launch any offensive mission.
+        - Use 'travel' first, then end the turn, then launch the mission.
+        - COUNTERSPY defends your own city (spy must be in your city).
+        - get_spies shows which ops are available at the spy's current location.
+    """
+    gs = _get_game(ctx)
+    unit_index = unit_id % 65536
+    params = {"unit_id": unit_id, "action": action, "target_x": target_x, "target_y": target_y}
+
+    async def _run():
+        if action.lower() == "travel":
+            return await gs.spy_travel(unit_index, target_x, target_y)
+        return await gs.spy_mission(unit_index, action.upper(), target_x, target_y)
+
+    return await _logged(ctx, "spy_action", params, _run)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
 async def get_cities(ctx: Context) -> str:
     """List all your cities with yields, population, production, growth, and loyalty.
 

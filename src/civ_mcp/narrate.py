@@ -57,6 +57,42 @@ def narrate_overview(ov: lq.GameOverview) -> str:
     return "\n".join(lines)
 
 
+_RANK_NAMES = {1: "Recruit", 2: "Agent", 3: "Special Agent", 4: "Senior Agent"}
+
+
+def narrate_spies(spies: list[lq.SpyInfo]) -> str:
+    if not spies:
+        return "No spies available yet."
+    lines = [f"Spies ({len(spies)}):"]
+    for s in spies:
+        rank_name = _RANK_NAMES.get(s.rank, f"Rank {s.rank}")
+        loc = f"({s.x},{s.y})"
+        if s.city_name != "none":
+            owner_tag = " [own]" if s.city_owner == 0 else ""
+            loc = f"{s.city_name}{owner_tag} ({s.x},{s.y})"
+        ops = ", ".join(s.available_ops) if s.available_ops else "none"
+        lines.append(
+            f"  id:{s.unit_id} [{rank_name}] {s.name} — at {loc} | moves:{s.moves}"
+            f" | xp:{s.xp} | ops: {ops}"
+        )
+    lines.append("")
+    lines.append("Actions:")
+    lines.append(
+        "  Travel: spy_action(unit_id, action='travel', target_x, target_y)"
+        " — send spy to own city or city-state"
+    )
+    lines.append(
+        "  Mission: spy_action(unit_id, action=MISSION_TYPE, target_x, target_y)"
+        " — spy must already be in target city"
+    )
+    lines.append(
+        "  Mission types: COUNTERSPY, GAIN_SOURCES, SIPHON_FUNDS, STEAL_TECH_BOOST,"
+        " SABOTAGE_PRODUCTION, GREAT_WORK_HEIST, RECRUIT_PARTISANS,"
+        " NEUTRALIZE_GOVERNOR, FABRICATE_SCANDAL"
+    )
+    return "\n".join(lines)
+
+
 def narrate_units(
     units: list[lq.UnitInfo],
     threats: list[lq.ThreatInfo] | None = None,

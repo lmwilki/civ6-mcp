@@ -82,6 +82,22 @@ class GameState:
         lines = await self.conn.execute_write(lq.build_units_query())
         return lq.parse_units_response(lines)
 
+    async def get_spies(self) -> list[lq.SpyInfo]:
+        lines = await self.conn.execute_write(lq.build_get_spies_query())
+        return lq.parse_spies_response(lines)
+
+    async def spy_travel(self, unit_index: int, target_x: int, target_y: int) -> str:
+        lua = lq.build_spy_travel(unit_index, target_x, target_y)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    async def spy_mission(
+        self, unit_index: int, mission_type: str, target_x: int, target_y: int
+    ) -> str:
+        lua = lq.build_spy_mission(unit_index, mission_type, target_x, target_y)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
     async def get_threat_scan(self) -> list[lq.ThreatInfo]:
         lines = await self.conn.execute_read(lq.build_threat_scan_query())
         return lq.parse_threat_scan_response(lines)

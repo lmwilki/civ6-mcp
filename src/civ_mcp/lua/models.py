@@ -101,6 +101,21 @@ class UnitInfo:
 
 
 @dataclass
+class SpyInfo:
+    unit_id: int  # composite ID (use with spy_action)
+    unit_index: int  # per-player index (unit_id % 65536)
+    name: str  # e.g. "Artimpasa"
+    x: int
+    y: int
+    rank: int  # 1=Recruit, 2=Agent, 3=Special Agent, 4=Senior Agent
+    xp: int
+    moves: int
+    city_name: str  # city at current position, or "none"
+    city_owner: int  # player ID of city owner, or -1
+    available_ops: list[str]  # e.g. ["TRAVEL", "COUNTERSPY"]
+
+
+@dataclass
 class CityInfo:
     city_id: int
     name: str
