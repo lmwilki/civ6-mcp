@@ -20,6 +20,9 @@ import {
   Wrench,
   CalendarClock,
   BrainCircuit,
+  Pickaxe,
+  Swords,
+  Shield,
 } from "lucide-react"
 
 function ScoreDelta({ current, prev, suffix }: { current: number; prev?: number; suffix?: string }) {
@@ -170,6 +173,102 @@ export function DiaryCard({ entry, prev, index, total }: DiaryCardProps) {
           </div>
         </div>
       </div>
+
+      {/* Stockpiles */}
+      {s.stockpiles && Object.keys(s.stockpiles).length > 0 && (
+        <div className="mb-4">
+          <h3 className="mb-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            Strategic Resources
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(s.stockpiles).map(([name, res]) => {
+              const net = res.per_turn - res.demand
+              const prevRes = ps?.stockpiles?.[name]
+              const prevNet = prevRes ? prevRes.per_turn - prevRes.demand : undefined
+              const short = name.replace("RESOURCE_", "").charAt(0) + name.replace("RESOURCE_", "").slice(1).toLowerCase()
+              return (
+                <div
+                  key={name}
+                  className="flex items-center gap-1 rounded-sm bg-marble-100 px-2 py-1"
+                >
+                  <Pickaxe className="h-3 w-3 text-marble-500" />
+                  <span className="font-mono text-xs tabular-nums text-marble-800">
+                    {short}: {res.amount}
+                  </span>
+                  <span className={`font-mono text-[10px] tabular-nums ${net >= 0 ? "text-patina" : "text-terracotta"}`}>
+                    ({net >= 0 ? "+" : ""}{net}/t)
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Rivals */}
+      {entry.rivals && entry.rivals.length > 0 && (
+        <div className="mb-4 rounded-sm border border-marble-300/50 bg-marble-50">
+          <button
+            onClick={() => toggleSection("rivals")}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-marble-100"
+          >
+            <Swords className="h-3.5 w-3.5 shrink-0 text-terracotta" />
+            <span className="flex-1 font-display text-xs font-bold uppercase tracking-[0.1em] text-marble-700">
+              Rivals
+            </span>
+            {expandedSections.has("rivals") ? (
+              <ChevronUp className="h-3 w-3 text-marble-400" />
+            ) : (
+              <ChevronDown className="h-3 w-3 text-marble-400" />
+            )}
+          </button>
+          {expandedSections.has("rivals") && (
+            <div className="border-t border-marble-300/30 px-3 py-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wider text-marble-500">
+                    <th className="text-left py-1 pr-2">Civ</th>
+                    <th className="text-right py-1 px-1">Score</th>
+                    <th className="text-right py-1 px-1">Cities</th>
+                    <th className="text-right py-1 px-1">Pop</th>
+                    <th className="text-right py-1 px-1">Sci</th>
+                    <th className="text-right py-1 px-1">Cul</th>
+                    <th className="text-right py-1 px-1">Mil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entry.rivals.map((r) => {
+                    const prevR = prev?.rivals?.find((pr) => pr.id === r.id)
+                    return (
+                      <tr key={r.id} className="border-t border-marble-200/50">
+                        <td className="py-1 pr-2 font-medium text-marble-700">{r.name}</td>
+                        <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                          {r.score}<ScoreDelta current={r.score} prev={prevR?.score} />
+                        </td>
+                        <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                          {r.cities}<ScoreDelta current={r.cities} prev={prevR?.cities} />
+                        </td>
+                        <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                          {r.pop}<ScoreDelta current={r.pop} prev={prevR?.pop} />
+                        </td>
+                        <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                          {Math.round(r.sci)}<ScoreDelta current={r.sci} prev={prevR?.sci} />
+                        </td>
+                        <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                          {Math.round(r.cul)}<ScoreDelta current={r.cul} prev={prevR?.cul} />
+                        </td>
+                        <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                          {r.mil}<ScoreDelta current={r.mil} prev={prevR?.mil} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Reflections */}
       <div className="space-y-1">
