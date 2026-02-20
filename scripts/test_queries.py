@@ -9,8 +9,8 @@ position automatically.
 
 import asyncio
 
-from civ_mcp.connection import GameConnection
 from civ_mcp import lua_queries as lq
+from civ_mcp.connection import GameConnection
 
 
 async def main():

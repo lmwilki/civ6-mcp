@@ -203,25 +203,27 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
             p = line.split("|")
             if len(p) < 14:
                 continue
-            players.append(VictoryPlayerProgress(
-                player_id=int(p[1]),
-                name=p[2],
-                score=int(float(p[3])),
-                science_vp=int(float(p[4])),
-                science_vp_needed=int(float(p[5])),
-                diplomatic_vp=int(float(p[6])),
-                tourism=int(float(p[7])),
-                military_strength=int(float(p[8])),
-                techs_researched=int(float(p[9])),
-                civics_completed=int(float(p[10])),
-                religion_cities=int(float(p[11])),
-                staycationers=int(float(p[12])),
-                has_religion=p[13] == "true",
-                num_cities=int(float(p[14])) if len(p) > 14 else 0,
-                science_yield=float(p[15]) if len(p) > 15 else 0.0,
-                culture_yield=float(p[16]) if len(p) > 16 else 0.0,
-                gold_yield=float(p[17]) if len(p) > 17 else 0.0,
-            ))
+            players.append(
+                VictoryPlayerProgress(
+                    player_id=int(p[1]),
+                    name=p[2],
+                    score=int(float(p[3])),
+                    science_vp=int(float(p[4])),
+                    science_vp_needed=int(float(p[5])),
+                    diplomatic_vp=int(float(p[6])),
+                    tourism=int(float(p[7])),
+                    military_strength=int(float(p[8])),
+                    techs_researched=int(float(p[9])),
+                    civics_completed=int(float(p[10])),
+                    religion_cities=int(float(p[11])),
+                    staycationers=int(float(p[12])),
+                    has_religion=p[13] == "true",
+                    num_cities=int(float(p[14])) if len(p) > 14 else 0,
+                    science_yield=float(p[15]) if len(p) > 15 else 0.0,
+                    culture_yield=float(p[16]) if len(p) > 16 else 0.0,
+                    gold_yield=float(p[17]) if len(p) > 17 else 0.0,
+                )
+            )
         elif line.startswith("SPACE|"):
             p = line.split("|")
             if len(p) >= 4:

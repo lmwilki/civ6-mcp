@@ -34,9 +34,7 @@ class Message:
     payload: str
 
 
-async def send_message(
-    writer: asyncio.StreamWriter, tag: int, payload: str
-) -> None:
+async def send_message(writer: asyncio.StreamWriter, tag: int, payload: str) -> None:
     """Send a framed message to the game."""
     data = payload.encode("utf-8") + b"\x00"
     header = struct.pack(HEADER_FMT, len(data), tag)
@@ -81,9 +79,7 @@ async def connect(
     host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, timeout: float = 5.0
 ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     """Open a TCP connection to the game's tuner port."""
-    return await asyncio.wait_for(
-        asyncio.open_connection(host, port), timeout=timeout
-    )
+    return await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
 
 
 async def handshake(
@@ -132,7 +128,9 @@ async def interactive_repl(
 ) -> None:
     """Interactive Lua REPL over the tuner connection."""
     state_index = 0
-    print(f"\nUsing Lua state {state_index}. Type 'states' to list, 'use N' to switch, 'quit' to exit.\n")
+    print(
+        f"\nUsing Lua state {state_index}. Type 'states' to list, 'use N' to switch, 'quit' to exit.\n"
+    )
 
     while True:
         try:

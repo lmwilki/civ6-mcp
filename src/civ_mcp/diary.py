@@ -40,7 +40,7 @@ def format_diary_entry(e: dict) -> str:
     s = e.get("score") or {}
     r = e.get("reflections") or {}
     header = f"=== Turn {t} ==="
-    pop_str = f" Pop: {s['population']} |" if 'population' in s else ""
+    pop_str = f" Pop: {s['population']} |" if "population" in s else ""
     score_line = (
         f"  Score: {s.get('total', '?')} | Cities: {s.get('cities', '?')} |{pop_str} "
         f"Sci: {s.get('science', '?')} | Cul: {s.get('culture', '?')} | "

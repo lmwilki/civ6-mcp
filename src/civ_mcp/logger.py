@@ -10,7 +10,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_LOG_DIR = Path.home() / ".civ6-mcp"
 DEFAULT_LOG_PATH = DEFAULT_LOG_DIR / "game_log.jsonl"
 

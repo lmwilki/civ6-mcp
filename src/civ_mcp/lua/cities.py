@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _ITEM_PARAM_MAP, _ITEM_TABLE_MAP, _bail, _bail_lua, _lua_get_city
+from civ_mcp.lua._helpers import (
+    _ITEM_PARAM_MAP,
+    _ITEM_TABLE_MAP,
+    SENTINEL,
+    _bail,
+    _bail_lua,
+    _lua_get_city,
+)
 from civ_mcp.lua.models import CityInfo, ProductionOption
 
 
@@ -256,8 +263,11 @@ print("{SENTINEL}")
 
 
 def build_produce_item(
-    city_id: int, item_type: str, item_name: str,
-    target_x: int | None = None, target_y: int | None = None,
+    city_id: int,
+    item_type: str,
+    item_name: str,
+    target_x: int | None = None,
+    target_y: int | None = None,
 ) -> str:
     """Set production for a city via CityManager.RequestOperation (InGame context).
 
@@ -327,13 +337,17 @@ print("{SENTINEL}")
 """
 
 
-def build_purchase_item(city_id: int, item_type: str, item_name: str, yield_type: str = "YIELD_GOLD") -> str:
+def build_purchase_item(
+    city_id: int, item_type: str, item_name: str, yield_type: str = "YIELD_GOLD"
+) -> str:
     """Purchase a unit or building with gold/faith via CityManager.RequestCommand (InGame context)."""
     itype = item_type.upper()
     table_name = _ITEM_TABLE_MAP.get(itype)
     param_key = _ITEM_PARAM_MAP.get(itype)
     if table_name is None or param_key is None:
-        return _bail(f"ERR:INVALID_TYPE|Can only purchase UNIT or BUILDING, got {item_type}")
+        return _bail(
+            f"ERR:INVALID_TYPE|Can only purchase UNIT or BUILDING, got {item_type}"
+        )
     return f"""
 {_lua_get_city(city_id)}
 local item = GameInfo.{table_name}["{item_name}"]
@@ -485,6 +499,7 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
         if len(parts) < 14:
             continue
         x_str, y_str = parts[2].split(",")
+
         def _split_hp(s: str) -> tuple[int, int]:
             if "/" in s:
                 a, b = s.split("/")
@@ -494,41 +509,51 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
         def_str = int(parts[15]) if len(parts) > 15 and parts[15].isdigit() else 0
         gar_hp, gar_max = _split_hp(parts[16]) if len(parts) > 16 else (0, 0)
         wall_hp, wall_max = _split_hp(parts[17]) if len(parts) > 17 else (0, 0)
-        cities.append(CityInfo(
-            city_id=int(parts[0]),
-            name=parts[1],
-            x=int(x_str),
-            y=int(y_str),
-            population=int(parts[3]),
-            food=float(parts[4]),
-            production=float(parts[5]),
-            gold=float(parts[6]),
-            science=float(parts[7]),
-            culture=float(parts[8]),
-            faith=float(parts[9]),
-            housing=float(parts[10]),
-            amenities=int(parts[11]),
-            turns_to_grow=int(parts[12]),
-            currently_building=parts[13],
-            production_turns_left=int(parts[14]) if len(parts) > 14 else 0,
-            defense_strength=def_str,
-            garrison_hp=gar_hp,
-            garrison_max_hp=gar_max,
-            wall_hp=wall_hp,
-            wall_max_hp=wall_max,
-            attack_targets=[t for t in (parts[18].split(";") if len(parts) > 18 else []) if t],
-            pillaged_districts=[d for d in (parts[19].split(";") if len(parts) > 19 else []) if d],
-            districts=[d for d in (parts[20].split(";") if len(parts) > 20 else []) if d],
-            loyalty=float(parts[21]) if len(parts) > 21 else 100.0,
-            loyalty_max=float(parts[22]) if len(parts) > 22 else 100.0,
-            loyalty_per_turn=float(parts[23]) if len(parts) > 23 else 0.0,
-            turns_to_loyalty_flip=int(parts[24]) if len(parts) > 24 else 0,
-            food_surplus=float(parts[25]) if len(parts) > 25 else 0.0,
-            food_stored=float(parts[26]) if len(parts) > 26 else 0.0,
-            growth_threshold=int(parts[27]) if len(parts) > 27 else 0,
-            pillaged_buildings=[b for b in (parts[28].split(";") if len(parts) > 28 else []) if b],
-            garrison_unit=parts[29] if len(parts) > 29 else "",
-        ))
+        cities.append(
+            CityInfo(
+                city_id=int(parts[0]),
+                name=parts[1],
+                x=int(x_str),
+                y=int(y_str),
+                population=int(parts[3]),
+                food=float(parts[4]),
+                production=float(parts[5]),
+                gold=float(parts[6]),
+                science=float(parts[7]),
+                culture=float(parts[8]),
+                faith=float(parts[9]),
+                housing=float(parts[10]),
+                amenities=int(parts[11]),
+                turns_to_grow=int(parts[12]),
+                currently_building=parts[13],
+                production_turns_left=int(parts[14]) if len(parts) > 14 else 0,
+                defense_strength=def_str,
+                garrison_hp=gar_hp,
+                garrison_max_hp=gar_max,
+                wall_hp=wall_hp,
+                wall_max_hp=wall_max,
+                attack_targets=[
+                    t for t in (parts[18].split(";") if len(parts) > 18 else []) if t
+                ],
+                pillaged_districts=[
+                    d for d in (parts[19].split(";") if len(parts) > 19 else []) if d
+                ],
+                districts=[
+                    d for d in (parts[20].split(";") if len(parts) > 20 else []) if d
+                ],
+                loyalty=float(parts[21]) if len(parts) > 21 else 100.0,
+                loyalty_max=float(parts[22]) if len(parts) > 22 else 100.0,
+                loyalty_per_turn=float(parts[23]) if len(parts) > 23 else 0.0,
+                turns_to_loyalty_flip=int(parts[24]) if len(parts) > 24 else 0,
+                food_surplus=float(parts[25]) if len(parts) > 25 else 0.0,
+                food_stored=float(parts[26]) if len(parts) > 26 else 0.0,
+                growth_threshold=int(parts[27]) if len(parts) > 27 else 0,
+                pillaged_buildings=[
+                    b for b in (parts[28].split(";") if len(parts) > 28 else []) if b
+                ],
+                garrison_unit=parts[29] if len(parts) > 29 else "",
+            )
+        )
     return cities, distances
 
 
@@ -540,11 +565,13 @@ def parse_city_production_response(lines: list[str]) -> list[ProductionOption]:
             continue
         parts = line.split("|")
         if len(parts) >= 3 and parts[0] in ("UNIT", "BUILDING", "DISTRICT", "PROJECT"):
-            options.append(ProductionOption(
-                category=parts[0],
-                item_name=parts[1],
-                cost=int(parts[2]),
-                turns=int(parts[3]) if len(parts) > 3 else 0,
-                gold_cost=int(parts[4]) if len(parts) > 4 else -1,
-            ))
+            options.append(
+                ProductionOption(
+                    category=parts[0],
+                    item_name=parts[1],
+                    cost=int(parts[2]),
+                    turns=int(parts[3]) if len(parts) > 3 else 0,
+                    gold_cost=int(parts[4]) if len(parts) > 4 else -1,
+                )
+            )
     return options

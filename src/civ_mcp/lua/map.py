@@ -2,8 +2,26 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_city, _lua_get_unit
-from civ_mcp.lua.models import DistrictPlacement, FogBoundary, MinimapData, NearbyResource, OwnedResource, PurchasableTile, ResourceStockpile, SettleCandidate, StrategicMapData, TileInfo, UnclaimedResource
+from civ_mcp.lua._helpers import (
+    SENTINEL,
+    _bail,
+    _bail_lua,
+    _lua_get_city,
+    _lua_get_unit,
+)
+from civ_mcp.lua.models import (
+    DistrictPlacement,
+    FogBoundary,
+    MinimapData,
+    NearbyResource,
+    OwnedResource,
+    PurchasableTile,
+    ResourceStockpile,
+    SettleCandidate,
+    StrategicMapData,
+    TileInfo,
+    UnclaimedResource,
+)
 
 # --- Shared Lua fragments for settle-scan scoring (used by two builders) ---
 
@@ -107,6 +125,7 @@ _SETTLE_SCORE_BODY = """
                     table.insert(candidates, {x=cx, y=cy, score=score, f=totalF, p=totalP, water=waterType, def=defScore, res=table.concat(resList, ","), loy=loyPT})
                 end
 """
+
 
 def _settle_output(limit: int) -> str:
     return f"""
@@ -285,24 +304,30 @@ def parse_strategic_map_response(lines: list[str]) -> StrategicMapData:
             if len(parts) >= 4:
                 cx, cy = parts[2].split(",")
                 dists = [int(d) for d in parts[3].split(",")]
-                fog_boundaries.append(FogBoundary(
-                    city_name=parts[1],
-                    city_x=int(cx),
-                    city_y=int(cy),
-                    fog_distances=dists,
-                ))
+                fog_boundaries.append(
+                    FogBoundary(
+                        city_name=parts[1],
+                        city_x=int(cx),
+                        city_y=int(cy),
+                        fog_distances=dists,
+                    )
+                )
         elif line.startswith("UNCLAIMED|"):
             parts = line.split("|")
             if len(parts) >= 4:
                 rx, ry = parts[2].split(",")
-                unclaimed.append(UnclaimedResource(
-                    resource_type=parts[1],
-                    x=int(rx),
-                    y=int(ry),
-                    resource_class=parts[3],
-                ))
+                unclaimed.append(
+                    UnclaimedResource(
+                        resource_type=parts[1],
+                        x=int(rx),
+                        y=int(ry),
+                        resource_class=parts[3],
+                    )
+                )
 
-    return StrategicMapData(fog_boundaries=fog_boundaries, unclaimed_resources=unclaimed)
+    return StrategicMapData(
+        fog_boundaries=fog_boundaries, unclaimed_resources=unclaimed
+    )
 
 
 def parse_minimap_response(lines: list[str]) -> MinimapData:
@@ -845,25 +870,29 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
                 imp_pillaged = True
             else:
                 imp_name = imp_raw
-        tiles.append(TileInfo(
-            x=int(x_str),
-            y=int(y_str),
-            terrain=parts[1],
-            feature=None if parts[2] == "none" else parts[2],
-            resource=resource_name,
-            is_hills=parts[4] == "1",
-            is_river=parts[5] == "1",
-            is_coastal=parts[6] == "1",
-            improvement=imp_name,
-            owner_id=int(parts[8]),
-            visibility=visibility,
-            is_fresh_water=is_fresh_water,
-            yields=yields,
-            units=unit_list,
-            resource_class=resource_class,
-            is_pillaged=imp_pillaged,
-            district=None if (len(parts) <= 13 or parts[13] == "none") else parts[13],
-        ))
+        tiles.append(
+            TileInfo(
+                x=int(x_str),
+                y=int(y_str),
+                terrain=parts[1],
+                feature=None if parts[2] == "none" else parts[2],
+                resource=resource_name,
+                is_hills=parts[4] == "1",
+                is_river=parts[5] == "1",
+                is_coastal=parts[6] == "1",
+                improvement=imp_name,
+                owner_id=int(parts[8]),
+                visibility=visibility,
+                is_fresh_water=is_fresh_water,
+                yields=yields,
+                units=unit_list,
+                resource_class=resource_class,
+                is_pillaged=imp_pillaged,
+                district=None
+                if (len(parts) <= 13 or parts[13] == "none")
+                else parts[13],
+            )
+        )
     return tiles
 
 
@@ -881,19 +910,21 @@ def parse_settle_advisor_response(lines: list[str]) -> list[SettleCandidate]:
         resources = [r for r in parts[7].split(",") if r] if parts[7] else []
         lux = sum(1 for r in resources if r.startswith("L:"))
         strat = sum(1 for r in resources if r.startswith("S:"))
-        candidates.append(SettleCandidate(
-            x=int(x_str),
-            y=int(y_str),
-            score=float(parts[2]),
-            total_food=int(parts[3]),
-            total_prod=int(parts[4]),
-            water_type=parts[5],
-            resources=resources,
-            defense_score=int(parts[6]),
-            luxury_count=lux,
-            strategic_count=strat,
-            loyalty_pressure=float(parts[8]) if len(parts) > 8 else 0.0,
-        ))
+        candidates.append(
+            SettleCandidate(
+                x=int(x_str),
+                y=int(y_str),
+                score=float(parts[2]),
+                total_food=int(parts[3]),
+                total_prod=int(parts[4]),
+                water_type=parts[5],
+                resources=resources,
+                defense_score=int(parts[6]),
+                luxury_count=lux,
+                strategic_count=strat,
+                loyalty_pressure=float(parts[8]) if len(parts) > 8 else 0.0,
+            )
+        )
     return candidates
 
 
@@ -928,20 +959,24 @@ def parse_stockpile_response(lines: list[str]) -> list[ResourceStockpile]:
             parts = line.split("|")
             if len(parts) < 7:
                 continue
-            stockpiles.append(ResourceStockpile(
-                name=parts[1],
-                amount=int(parts[2]),
-                cap=int(parts[3]),
-                per_turn=int(parts[4]),
-                demand=int(parts[5]),
-                imported=int(parts[6]),
-            ))
+            stockpiles.append(
+                ResourceStockpile(
+                    name=parts[1],
+                    amount=int(parts[2]),
+                    cap=int(parts[3]),
+                    per_turn=int(parts[4]),
+                    demand=int(parts[5]),
+                    imported=int(parts[6]),
+                )
+            )
     return stockpiles
 
 
 def parse_empire_resources_response(
     lines: list[str],
-) -> tuple[list[ResourceStockpile], list[OwnedResource], list[NearbyResource], dict[str, int]]:
+) -> tuple[
+    list[ResourceStockpile], list[OwnedResource], list[NearbyResource], dict[str, int]
+]:
     """Returns (stockpiles, owned_tiles, nearby_unclaimed, luxury_counts)."""
     stockpiles = []
     owned = []
@@ -952,14 +987,16 @@ def parse_empire_resources_response(
             parts = line.split("|")
             if len(parts) < 7:
                 continue
-            stockpiles.append(ResourceStockpile(
-                name=parts[1],
-                amount=int(parts[2]),
-                cap=int(parts[3]),
-                per_turn=int(parts[4]),
-                demand=int(parts[5]),
-                imported=int(parts[6]),
-            ))
+            stockpiles.append(
+                ResourceStockpile(
+                    name=parts[1],
+                    amount=int(parts[2]),
+                    cap=int(parts[3]),
+                    per_turn=int(parts[4]),
+                    demand=int(parts[5]),
+                    imported=int(parts[6]),
+                )
+            )
         elif line.startswith("LUXURY_OWNED|"):
             parts = line.split("|")
             if len(parts) >= 3:
@@ -969,26 +1006,30 @@ def parse_empire_resources_response(
             if len(parts) < 5:
                 continue
             x_str, y_str = parts[4].split(",")
-            owned.append(OwnedResource(
-                name=parts[1],
-                resource_class=parts[2],
-                improved=parts[3] == "1",
-                x=int(x_str),
-                y=int(y_str),
-            ))
+            owned.append(
+                OwnedResource(
+                    name=parts[1],
+                    resource_class=parts[2],
+                    improved=parts[3] == "1",
+                    x=int(x_str),
+                    y=int(y_str),
+                )
+            )
         elif line.startswith("NEARBY|"):
             parts = line.split("|")
             if len(parts) < 6:
                 continue
             x_str, y_str = parts[3].split(",")
-            nearby.append(NearbyResource(
-                name=parts[1],
-                resource_class=parts[2],
-                x=int(x_str),
-                y=int(y_str),
-                nearest_city=parts[4],
-                distance=int(parts[5]),
-            ))
+            nearby.append(
+                NearbyResource(
+                    name=parts[1],
+                    resource_class=parts[2],
+                    x=int(x_str),
+                    y=int(y_str),
+                    nearest_city=parts[4],
+                    distance=int(parts[5]),
+                )
+            )
     return stockpiles, owned, nearby, luxuries
 
 
@@ -1001,19 +1042,32 @@ def parse_district_advisor_response(lines: list[str]) -> list[DistrictPlacement]
             if len(parts) >= 9:
                 coords = parts[1].split(",")
                 adjacency: dict[str, int] = {}
-                s, p, g, f, c = int(parts[2]), int(parts[3]), int(parts[4]), int(parts[5]), int(parts[6])
-                if s: adjacency["science"] = s
-                if p: adjacency["production"] = p
-                if g: adjacency["gold"] = g
-                if f: adjacency["faith"] = f
-                if c: adjacency["culture"] = c
-                results.append(DistrictPlacement(
-                    x=int(coords[0]),
-                    y=int(coords[1]),
-                    adjacency=adjacency,
-                    total_adjacency=int(parts[7]),
-                    terrain_desc=parts[8],
-                ))
+                s, p, g, f, c = (
+                    int(parts[2]),
+                    int(parts[3]),
+                    int(parts[4]),
+                    int(parts[5]),
+                    int(parts[6]),
+                )
+                if s:
+                    adjacency["science"] = s
+                if p:
+                    adjacency["production"] = p
+                if g:
+                    adjacency["gold"] = g
+                if f:
+                    adjacency["faith"] = f
+                if c:
+                    adjacency["culture"] = c
+                results.append(
+                    DistrictPlacement(
+                        x=int(coords[0]),
+                        y=int(coords[1]),
+                        adjacency=adjacency,
+                        total_adjacency=int(parts[7]),
+                        terrain_desc=parts[8],
+                    )
+                )
     return results
 
 
@@ -1025,12 +1079,14 @@ def parse_purchasable_tiles_response(lines: list[str]) -> list[PurchasableTile]:
             parts = line.split("|")
             if len(parts) >= 6:
                 coords = parts[1].split(",")
-                results.append(PurchasableTile(
-                    x=int(coords[0]),
-                    y=int(coords[1]),
-                    cost=int(parts[2]),
-                    terrain=parts[3],
-                    resource=parts[4] if parts[4] else None,
-                    resource_class=parts[5] if parts[5] else None,
-                ))
+                results.append(
+                    PurchasableTile(
+                        x=int(coords[0]),
+                        y=int(coords[1]),
+                        cost=int(parts[2]),
+                        terrain=parts[3],
+                        resource=parts[4] if parts[4] else None,
+                        resource_class=parts[5] if parts[5] else None,
+                    )
+                )
     return results

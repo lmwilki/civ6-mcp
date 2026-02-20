@@ -68,6 +68,7 @@ def _require_gui_deps():
         import Quartz
         import Vision
         from Foundation import NSURL
+
         return Quartz, Vision, NSURL
     except ImportError:
         raise RuntimeError(
@@ -79,6 +80,7 @@ def _require_gui_deps():
 # ---------------------------------------------------------------------------
 # Process management (no GUI deps needed)
 # ---------------------------------------------------------------------------
+
 
 def is_game_running() -> bool:
     """Check if Civ 6 is running."""
@@ -92,7 +94,8 @@ def is_game_running() -> bool:
         for name in _PROCESS_NAMES:
             r = subprocess.run(
                 ["tasklist", "/FI", f"IMAGENAME eq {name}", "/NH"],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             if name.lower() in r.stdout.lower():
                 return True
@@ -156,6 +159,7 @@ def _launch_game_sync() -> str:
 # OCR + GUI helpers (require pyobjc)
 # ---------------------------------------------------------------------------
 
+
 def _screenshot(path: str = "/tmp/civ_ocr_nav.png") -> str:
     """Take a screenshot of the entire screen (macOS only)."""
     if sys.platform != "darwin":
@@ -197,16 +201,21 @@ def _get_game_window() -> tuple[int, int, int, int] | None:
     if sys.platform != "darwin":
         raise NotImplementedError(f"Window detection not supported on {sys.platform}")
     for proc in _PROCESS_NAMES:
-        r = subprocess.run([
-            "osascript", "-e",
-            f'tell application "System Events"\n'
-            f'  tell process "{proc}"\n'
-            f'    set {{x, y}} to position of window 1\n'
-            f'    set {{w, h}} to size of window 1\n'
-            f'    return (x as string) & "," & (y as string) & "," & (w as string) & "," & (h as string)\n'
-            f'  end tell\n'
-            f'end tell'
-        ], capture_output=True, text=True)
+        r = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'tell application "System Events"\n'
+                f'  tell process "{proc}"\n'
+                f"    set {{x, y}} to position of window 1\n"
+                f"    set {{w, h}} to size of window 1\n"
+                f'    return (x as string) & "," & (y as string) & "," & (w as string) & "," & (h as string)\n'
+                f"  end tell\n"
+                f"end tell",
+            ],
+            capture_output=True,
+            text=True,
+        )
         parts = r.stdout.strip().split(",")
         if len(parts) == 4:
             return tuple(int(p) for p in parts)
@@ -264,17 +273,24 @@ def _bring_to_front() -> None:
     if sys.platform != "darwin":
         raise NotImplementedError(f"Window focus not supported on {sys.platform}")
     for proc in _PROCESS_NAMES:
-        r = subprocess.run([
-            "osascript", "-e",
-            f'tell application "System Events" to set frontmost of process "{proc}" to true'
-        ], capture_output=True)
+        r = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'tell application "System Events" to set frontmost of process "{proc}" to true',
+            ],
+            capture_output=True,
+        )
         if r.returncode == 0:
             break
     time.sleep(0.3)
 
 
 def _wait_for_text(
-    target: str, timeout: int = 60, exact: bool = False, interval: int = 3,
+    target: str,
+    timeout: int = 60,
+    exact: bool = False,
+    interval: int = 3,
     prefer_bottom: bool = False,
 ) -> tuple[str, int, int, int, int] | None:
     """Wait until OCR finds target text in game window."""
@@ -284,8 +300,13 @@ def _wait_for_text(
         time.sleep(0.5)
         bounds = _get_game_window()
         results = _ocr(_screenshot())
-        match = _find_text(results, target, exact=exact, window_bounds=bounds,
-                           prefer_bottom=prefer_bottom)
+        match = _find_text(
+            results,
+            target,
+            exact=exact,
+            window_bounds=bounds,
+            prefer_bottom=prefer_bottom,
+        )
         if match:
             return match
         time.sleep(interval)
@@ -293,12 +314,16 @@ def _wait_for_text(
 
 
 def _click_text(
-    target: str, timeout: int = 30, exact: bool = False, post_delay: float = 2,
+    target: str,
+    timeout: int = 30,
+    exact: bool = False,
+    post_delay: float = 2,
     prefer_bottom: bool = False,
 ) -> bool:
     """Find text via OCR and click it. Returns success."""
-    match = _wait_for_text(target, timeout=timeout, exact=exact,
-                           prefer_bottom=prefer_bottom)
+    match = _wait_for_text(
+        target, timeout=timeout, exact=exact, prefer_bottom=prefer_bottom
+    )
     if not match:
         log.warning("OCR: '%s' not found after %ds", target, timeout)
         return False
@@ -313,6 +338,7 @@ def _click_text(
 # ---------------------------------------------------------------------------
 # Save discovery
 # ---------------------------------------------------------------------------
+
 
 def get_latest_autosave() -> str | None:
     """Find the most recent autosave name (without extension)."""
@@ -333,6 +359,7 @@ def list_autosaves(limit: int = 10) -> list[str]:
 # ---------------------------------------------------------------------------
 # Menu navigation (blocking — run via asyncio.to_thread)
 # ---------------------------------------------------------------------------
+
 
 def _navigate_to_save_sync(save_name: str) -> str:
     """Navigate: Main Menu → Single Player → Load Game → Autosaves → select → Load.
@@ -388,6 +415,7 @@ def _navigate_to_save_sync(save_name: str) -> str:
 # ---------------------------------------------------------------------------
 # Async public API (called by MCP tools)
 # ---------------------------------------------------------------------------
+
 
 async def kill_game() -> str:
     """Kill Civ 6 and wait for Steam to deregister."""

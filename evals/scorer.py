@@ -18,7 +18,6 @@ from inspect_ai.scorer import (
 )
 from inspect_ai.solver import TaskState
 
-
 # ---------------------------------------------------------------------------
 # Internal: tool call extraction
 # ---------------------------------------------------------------------------
@@ -62,9 +61,7 @@ def _extract_tool_calls(state: TaskState) -> list[ToolCall]:
             # Get the text content
             content = msg.content if isinstance(msg.content, str) else ""
             if isinstance(msg.content, list):
-                content = " ".join(
-                    c.text for c in msg.content if hasattr(c, "text")
-                )
+                content = " ".join(c.text for c in msg.content if hasattr(c, "text"))
 
             # Match with the assistant's call info
             if call_id and call_id in call_map:
@@ -72,12 +69,14 @@ def _extract_tool_calls(state: TaskState) -> list[ToolCall]:
             else:
                 name, args = func_name, {}
 
-            calls.append(ToolCall(
-                name=name,
-                arguments=args,
-                result=content,
-                inspect_error=is_error,
-            ))
+            calls.append(
+                ToolCall(
+                    name=name,
+                    arguments=args,
+                    result=content,
+                    inspect_error=is_error,
+                )
+            )
 
     return calls
 
@@ -162,15 +161,16 @@ def _count_end_turns(calls: list[ToolCall]) -> int:
 
 def _count_attacks(calls: list[ToolCall]) -> int:
     return sum(
-        1 for c in calls
-        if c.name == "execute_unit_action"
-        and c.arguments.get("action") == "attack"
+        1
+        for c in calls
+        if c.name == "execute_unit_action" and c.arguments.get("action") == "attack"
     )
 
 
 def _count_cities_founded(calls: list[ToolCall]) -> int:
     return sum(
-        1 for c in calls
+        1
+        for c in calls
         if c.name == "execute_unit_action"
         and c.arguments.get("action") == "found_city"
         and not c.is_error
@@ -183,7 +183,8 @@ def _count_map_scans(calls: list[ToolCall]) -> int:
 
 def _count_research_sets(calls: list[ToolCall]) -> int:
     return sum(
-        1 for c in calls
+        1
+        for c in calls
         if c.name == "set_research"
         and c.arguments.get("category", "tech") == "tech"
         and not c.is_error
@@ -192,7 +193,8 @@ def _count_research_sets(calls: list[ToolCall]) -> int:
 
 def _count_civic_sets(calls: list[ToolCall]) -> int:
     return sum(
-        1 for c in calls
+        1
+        for c in calls
         if c.name == "set_research"
         and c.arguments.get("category") == "civic"
         and not c.is_error
@@ -293,7 +295,11 @@ def civbench_scorer():
             turns_played = float(_count_end_turns(calls))
 
         # Build summary
-        turn_info = f"Turn {last_overview.get('turn', '?')}" if last_overview else "unknown turn"
+        turn_info = (
+            f"Turn {last_overview.get('turn', '?')}"
+            if last_overview
+            else "unknown turn"
+        )
         summary = (
             f"Score {overall:.0f} at {turn_info} | "
             f"{turns_played:.0f} turns | "
@@ -317,7 +323,7 @@ def civbench_scorer():
                 f"Extracted from {total_calls} tool calls over {turns_played:.0f} turns.\n"
                 f"Final overview: {last_overview or 'not found'}\n"
                 f"Unique tools used: {_count_unique_tools(calls)}\n"
-                f"Error rate: {errors}/{total_calls} = {(1-tool_fluency)*100:.1f}%"
+                f"Error rate: {errors}/{total_calls} = {(1 - tool_fluency) * 100:.1f}%"
             ),
             metadata={
                 "total_calls": total_calls,

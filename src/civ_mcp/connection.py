@@ -45,13 +45,17 @@ class GameConnection:
         """Connect to Civ 6 and discover Lua state indexes."""
         log.info("Connecting to Civ 6 at %s:%d", self.host, self.port)
         try:
-            self._reader, self._writer = await tuner_client.connect(self.host, self.port)
+            self._reader, self._writer = await tuner_client.connect(
+                self.host, self.port
+            )
         except (asyncio.TimeoutError, OSError) as e:
             raise ConnectionError(
                 f"Cannot connect to Civ 6 at {self.host}:{self.port}. "
                 "Is the game running with EnableTuner=1?"
             ) from e
-        app_identity, raw_states = await tuner_client.handshake(self._reader, self._writer)
+        app_identity, raw_states = await tuner_client.handshake(
+            self._reader, self._writer
+        )
         log.info("Connected: %s", app_identity)
 
         # Parse state list: alternating [index_number, state_name] pairs
@@ -202,7 +206,7 @@ def _parse_output(payload: str) -> str | None:
     # Find the ': ' separator after the context name
     sep = payload.find(": ", 2)
     if sep >= 0:
-        return payload[sep + 2:]
+        return payload[sep + 2 :]
 
     # Fallback: strip the O and null byte prefix
     return payload.lstrip("O").lstrip("\x00").strip()

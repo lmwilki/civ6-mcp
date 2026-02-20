@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_close_diplo_session
-from civ_mcp.lua.models import CivInfo, DealItem, DealOptions, DiplomacyModifier, DiplomacySession, PendingDeal, VisibleCity
+from civ_mcp.lua.models import (
+    CivInfo,
+    DealItem,
+    DealOptions,
+    DiplomacyModifier,
+    DiplomacySession,
+    PendingDeal,
+    VisibleCity,
+)
 
 
 def build_diplomacy_query() -> str:
@@ -654,7 +662,7 @@ def _lua_deal_item(from_var: str, item: dict) -> str:
             f"if ai then ai:SetSubType(DealAgreementTypes.{subtype}) end end"
         )
     else:
-        return f'-- unsupported deal item type: {t}'
+        return f"-- unsupported deal item type: {t}"
 
 
 def build_propose_trade(
@@ -845,10 +853,12 @@ def parse_diplomacy_response(lines: list[str]) -> list[CivInfo]:
             if len(parts) >= 4:
                 pid = int(parts[1])
                 if pid in civs:
-                    civs[pid].modifiers.append(DiplomacyModifier(
-                        score=int(parts[2]),
-                        text=parts[3],
-                    ))
+                    civs[pid].modifiers.append(
+                        DiplomacyModifier(
+                            score=int(parts[2]),
+                            text=parts[3],
+                        )
+                    )
                     civs[pid].relationship_score += int(parts[2])
         elif line.startswith("ALLIANCE|"):
             parts = line.split("|")
@@ -930,21 +940,23 @@ def parse_diplomacy_sessions(lines: list[str]) -> list[DiplomacySession]:
         if line.startswith("SESSION|"):
             parts = line.split("|")
             if len(parts) >= 5:
-                sessions.append(DiplomacySession(
-                    session_id=int(parts[1]),
-                    other_player_id=int(parts[2]),
-                    other_civ_name=parts[3],
-                    other_leader_name=parts[4],
-                    choices=[],
-                    dialogue_text=parts[5] if len(parts) > 5 else "",
-                    reason_text=parts[6] if len(parts) > 6 else "",
-                    buttons=parts[7] if len(parts) > 7 else "",
-                ))
+                sessions.append(
+                    DiplomacySession(
+                        session_id=int(parts[1]),
+                        other_player_id=int(parts[2]),
+                        other_civ_name=parts[3],
+                        other_leader_name=parts[4],
+                        choices=[],
+                        dialogue_text=parts[5] if len(parts) > 5 else "",
+                        reason_text=parts[6] if len(parts) > 6 else "",
+                        buttons=parts[7] if len(parts) > 7 else "",
+                    )
+                )
         elif line.startswith("DEAL_ITEM|") and sessions:
             # DEAL_ITEM|playerID|fromTag|typeName|itemName|amount|duration
             parts = line.split("|")
             if len(parts) >= 5:
-                from_tag = parts[2]   # "THEM" or "US"
+                from_tag = parts[2]  # "THEM" or "US"
                 item_name = parts[4]
                 amount = int(parts[5]) if len(parts) > 5 else 0
                 duration = int(parts[6]) if len(parts) > 6 else 0
@@ -952,7 +964,9 @@ def parse_diplomacy_sessions(lines: list[str]) -> list[DiplomacySession]:
                 amt_str = f" x{amount}" if amount > 0 else ""
                 entry = f"{'They offer' if from_tag == 'THEM' else 'You offer'}: {item_name}{amt_str}{dur_str}"
                 s = sessions[-1]
-                s.deal_summary = (s.deal_summary + "; " + entry) if s.deal_summary else entry
+                s.deal_summary = (
+                    (s.deal_summary + "; " + entry) if s.deal_summary else entry
+                )
     return sessions
 
 
@@ -978,7 +992,9 @@ def parse_pending_deals_response(lines: list[str]) -> list[PendingDeal]:
                 is_from_us = parts[2] == "US"
                 item = DealItem(
                     from_player_id=-1 if is_from_us else pid,
-                    from_player_name="Us" if is_from_us else deals[pid].other_player_name,
+                    from_player_name="Us"
+                    if is_from_us
+                    else deals[pid].other_player_name,
                     item_type=parts[3],
                     name=parts[4],
                     amount=int(parts[5]),

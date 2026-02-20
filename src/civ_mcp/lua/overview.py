@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL
-from civ_mcp.lua.models import GameOverStatus, GameOverview, ReligionInfo, RivalSnapshot, ScoreEntry
+from civ_mcp.lua.models import (
+    GameOverStatus,
+    GameOverview,
+    ReligionInfo,
+    RivalSnapshot,
+    ScoreEntry,
+)
 
 
 def build_overview_query() -> str:
@@ -225,7 +231,9 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         raise ValueError("Empty overview response")
     parts = lines[0].split("|")
     if len(parts) < 13:
-        raise ValueError(f"Overview response has {len(parts)} fields, expected 13: {lines[0]}")
+        raise ValueError(
+            f"Overview response has {len(parts)} fields, expected 13: {lines[0]}"
+        )
     rankings: list[ScoreEntry] = []
     explored_land = 0
     total_land = 0
@@ -242,11 +250,13 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         if line.startswith("RANK|"):
             rp = line.split("|")
             if len(rp) >= 4:
-                rankings.append(ScoreEntry(
-                    player_id=int(rp[1]),
-                    civ_name=rp[2],
-                    score=int(rp[3]),
-                ))
+                rankings.append(
+                    ScoreEntry(
+                        player_id=int(rp[1]),
+                        civ_name=rp[2],
+                        score=int(rp[3]),
+                    )
+                )
         elif line.startswith("EXPLORE|"):
             ep = line.split("|")
             if len(ep) >= 3:
@@ -315,45 +325,45 @@ def build_rival_snapshot_query() -> str:
     resources: comma-separated RESOURCE:amount pairs for non-zero stockpiles, e.g. IRON:5,HORSES:2
     """
     return (
-        'local me = Game.GetLocalPlayer() '
-        'local pDiplo = Players[me]:GetDiplomacy() '
-        'for i = 0, 62 do '
-        '  if i ~= me and Players[i] and Players[i]:IsMajor() and Players[i]:IsAlive() and pDiplo:HasMet(i) then '
-        '    local cfg = PlayerConfigurations[i] '
-        '    local name = Locale.Lookup(cfg:GetCivilizationShortDescription()) '
-        '    local p = Players[i] '
-        '    local score = p:GetScore() '
-        '    local nCities, totalPop = 0, 0 '
-        '    for _, c in p:GetCities():Members() do nCities = nCities + 1; totalPop = totalPop + c:GetPopulation() end '
-        '    local sci = p:GetTechs():GetScienceYield() '
-        '    local cul = p:GetCulture():GetCultureYield() '
-        '    local gold = p:GetTreasury():GetGoldYield() - p:GetTreasury():GetTotalMaintenance() '
-        '    local st = p:GetStats() '
-        '    local mil = st:GetMilitaryStrength() '
-        '    local techs = st:GetNumTechsResearched() '
-        '    local civics = st:GetNumCivicsCompleted() '
-        '    local sciVP = st:GetScienceVictoryPoints() '
-        '    local diploVP = st:GetDiplomaticVictoryPoints() '
-        '    local faith = 0 '
-        '    pcall(function() faith = p:GetReligion():GetFaithBalance() end) '
+        "local me = Game.GetLocalPlayer() "
+        "local pDiplo = Players[me]:GetDiplomacy() "
+        "for i = 0, 62 do "
+        "  if i ~= me and Players[i] and Players[i]:IsMajor() and Players[i]:IsAlive() and pDiplo:HasMet(i) then "
+        "    local cfg = PlayerConfigurations[i] "
+        "    local name = Locale.Lookup(cfg:GetCivilizationShortDescription()) "
+        "    local p = Players[i] "
+        "    local score = p:GetScore() "
+        "    local nCities, totalPop = 0, 0 "
+        "    for _, c in p:GetCities():Members() do nCities = nCities + 1; totalPop = totalPop + c:GetPopulation() end "
+        "    local sci = p:GetTechs():GetScienceYield() "
+        "    local cul = p:GetCulture():GetCultureYield() "
+        "    local gold = p:GetTreasury():GetGoldYield() - p:GetTreasury():GetTotalMaintenance() "
+        "    local st = p:GetStats() "
+        "    local mil = st:GetMilitaryStrength() "
+        "    local techs = st:GetNumTechsResearched() "
+        "    local civics = st:GetNumCivicsCompleted() "
+        "    local sciVP = st:GetScienceVictoryPoints() "
+        "    local diploVP = st:GetDiplomaticVictoryPoints() "
+        "    local faith = 0 "
+        "    pcall(function() faith = p:GetReligion():GetFaithBalance() end) "
         '    local resStr = "" '
-        '    local pRes = p:GetResources() '
-        '    for row in GameInfo.Resources() do '
+        "    local pRes = p:GetResources() "
+        "    for row in GameInfo.Resources() do "
         '      if row.ResourceClassType == "RESOURCECLASS_STRATEGIC" then '
-        '        local amt = 0 '
-        '        pcall(function() amt = pRes:GetResourceAmount(row.Index) end) '
-        '        if amt and amt > 0 then '
+        "        local amt = 0 "
+        "        pcall(function() amt = pRes:GetResourceAmount(row.Index) end) "
+        "        if amt and amt > 0 then "
         '          local rName = row.ResourceType:gsub("RESOURCE_", "") '
         '          resStr = resStr .. (resStr ~= "" and "," or "") .. rName .. ":" .. amt '
-        '        end '
-        '      end '
-        '    end '
+        "        end "
+        "      end "
+        "    end "
         '    print("RIVAL|" .. i .. "|" .. name .. "|" .. score .. "|" .. nCities .. "|" .. totalPop '
         '      .. "|" .. string.format("%.1f", sci) .. "|" .. string.format("%.1f", cul) '
         '      .. "|" .. string.format("%.1f", gold) .. "|" .. mil .. "|" .. techs .. "|" .. civics '
         '      .. "|" .. string.format("%.1f", faith) .. "|" .. sciVP .. "|" .. diploVP .. "|" .. resStr) '
-        '  end '
-        'end '
+        "  end "
+        "end "
         f'print("{SENTINEL}")'
     )
 
@@ -376,21 +386,23 @@ def parse_rival_snapshot_response(lines: list[str]) -> list[RivalSnapshot]:
                         stockpiles[k] = int(v)
                     except ValueError:
                         pass
-        rivals.append(RivalSnapshot(
-            id=int(p[1]),
-            name=p[2],
-            score=int(float(p[3])),
-            cities=int(float(p[4])),
-            pop=int(float(p[5])),
-            sci=round(float(p[6]), 1),
-            cul=round(float(p[7]), 1),
-            gold=round(float(p[8]), 1),
-            mil=int(float(p[9])),
-            techs=int(float(p[10])),
-            civics=int(float(p[11])),
-            faith=round(float(p[12]), 1),
-            sci_vp=int(float(p[13])),
-            diplo_vp=int(float(p[14])),
-            stockpiles=stockpiles,
-        ))
+        rivals.append(
+            RivalSnapshot(
+                id=int(p[1]),
+                name=p[2],
+                score=int(float(p[3])),
+                cities=int(float(p[4])),
+                pop=int(float(p[5])),
+                sci=round(float(p[6]), 1),
+                cul=round(float(p[7]), 1),
+                gold=round(float(p[8]), 1),
+                mil=int(float(p[9])),
+                techs=int(float(p[10])),
+                civics=int(float(p[11])),
+                faith=round(float(p[12]), 1),
+                sci_vp=int(float(p[13])),
+                diplo_vp=int(float(p[14])),
+                stockpiles=stockpiles,
+            )
+        )
     return rivals

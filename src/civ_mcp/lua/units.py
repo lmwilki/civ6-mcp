@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_unit, _lua_get_unit_gamecore
+from civ_mcp.lua._helpers import (
+    SENTINEL,
+    _bail,
+    _bail_lua,
+    _lua_get_unit,
+    _lua_get_unit_gamecore,
+)
 from civ_mcp.lua.models import CombatEstimate, ThreatInfo, UnitInfo
 
 
@@ -346,7 +352,9 @@ print("{SENTINEL}")
 """
 
 
-def parse_combat_estimate(lines: list[str], att_cs: int, def_cs: int) -> CombatEstimate | None:
+def parse_combat_estimate(
+    lines: list[str], att_cs: int, def_cs: int
+) -> CombatEstimate | None:
     """Parse ESTIMATE line and compute damage using Civ 6 formula."""
     for line in lines:
         if line.startswith("ESTIMATE|"):
@@ -361,10 +369,15 @@ def parse_combat_estimate(lines: list[str], att_cs: int, def_cs: int) -> CombatE
             enemy_hp = int(p[8])
             # Civ 6 damage formula: BASE * 10^((att-def)/30)
             import math
+
             base_damage = 24
             if eff_att > 0 and eff_def > 0:
                 dmg_to_def = base_damage * (10 ** ((eff_att - eff_def) / 30))
-                dmg_to_att = base_damage * (10 ** ((eff_def - eff_att) / 30)) if not is_ranged else 0
+                dmg_to_att = (
+                    base_damage * (10 ** ((eff_def - eff_att) / 30))
+                    if not is_ranged
+                    else 0
+                )
             else:
                 dmg_to_def = 0
                 dmg_to_att = 0
@@ -680,30 +693,34 @@ def parse_units_response(lines: list[str]) -> list[UnitInfo]:
         upgrade_target = parts[13] if len(parts) > 13 else ""
         upgrade_cost = int(parts[14]) if len(parts) > 14 and parts[14].isdigit() else 0
         valid_imps_raw = parts[15] if len(parts) > 15 else ""
-        valid_imps = [v for v in valid_imps_raw.split(";") if v] if valid_imps_raw else []
+        valid_imps = (
+            [v for v in valid_imps_raw.split(";") if v] if valid_imps_raw else []
+        )
         religion = parts[16] if len(parts) > 16 else ""
-        units.append(UnitInfo(
-            unit_id=int(parts[0]),
-            unit_index=int(parts[1]),
-            name=parts[2],
-            unit_type=parts[3],
-            x=int(x_str),
-            y=int(y_str),
-            moves_remaining=float(moves_cur),
-            max_moves=float(moves_max),
-            health=int(hp_cur),
-            max_health=int(hp_max),
-            combat_strength=cs,
-            ranged_strength=rs,
-            build_charges=charges,
-            targets=targets,
-            needs_promotion=needs_promo,
-            can_upgrade=can_upgrade,
-            upgrade_target=upgrade_target,
-            upgrade_cost=upgrade_cost,
-            valid_improvements=valid_imps,
-            religion=religion,
-        ))
+        units.append(
+            UnitInfo(
+                unit_id=int(parts[0]),
+                unit_index=int(parts[1]),
+                name=parts[2],
+                unit_type=parts[3],
+                x=int(x_str),
+                y=int(y_str),
+                moves_remaining=float(moves_cur),
+                max_moves=float(moves_max),
+                health=int(hp_cur),
+                max_health=int(hp_max),
+                combat_strength=cs,
+                ranged_strength=rs,
+                build_charges=charges,
+                targets=targets,
+                needs_promotion=needs_promo,
+                can_upgrade=can_upgrade,
+                upgrade_target=upgrade_target,
+                upgrade_cost=upgrade_cost,
+                valid_improvements=valid_imps,
+                religion=religion,
+            )
+        )
     return units
 
 
@@ -719,35 +736,49 @@ def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
             hp_str, max_str = parts[5].split("/")
             cs = int(parts[6].replace("CS:", "")) if parts[6].startswith("CS:") else 0
             rs = int(parts[7].replace("RS:", "")) if parts[7].startswith("RS:") else 0
-            dist = int(parts[8].replace("dist:", "")) if parts[8].startswith("dist:") else 0
-            threats.append(ThreatInfo(
-                unit_type=parts[3],
-                x=int(x_str),
-                y=int(y_str),
-                hp=int(hp_str),
-                max_hp=int(max_str),
-                combat_strength=cs,
-                ranged_strength=rs,
-                distance=dist,
-                owner_id=int(parts[1]),
-                owner_name=parts[2],
-                is_city_state=len(parts) > 9 and parts[9].startswith("cs:") and parts[9][3:] == "1",
-            ))
+            dist = (
+                int(parts[8].replace("dist:", ""))
+                if parts[8].startswith("dist:")
+                else 0
+            )
+            threats.append(
+                ThreatInfo(
+                    unit_type=parts[3],
+                    x=int(x_str),
+                    y=int(y_str),
+                    hp=int(hp_str),
+                    max_hp=int(max_str),
+                    combat_strength=cs,
+                    ranged_strength=rs,
+                    distance=dist,
+                    owner_id=int(parts[1]),
+                    owner_name=parts[2],
+                    is_city_state=len(parts) > 9
+                    and parts[9].startswith("cs:")
+                    and parts[9][3:] == "1",
+                )
+            )
         elif len(parts) >= 7:
             # Legacy format fallback: THREAT|unit_type|x,y|hp/max|CS:n|RS:n|dist:n
             x_str, y_str = parts[2].split(",")
             hp_str, max_str = parts[3].split("/")
             cs = int(parts[4].replace("CS:", "")) if parts[4].startswith("CS:") else 0
             rs = int(parts[5].replace("RS:", "")) if parts[5].startswith("RS:") else 0
-            dist = int(parts[6].replace("dist:", "")) if parts[6].startswith("dist:") else 0
-            threats.append(ThreatInfo(
-                unit_type=parts[1],
-                x=int(x_str),
-                y=int(y_str),
-                hp=int(hp_str),
-                max_hp=int(max_str),
-                combat_strength=cs,
-                ranged_strength=rs,
-                distance=dist,
-            ))
+            dist = (
+                int(parts[6].replace("dist:", ""))
+                if parts[6].startswith("dist:")
+                else 0
+            )
+            threats.append(
+                ThreatInfo(
+                    unit_type=parts[1],
+                    x=int(x_str),
+                    y=int(y_str),
+                    hp=int(hp_str),
+                    max_hp=int(max_str),
+                    combat_strength=cs,
+                    ranged_strength=rs,
+                    distance=dist,
+                )
+            )
     return threats

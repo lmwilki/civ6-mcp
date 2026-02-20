@@ -6,14 +6,15 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from civ_mcp import lua as lq
 import civ_mcp.narrate as nr
+from civ_mcp import lua as lq
 from civ_mcp.connection import LuaError
 
 if TYPE_CHECKING:
     from civ_mcp.game_state import GameState
 
 log = logging.getLogger(__name__)
+
 
 async def _get_turn_number(gs: GameState) -> int | None:
     """Read the current game turn number."""
@@ -39,36 +40,51 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
                 civ_name, rel_name = parts[1], parts[2]
                 count, total = int(parts[3]), int(parts[4])
                 if count >= total:
-                    events.append(lq.TurnEvent(
-                        priority=1, category="victory",
-                        message=f"!!! RELIGIOUS VICTORY IMMINENT: {civ_name}'s {rel_name} is majority in ALL {total} civilizations!",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=f"!!! RELIGIOUS VICTORY IMMINENT: {civ_name}'s {rel_name} is majority in ALL {total} civilizations!",
+                        )
+                    )
                 elif count >= total - 1:
-                    events.append(lq.TurnEvent(
-                        priority=1, category="victory",
-                        message=f"!! RELIGIOUS VICTORY THREAT: {civ_name}'s {rel_name} is majority in {count}/{total} civilizations!",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=f"!! RELIGIOUS VICTORY THREAT: {civ_name}'s {rel_name} is majority in {count}/{total} civilizations!",
+                        )
+                    )
         elif line.startswith("DIPLO_THREAT|"):
             parts = line.split("|")
             if len(parts) >= 3:
-                events.append(lq.TurnEvent(
-                    priority=1, category="victory",
-                    message=f"!! DIPLOMATIC VICTORY THREAT: {parts[1]} has {parts[2]}/20 Diplomatic Victory Points!",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=1,
+                        category="victory",
+                        message=f"!! DIPLOMATIC VICTORY THREAT: {parts[1]} has {parts[2]}/20 Diplomatic Victory Points!",
+                    )
+                )
         elif line.startswith("SCI_THREAT|"):
             parts = line.split("|")
             if len(parts) >= 4:
                 vp, needed = int(parts[2]), int(parts[3])
                 if vp >= needed - 1:
-                    events.append(lq.TurnEvent(
-                        priority=1, category="victory",
-                        message=f"!! SCIENCE VICTORY IMMINENT: {parts[1]} has {vp}/{needed} space race projects!",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=f"!! SCIENCE VICTORY IMMINENT: {parts[1]} has {vp}/{needed} space race projects!",
+                        )
+                    )
                 elif vp >= 1:
-                    events.append(lq.TurnEvent(
-                        priority=2, category="victory",
-                        message=f"Science race: {parts[1]} has {vp}/{needed} space race projects.",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=2,
+                            category="victory",
+                            message=f"Science race: {parts[1]} has {vp}/{needed} space race projects.",
+                        )
+                    )
     return events
 
 
@@ -85,8 +101,7 @@ async def execute_end_turn(gs: GameState) -> str:
             )
         else:
             return (
-                f"GAME OVER — VICTORY! You won a {vtype} victory! "
-                f"The game has ended."
+                f"GAME OVER — VICTORY! You won a {vtype} victory! The game has ended."
             )
 
     # Record turn number at entry so we can detect external advancement
@@ -109,7 +124,10 @@ async def execute_end_turn(gs: GameState) -> str:
     try:
         deals = await gs.get_pending_deals()
         if deals:
-            return "Cannot end turn: incoming trade deal pending.\n" + nr.narrate_pending_deals(deals)
+            return (
+                "Cannot end turn: incoming trade deal pending.\n"
+                + nr.narrate_pending_deals(deals)
+            )
     except Exception:
         log.debug("Pending deal check failed", exc_info=True)
 
@@ -149,7 +167,9 @@ async def execute_end_turn(gs: GameState) -> str:
     #    blockers, and report remaining hard blockers in a single message.
     for _round in range(3):
         try:
-            blocking_lines = await gs.conn.execute_write(lq.build_end_turn_blocking_query())
+            blocking_lines = await gs.conn.execute_write(
+                lq.build_end_turn_blocking_query()
+            )
             blockers = lq.parse_end_turn_blocking(blocking_lines)
             if not blockers:
                 break  # nothing blocking
@@ -162,20 +182,20 @@ async def execute_end_turn(gs: GameState) -> str:
 
                 if blocking_type == "ENDTURN_BLOCKING_GOVERNOR_IDLE":
                     await gs.conn.execute_write(
-                        f'local me = Game.GetLocalPlayer(); '
-                        f'local list = NotificationManager.GetList(me); '
-                        f'if list then '
-                        f'  for _, nid in ipairs(list) do '
-                        f'    local e = NotificationManager.Find(me, nid); '
-                        f'    if e and not e:IsDismissed() then '
-                        f'      local bt = e:GetEndTurnBlocking(); '
-                        f'      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_GOVERNOR_IDLE then '
-                        f'        pcall(function() NotificationManager.SendActivated(me, nid) end); '
-                        f'        pcall(function() NotificationManager.Dismiss(me, nid) end) '
-                        f'      end '
-                        f'    end '
-                        f'  end '
-                        f'end; '
+                        f"local me = Game.GetLocalPlayer(); "
+                        f"local list = NotificationManager.GetList(me); "
+                        f"if list then "
+                        f"  for _, nid in ipairs(list) do "
+                        f"    local e = NotificationManager.Find(me, nid); "
+                        f"    if e and not e:IsDismissed() then "
+                        f"      local bt = e:GetEndTurnBlocking(); "
+                        f"      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_GOVERNOR_IDLE then "
+                        f"        pcall(function() NotificationManager.SendActivated(me, nid) end); "
+                        f"        pcall(function() NotificationManager.Dismiss(me, nid) end) "
+                        f"      end "
+                        f"    end "
+                        f"  end "
+                        f"end; "
                         f'print("OK"); print("{lq.SENTINEL}")'
                     )
                     resolved_any = True
@@ -183,8 +203,8 @@ async def execute_end_turn(gs: GameState) -> str:
 
                 if blocking_type == "ENDTURN_BLOCKING_CONSIDER_GOVERNMENT_CHANGE":
                     await gs.conn.execute_write(
-                        f'local me = Game.GetLocalPlayer(); '
-                        f'Players[me]:GetCulture():SetGovernmentChangeConsidered(true); '
+                        f"local me = Game.GetLocalPlayer(); "
+                        f"Players[me]:GetCulture():SetGovernmentChangeConsidered(true); "
                         f'print("OK"); print("{lq.SENTINEL}")'
                     )
                     resolved_any = True
@@ -192,26 +212,26 @@ async def execute_end_turn(gs: GameState) -> str:
 
                 if blocking_type == "ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK":
                     await gs.conn.execute_write(
-                        f'local me = Game.GetLocalPlayer(); '
-                        f'UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); '
-                        f'local list = NotificationManager.GetList(me); '
-                        f'if list then '
-                        f'  for _, nid in ipairs(list) do '
-                        f'    pcall(function() '
-                        f'      local e = NotificationManager.Find(me, nid); '
-                        f'      if e and not e:IsDismissed() then '
-                        f'        local bt = e:GetEndTurnBlocking(); '
-                        f'        if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK then '
-                        f'          NotificationManager.Dismiss(me, nid) '
-                        f'        end '
-                        f'      end '
-                        f'    end) '
-                        f'  end '
-                        f'end; '
+                        f"local me = Game.GetLocalPlayer(); "
+                        f"UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); "
+                        f"local list = NotificationManager.GetList(me); "
+                        f"if list then "
+                        f"  for _, nid in ipairs(list) do "
+                        f"    pcall(function() "
+                        f"      local e = NotificationManager.Find(me, nid); "
+                        f"      if e and not e:IsDismissed() then "
+                        f"        local bt = e:GetEndTurnBlocking(); "
+                        f"        if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK then "
+                        f"          NotificationManager.Dismiss(me, nid) "
+                        f"        end "
+                        f"      end "
+                        f"    end) "
+                        f"  end "
+                        f"end; "
                         f'local i = ContextPtr:LookUpControl("/InGame/WorldCongressIntro"); '
-                        f'if i then i:SetHide(true) end; '
+                        f"if i then i:SetHide(true) end; "
                         f'local p = ContextPtr:LookUpControl("/InGame/WorldCongressPopup"); '
-                        f'if p then p:SetHide(true) end; '
+                        f"if p then p:SetHide(true) end; "
                         f'print("OK"); print("{lq.SENTINEL}")'
                     )
                     resolved_any = True
@@ -231,36 +251,39 @@ async def execute_end_turn(gs: GameState) -> str:
                 if "WORLD_CONGRESS" in blocking_type:
                     try:
                         wc_dismiss_lines = await gs.conn.execute_write(
-                            f'local me = Game.GetLocalPlayer(); '
-                            f'UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); '
-                            f'local dismissed = 0; '
-                            f'local list = NotificationManager.GetList(me); '
-                            f'if list then '
-                            f'  for _, nid in ipairs(list) do '
-                            f'    pcall(function() '
-                            f'      local e = NotificationManager.Find(me, nid); '
-                            f'      if e and not e:IsDismissed() then '
-                            f'        local bt = e:GetEndTurnBlocking(); '
-                            f'        if bt and bt ~= 0 then '
-                            f'          for k, v in pairs(EndTurnBlockingTypes) do '
+                            f"local me = Game.GetLocalPlayer(); "
+                            f"UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); "
+                            f"local dismissed = 0; "
+                            f"local list = NotificationManager.GetList(me); "
+                            f"if list then "
+                            f"  for _, nid in ipairs(list) do "
+                            f"    pcall(function() "
+                            f"      local e = NotificationManager.Find(me, nid); "
+                            f"      if e and not e:IsDismissed() then "
+                            f"        local bt = e:GetEndTurnBlocking(); "
+                            f"        if bt and bt ~= 0 then "
+                            f"          for k, v in pairs(EndTurnBlockingTypes) do "
                             f'            if v == bt and k:find("WORLD_CONGRESS") then '
-                            f'              NotificationManager.Dismiss(me, nid); '
-                            f'              dismissed = dismissed + 1; '
-                            f'              break '
-                            f'            end '
-                            f'          end '
-                            f'        end '
-                            f'      end '
-                            f'    end) '
-                            f'  end '
-                            f'end; '
+                            f"              NotificationManager.Dismiss(me, nid); "
+                            f"              dismissed = dismissed + 1; "
+                            f"              break "
+                            f"            end "
+                            f"          end "
+                            f"        end "
+                            f"      end "
+                            f"    end) "
+                            f"  end "
+                            f"end; "
                             f'local i = ContextPtr:LookUpControl("/InGame/WorldCongressIntro"); '
-                            f'if i then i:SetHide(true) end; '
+                            f"if i then i:SetHide(true) end; "
                             f'local p = ContextPtr:LookUpControl("/InGame/WorldCongressPopup"); '
-                            f'if p then p:SetHide(true) end; '
+                            f"if p then p:SetHide(true) end; "
                             f'print("DISMISSED:" .. dismissed); print("{lq.SENTINEL}")'
                         )
-                        if any("DISMISSED:" in l and not l.endswith(":0") for l in wc_dismiss_lines):
+                        if any(
+                            "DISMISSED:" in l and not l.endswith(":0")
+                            for l in wc_dismiss_lines
+                        ):
                             resolved_any = True
                             log.info("Auto-dismissed WC blocker: %s", blocking_type)
                             continue
@@ -296,11 +319,11 @@ async def execute_end_turn(gs: GameState) -> str:
                 if blocking_type == "ENDTURN_BLOCKING_GIVE_INFLUENCE_TOKEN":
                     try:
                         envoy_lines = await gs.conn.execute_write(
-                            f'local me = Game.GetLocalPlayer(); '
-                            f'local inf = Players[me]:GetInfluence(); '
-                            f'local tokens = inf:GetTokensToGive(); '
-                            f'if tokens == 0 then '
-                            f'  inf:SetGivingTokensConsidered(true); '
+                            f"local me = Game.GetLocalPlayer(); "
+                            f"local inf = Players[me]:GetInfluence(); "
+                            f"local tokens = inf:GetTokensToGive(); "
+                            f"if tokens == 0 then "
+                            f"  inf:SetGivingTokensConsidered(true); "
                             f'  print("AUTO_RESOLVED"); '
                             f'else print("HAS_TOKENS|" .. tokens); end; '
                             f'print("{lq.SENTINEL}")'
@@ -316,42 +339,54 @@ async def execute_end_turn(gs: GameState) -> str:
                 if blocking_type == "ENDTURN_BLOCKING_PRODUCTION":
                     try:
                         corruption_lines = await gs.conn.execute_write(
-                            f'local me = Game.GetLocalPlayer(); '
-                            f'local corrupted = {{}}; '
-                            f'for i, c in Players[me]:GetCities():Members() do '
-                            f'  local bq = c:GetBuildQueue(); '
-                            f'  if bq:GetSize() > 0 and bq:GetCurrentProductionTypeHash() == 0 then '
+                            f"local me = Game.GetLocalPlayer(); "
+                            f"local corrupted = {{}}; "
+                            f"for i, c in Players[me]:GetCities():Members() do "
+                            f"  local bq = c:GetBuildQueue(); "
+                            f"  if bq:GetSize() > 0 and bq:GetCurrentProductionTypeHash() == 0 then "
                             f'    table.insert(corrupted, Locale.Lookup(c:GetName()) .. " (id:" .. c:GetID() .. ")") '
-                            f'  end '
-                            f'end; '
-                            f'if #corrupted > 0 then '
+                            f"  end "
+                            f"end; "
+                            f"if #corrupted > 0 then "
                             f'  print("CORRUPTED|" .. table.concat(corrupted, ",")) '
                             f'else print("CLEAN") end; '
                             f'print("{lq.SENTINEL}")'
                         )
-                        is_corrupted = any(cl.startswith("CORRUPTED|") for cl in corruption_lines)
+                        is_corrupted = any(
+                            cl.startswith("CORRUPTED|") for cl in corruption_lines
+                        )
                         if is_corrupted:
-                            city_names = next(cl.split("|", 1)[1] for cl in corruption_lines if cl.startswith("CORRUPTED|"))
+                            city_names = next(
+                                cl.split("|", 1)[1]
+                                for cl in corruption_lines
+                                if cl.startswith("CORRUPTED|")
+                            )
                             dismiss_lines = await gs.conn.execute_write(
-                                f'local me = Game.GetLocalPlayer(); '
-                                f'local dismissed = 0; '
-                                f'local list = NotificationManager.GetList(me); '
-                                f'if list then '
-                                f'  for _, nid in ipairs(list) do '
-                                f'    local e = NotificationManager.Find(me, nid); '
-                                f'    if e and not e:IsDismissed() then '
-                                f'      local bt = e:GetEndTurnBlocking(); '
-                                f'      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_PRODUCTION then '
-                                f'        NotificationManager.Dismiss(me, nid); dismissed = dismissed + 1 '
-                                f'      end '
-                                f'    end '
-                                f'  end '
-                                f'end; '
+                                f"local me = Game.GetLocalPlayer(); "
+                                f"local dismissed = 0; "
+                                f"local list = NotificationManager.GetList(me); "
+                                f"if list then "
+                                f"  for _, nid in ipairs(list) do "
+                                f"    local e = NotificationManager.Find(me, nid); "
+                                f"    if e and not e:IsDismissed() then "
+                                f"      local bt = e:GetEndTurnBlocking(); "
+                                f"      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_PRODUCTION then "
+                                f"        NotificationManager.Dismiss(me, nid); dismissed = dismissed + 1 "
+                                f"      end "
+                                f"    end "
+                                f"  end "
+                                f"end; "
                                 f'print("DISMISSED|" .. dismissed); '
                                 f'print("{lq.SENTINEL}")'
                             )
-                            if any("DISMISSED|" in l and not l.endswith("|0") for l in dismiss_lines):
-                                log.info("Auto-dismissed corrupted production for: %s", city_names)
+                            if any(
+                                "DISMISSED|" in l and not l.endswith("|0")
+                                for l in dismiss_lines
+                            ):
+                                log.info(
+                                    "Auto-dismissed corrupted production for: %s",
+                                    city_names,
+                                )
                                 resolved_any = True
                                 continue
                     except Exception:
@@ -363,31 +398,34 @@ async def execute_end_turn(gs: GameState) -> str:
                 # If tech/civic is already set but the notification persists,
                 # force-dismiss it (set_research may have been called but
                 # the notification wasn't cleared — e.g. before MCP restart).
-                if blocking_type in ("ENDTURN_BLOCKING_RESEARCH", "ENDTURN_BLOCKING_CIVIC"):
+                if blocking_type in (
+                    "ENDTURN_BLOCKING_RESEARCH",
+                    "ENDTURN_BLOCKING_CIVIC",
+                ):
                     try:
                         dismiss_lua = (
-                            f'local me = Game.GetLocalPlayer() '
-                            f'local pTechs = Players[me]:GetTechs() '
-                            f'local pCulture = Players[me]:GetCulture() '
-                            f'local researching = pTechs:GetResearchingTech() '
-                            f'local civicing = pCulture:GetProgressingCivic() '
-                            f'local isSet = false '
+                            f"local me = Game.GetLocalPlayer() "
+                            f"local pTechs = Players[me]:GetTechs() "
+                            f"local pCulture = Players[me]:GetCulture() "
+                            f"local researching = pTechs:GetResearchingTech() "
+                            f"local civicing = pCulture:GetProgressingCivic() "
+                            f"local isSet = false "
                             f'if "{blocking_type}" == "ENDTURN_BLOCKING_RESEARCH" and researching >= 0 then isSet = true end '
                             f'if "{blocking_type}" == "ENDTURN_BLOCKING_CIVIC" and civicing >= 0 then isSet = true end '
-                            f'if isSet then '
-                            f'  local list = NotificationManager.GetList(me) '
-                            f'  if list then '
-                            f'    for _, nid in ipairs(list) do '
-                            f'      local e = NotificationManager.Find(me, nid) '
-                            f'      if e and not e:IsDismissed() then '
-                            f'        local bt = e:GetEndTurnBlocking() '
-                            f'        if bt and bt == EndTurnBlockingTypes.{blocking_type} then '
-                            f'          pcall(function() NotificationManager.SendActivated(me, nid) end) '
-                            f'          pcall(function() NotificationManager.Dismiss(me, nid) end) '
-                            f'        end '
-                            f'      end '
-                            f'    end '
-                            f'  end '
+                            f"if isSet then "
+                            f"  local list = NotificationManager.GetList(me) "
+                            f"  if list then "
+                            f"    for _, nid in ipairs(list) do "
+                            f"      local e = NotificationManager.Find(me, nid) "
+                            f"      if e and not e:IsDismissed() then "
+                            f"        local bt = e:GetEndTurnBlocking() "
+                            f"        if bt and bt == EndTurnBlockingTypes.{blocking_type} then "
+                            f"          pcall(function() NotificationManager.SendActivated(me, nid) end) "
+                            f"          pcall(function() NotificationManager.Dismiss(me, nid) end) "
+                            f"        end "
+                            f"      end "
+                            f"    end "
+                            f"  end "
                             f'  print("AUTO_CLEARED") '
                             f'else print("NOT_SET") end '
                             f'print("{lq.SENTINEL}")'
@@ -397,15 +435,22 @@ async def execute_end_turn(gs: GameState) -> str:
                             resolved_any = True
                             continue
                     except Exception:
-                        log.debug("Research/civic notification auto-clear failed", exc_info=True)
+                        log.debug(
+                            "Research/civic notification auto-clear failed",
+                            exc_info=True,
+                        )
                     # Research/civic was unset — add diagnostic hint
                     kind = "tech" if "RESEARCH" in blocking_type else "civic"
                     enhanced_msg = (
-                        f"{blocking_msg} (no {kind} selected — "
-                        f"this can happen after diplomacy events or tech completion)"
-                    ) if blocking_msg else (
-                        f"No {kind} selected — "
-                        f"this can happen after diplomacy events or tech completion"
+                        (
+                            f"{blocking_msg} (no {kind} selected — "
+                            f"this can happen after diplomacy events or tech completion)"
+                        )
+                        if blocking_msg
+                        else (
+                            f"No {kind} selected — "
+                            f"this can happen after diplomacy events or tech completion"
+                        )
                     )
                     hard_blockers.append((blocking_type, enhanced_msg))
                     continue
@@ -419,51 +464,51 @@ async def execute_end_turn(gs: GameState) -> str:
                         # Step 1: GameCore check — CanPromote() works here.
                         # Mirrors build_unit_promotions_query logic across all units.
                         check_lines = await gs.conn.execute_read(
-                            f'local me = Game.GetLocalPlayer(); '
-                            f'local anyNeed = false; '
-                            f'local prereqMap = {{}}; '
-                            f'for row in GameInfo.UnitPromotionPrereqs() do '
-                            f'  local pt = row.UnitPromotion; '
-                            f'  if not prereqMap[pt] then prereqMap[pt] = {{}} end; '
-                            f'  table.insert(prereqMap[pt], row.PrereqUnitPromotion) '
-                            f'end; '
-                            f'for i, u in Players[me]:GetUnits():Members() do '
-                            f'  if u:GetX() ~= -9999 then '
-                            f'    local exp = u:GetExperience(); '
-                            f'    if exp then '
-                            f'      local xp = exp:GetExperiencePoints(); '
-                            f'      local thresh = exp:GetExperienceForNextLevel(); '
-                            f'      if xp >= thresh then '
-                            f'        local ui = GameInfo.Units[u:GetType()]; '
+                            f"local me = Game.GetLocalPlayer(); "
+                            f"local anyNeed = false; "
+                            f"local prereqMap = {{}}; "
+                            f"for row in GameInfo.UnitPromotionPrereqs() do "
+                            f"  local pt = row.UnitPromotion; "
+                            f"  if not prereqMap[pt] then prereqMap[pt] = {{}} end; "
+                            f"  table.insert(prereqMap[pt], row.PrereqUnitPromotion) "
+                            f"end; "
+                            f"for i, u in Players[me]:GetUnits():Members() do "
+                            f"  if u:GetX() ~= -9999 then "
+                            f"    local exp = u:GetExperience(); "
+                            f"    if exp then "
+                            f"      local xp = exp:GetExperiencePoints(); "
+                            f"      local thresh = exp:GetExperienceForNextLevel(); "
+                            f"      if xp >= thresh then "
+                            f"        local ui = GameInfo.Units[u:GetType()]; "
                             f'        local promClass = ui and ui.PromotionClass or ""; '
                             f'        if promClass ~= "" then '
-                            f'          for promo in GameInfo.UnitPromotions() do '
-                            f'            if promo.PromotionClass == promClass '
-                            f'               and not exp:HasPromotion(promo.Index) then '
-                            f'              local prereqs = prereqMap[promo.UnitPromotionType]; '
-                            f'              local prereqMet = true; '
-                            f'              if prereqs and #prereqs > 0 then '
-                            f'                prereqMet = false; '
-                            f'                for _, reqType in ipairs(prereqs) do '
-                            f'                  local reqInfo = GameInfo.UnitPromotions[reqType]; '
-                            f'                  if reqInfo and exp:HasPromotion(reqInfo.Index) then '
-                            f'                    prereqMet = true; break '
-                            f'                  end '
-                            f'                end '
-                            f'              end; '
-                            f'              if prereqMet then '
-                            f'                local canP = false; '
-                            f'                pcall(function() canP = exp:CanPromote(promo.Index) end); '
-                            f'                if canP then anyNeed = true; break end '
-                            f'              end '
-                            f'            end '
-                            f'          end '
-                            f'        end '
-                            f'      end '
-                            f'    end '
-                            f'  end; '
-                            f'  if anyNeed then break end '
-                            f'end; '
+                            f"          for promo in GameInfo.UnitPromotions() do "
+                            f"            if promo.PromotionClass == promClass "
+                            f"               and not exp:HasPromotion(promo.Index) then "
+                            f"              local prereqs = prereqMap[promo.UnitPromotionType]; "
+                            f"              local prereqMet = true; "
+                            f"              if prereqs and #prereqs > 0 then "
+                            f"                prereqMet = false; "
+                            f"                for _, reqType in ipairs(prereqs) do "
+                            f"                  local reqInfo = GameInfo.UnitPromotions[reqType]; "
+                            f"                  if reqInfo and exp:HasPromotion(reqInfo.Index) then "
+                            f"                    prereqMet = true; break "
+                            f"                  end "
+                            f"                end "
+                            f"              end; "
+                            f"              if prereqMet then "
+                            f"                local canP = false; "
+                            f"                pcall(function() canP = exp:CanPromote(promo.Index) end); "
+                            f"                if canP then anyNeed = true; break end "
+                            f"              end "
+                            f"            end "
+                            f"          end "
+                            f"        end "
+                            f"      end "
+                            f"    end "
+                            f"  end; "
+                            f"  if anyNeed then break end "
+                            f"end; "
                             f'print(anyNeed and "NEEDS_PROMO" or "NO_PROMO_NEEDED"); '
                             f'print("{lq.SENTINEL}")'
                         )
@@ -471,26 +516,28 @@ async def execute_end_turn(gs: GameState) -> str:
                         if not needs_promo:
                             # Step 2: InGame dismiss — NotificationManager is InGame-only.
                             await gs.conn.execute_write(
-                                f'local me = Game.GetLocalPlayer(); '
-                                f'local list = NotificationManager.GetList(me); '
-                                f'if list then '
-                                f'  for _, nid in ipairs(list) do '
-                                f'    local e = NotificationManager.Find(me, nid); '
-                                f'    if e and not e:IsDismissed() then '
-                                f'      local bt = e:GetEndTurnBlocking(); '
-                                f'      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then '
-                                f'        pcall(function() NotificationManager.SendActivated(me, nid) end); '
-                                f'        pcall(function() NotificationManager.Dismiss(me, nid) end) '
-                                f'      end '
-                                f'    end '
-                                f'  end '
-                                f'end; '
+                                f"local me = Game.GetLocalPlayer(); "
+                                f"local list = NotificationManager.GetList(me); "
+                                f"if list then "
+                                f"  for _, nid in ipairs(list) do "
+                                f"    local e = NotificationManager.Find(me, nid); "
+                                f"    if e and not e:IsDismissed() then "
+                                f"      local bt = e:GetEndTurnBlocking(); "
+                                f"      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then "
+                                f"        pcall(function() NotificationManager.SendActivated(me, nid) end); "
+                                f"        pcall(function() NotificationManager.Dismiss(me, nid) end) "
+                                f"      end "
+                                f"    end "
+                                f"  end "
+                                f"end; "
                                 f'print("{lq.SENTINEL}")'
                             )
                             resolved_any = True
                             continue
                     except Exception:
-                        log.debug("Promotion notification auto-clear failed", exc_info=True)
+                        log.debug(
+                            "Promotion notification auto-clear failed", exc_info=True
+                        )
                     hard_blockers.append((blocking_type, blocking_msg))
                     continue
 
@@ -498,14 +545,14 @@ async def execute_end_turn(gs: GameState) -> str:
                 if blocking_type == "ENDTURN_BLOCKING_UNITS":
                     try:
                         check_lua = (
-                            f'local me = Game.GetLocalPlayer(); '
-                            f'local anyMoves = false; '
-                            f'for _, u in Players[me]:GetUnits():Members() do '
-                            f'  if u:GetX() ~= -9999 and u:GetMovesRemaining() > 0 then '
-                            f'    anyMoves = true; break end end; '
-                            f'if not anyMoves then '
-                            f'  for _, u in Players[me]:GetUnits():Members() do '
-                            f'    if u:GetX() ~= -9999 then UnitManager.FinishMoves(u) end '
+                            f"local me = Game.GetLocalPlayer(); "
+                            f"local anyMoves = false; "
+                            f"for _, u in Players[me]:GetUnits():Members() do "
+                            f"  if u:GetX() ~= -9999 and u:GetMovesRemaining() > 0 then "
+                            f"    anyMoves = true; break end end; "
+                            f"if not anyMoves then "
+                            f"  for _, u in Players[me]:GetUnits():Members() do "
+                            f"    if u:GetX() ~= -9999 then UnitManager.FinishMoves(u) end "
                             f'  end; print("AUTO_SKIPPED") '
                             f'else print("UNITS_NEED_ORDERS") end; '
                             f'print("{lq.SENTINEL}")'
@@ -526,29 +573,43 @@ async def execute_end_turn(gs: GameState) -> str:
             # (e.g. game auto-end-turn after skip_remaining_units)
             if hard_blockers:
                 turn_now = await _get_turn_number(gs)
-                if turn_now is not None and turn_at_entry is not None and turn_now > turn_at_entry:
-                    log.info("Turn advanced externally (%s -> %s), skipping blocker report", turn_at_entry, turn_now)
+                if (
+                    turn_now is not None
+                    and turn_at_entry is not None
+                    and turn_now > turn_at_entry
+                ):
+                    log.info(
+                        "Turn advanced externally (%s -> %s), skipping blocker report",
+                        turn_at_entry,
+                        turn_now,
+                    )
                     break  # fall through to snapshot/diff flow
 
                 # Ask the game if turn can actually end despite our blockers.
                 # Safe here — we haven't started AI processing yet (pre-end-turn phase).
                 try:
                     can_end_lines = await gs.conn.execute_write(
-                        f'local can = UI.CanEndTurn(); '
+                        f"local can = UI.CanEndTurn(); "
                         f'print(can and "CAN_END" or "CANNOT_END"); '
                         f'print("{lq.SENTINEL}")'
                     )
                     if any(l == "CAN_END" for l in can_end_lines):
-                        log.info("UI.CanEndTurn()=true despite blockers %s — proceeding",
-                                 [bt for bt, _ in hard_blockers])
+                        log.info(
+                            "UI.CanEndTurn()=true despite blockers %s — proceeding",
+                            [bt for bt, _ in hard_blockers],
+                        )
                         break  # fall through to end_turn request
                 except Exception:
                     log.debug("UI.CanEndTurn check failed", exc_info=True)
 
                 lines_out: list[str] = ["Cannot end turn — resolve these blockers:"]
                 for bt, bm in hard_blockers:
-                    hint = lq.BLOCKING_TOOL_MAP.get(bt, "Resolve the blocking notification")
-                    display = bt.replace("ENDTURN_BLOCKING_", "").replace("_", " ").title()
+                    hint = lq.BLOCKING_TOOL_MAP.get(
+                        bt, "Resolve the blocking notification"
+                    )
+                    display = (
+                        bt.replace("ENDTURN_BLOCKING_", "").replace("_", " ").title()
+                    )
                     line = f"  - {display}"
                     if bm:
                         line += f" ({bm})"
@@ -589,7 +650,11 @@ async def execute_end_turn(gs: GameState) -> str:
     for _ in range(8):
         await asyncio.sleep(0.5)
         turn_after = await _get_turn_number(gs)
-        if turn_after is not None and turn_before is not None and turn_after > turn_before:
+        if (
+            turn_after is not None
+            and turn_before is not None
+            and turn_after > turn_before
+        ):
             advanced = True
             break
 
@@ -599,7 +664,11 @@ async def execute_end_turn(gs: GameState) -> str:
         for delay in [2.0, 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 5.0]:
             await asyncio.sleep(delay)
             turn_after = await _get_turn_number(gs)
-            if turn_after is not None and turn_before is not None and turn_after > turn_before:
+            if (
+                turn_after is not None
+                and turn_before is not None
+                and turn_after > turn_before
+            ):
                 advanced = True
                 break
 
@@ -618,8 +687,14 @@ async def execute_end_turn(gs: GameState) -> str:
                     mid_sessions = await gs.get_diplomacy_sessions()
                 session_info = []
                 for s in mid_sessions:
-                    phase = "deal" if s.deal_summary else ("goodbye" if s.buttons == "GOODBYE" else "active")
-                    session_info.append(f"{s.other_civ_name} ({s.other_leader_name}) [{phase}]")
+                    phase = (
+                        "deal"
+                        if s.deal_summary
+                        else ("goodbye" if s.buttons == "GOODBYE" else "active")
+                    )
+                    session_info.append(
+                        f"{s.other_civ_name} ({s.other_leader_name}) [{phase}]"
+                    )
                 has_deal = any(s.deal_summary for s in mid_sessions)
                 lines = [
                     f"Turn paused — AI diplomatic proposal from {', '.join(session_info)}.",
@@ -632,9 +707,13 @@ async def execute_end_turn(gs: GameState) -> str:
                     if s.deal_summary:
                         lines.append(f"Deal from {s.other_civ_name}: {s.deal_summary}")
                 if has_deal:
-                    lines.append("Use respond_to_trade(other_player_id=X, accept=True/False) to handle it, then end_turn again.")
+                    lines.append(
+                        "Use respond_to_trade(other_player_id=X, accept=True/False) to handle it, then end_turn again."
+                    )
                 else:
-                    lines.append("Use respond_to_diplomacy to handle it, then end_turn again.")
+                    lines.append(
+                        "Use respond_to_diplomacy to handle it, then end_turn again."
+                    )
                 return "\n".join(lines)
         except Exception:
             log.debug("Mid-turn diplomacy check failed", exc_info=True)
@@ -643,7 +722,10 @@ async def execute_end_turn(gs: GameState) -> str:
         try:
             mid_deals = await gs.get_pending_deals()
             if mid_deals:
-                return "Turn paused — incoming trade deal:\n" + nr.narrate_pending_deals(mid_deals)
+                return (
+                    "Turn paused — incoming trade deal:\n"
+                    + nr.narrate_pending_deals(mid_deals)
+                )
         except Exception:
             log.debug("Mid-turn deal check failed", exc_info=True)
 
@@ -657,7 +739,11 @@ async def execute_end_turn(gs: GameState) -> str:
                 for _ in range(5):
                     await asyncio.sleep(2.0)
                     turn_after = await _get_turn_number(gs)
-                    if turn_after is not None and turn_before is not None and turn_after > turn_before:
+                    if (
+                        turn_after is not None
+                        and turn_before is not None
+                        and turn_after > turn_before
+                    ):
                         advanced = True
                         break
         except Exception:
@@ -667,14 +753,20 @@ async def execute_end_turn(gs: GameState) -> str:
         # Final verification — turn may have slipped through
         await asyncio.sleep(2.0)
         turn_after = await _get_turn_number(gs)
-        if turn_after is not None and turn_before is not None and turn_after > turn_before:
+        if (
+            turn_after is not None
+            and turn_before is not None
+            and turn_after > turn_before
+        ):
             advanced = True
 
     if not advanced:
         # Check if game ended during turn transition (victory/defeat)
         gameover = await gs.check_game_over()
         if gameover is not None:
-            vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+            vtype = (
+                gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+            )
             if gameover.is_defeat:
                 return (
                     f"GAME OVER — DEFEAT. {gameover.winner_name} won a {vtype} victory. "
@@ -696,7 +788,9 @@ async def execute_end_turn(gs: GameState) -> str:
         except Exception:
             pass
         try:
-            blocking_lines = await gs.conn.execute_write(lq.build_end_turn_blocking_query())
+            blocking_lines = await gs.conn.execute_write(
+                lq.build_end_turn_blocking_query()
+            )
             blockers = lq.parse_end_turn_blocking(blocking_lines)
             for bt, bm in blockers:
                 display = bt.replace("ENDTURN_BLOCKING_", "").replace("_", " ").title()
@@ -731,10 +825,13 @@ async def execute_end_turn(gs: GameState) -> str:
     try:
         deals = await gs.get_pending_deals()
         if deals:
-            events.append(lq.TurnEvent(
-                priority=2, category="diplomacy",
-                message=nr.narrate_pending_deals(deals),
-            ))
+            events.append(
+                lq.TurnEvent(
+                    priority=2,
+                    category="diplomacy",
+                    message=nr.narrate_pending_deals(deals),
+                )
+            )
     except Exception:
         log.debug("Trade deal check failed", exc_info=True)
 
@@ -745,10 +842,13 @@ async def execute_end_turn(gs: GameState) -> str:
         threats = lq.parse_threat_scan_response(threat_lines)
         for t in threats:
             rs_str = f" RS:{t.ranged_strength}" if t.ranged_strength > 0 else ""
-            events.append(lq.TurnEvent(
-                priority=2, category="unit",
-                message=f"THREAT: {t.unit_type} CS:{t.combat_strength}{rs_str} HP:{t.hp}/{t.max_hp} spotted {t.distance} tiles away at ({t.x},{t.y})",
-            ))
+            events.append(
+                lq.TurnEvent(
+                    priority=2,
+                    category="unit",
+                    message=f"THREAT: {t.unit_type} CS:{t.combat_strength}{rs_str} HP:{t.hp}/{t.max_hp} spotted {t.distance} tiles away at ({t.x},{t.y})",
+                )
+            )
         events.sort(key=lambda e: e.priority)
     except Exception:
         log.debug("Threat scan failed", exc_info=True)
@@ -764,23 +864,35 @@ async def execute_end_turn(gs: GameState) -> str:
     if snap_after:
         for cs in snap_after.cities.values():
             if cs.food_surplus < 0:
-                events.append(lq.TurnEvent(
-                    priority=1, category="city",
-                    message=f"STARVING: {cs.name} ({cs.food_surplus:+.1f} food/t) — will lose population!",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=1,
+                        category="city",
+                        message=f"STARVING: {cs.name} ({cs.food_surplus:+.1f} food/t) — will lose population!",
+                    )
+                )
             elif cs.food_surplus == 0 and cs.turns_to_grow <= 0:
-                events.append(lq.TurnEvent(
-                    priority=2, category="city",
-                    message=f"STAGNANT: {cs.name} (0 food surplus) — needs farm, granary, or trade route",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=2,
+                        category="city",
+                        message=f"STAGNANT: {cs.name} (0 food surplus) — needs farm, granary, or trade route",
+                    )
+                )
             elif cs.turns_to_grow > 15:
-                events.append(lq.TurnEvent(
-                    priority=3, category="city",
-                    message=f"SLOW GROWTH: {cs.name} ({cs.turns_to_grow}t to next pop, {cs.food_surplus:+.1f}/t)",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=3,
+                        category="city",
+                        message=f"SLOW GROWTH: {cs.name} ({cs.turns_to_grow}t to next pop, {cs.food_surplus:+.1f}/t)",
+                    )
+                )
 
     events.sort(key=lambda e: e.priority)
     return gs._build_turn_report(
-        turn_before, turn_after, events, notifications,
+        turn_before,
+        turn_after,
+        events,
+        notifications,
         snap_after.stockpiles if snap_after else None,
     )

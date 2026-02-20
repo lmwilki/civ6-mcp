@@ -22,16 +22,22 @@ import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.utilities.types import Image
 
-from civ_mcp.connection import GameConnection, LuaError
 from civ_mcp import game_launcher
-from civ_mcp.game_state import GameState
 from civ_mcp import narrate as nr
+from civ_mcp.connection import GameConnection, LuaError
 from civ_mcp.diary import (
     diary_path as _diary_path,
-    write_diary_entry as _write_diary_entry,
-    read_diary_entries as _read_diary_entries,
+)
+from civ_mcp.diary import (
     format_diary_entry as _format_diary_entry,
 )
+from civ_mcp.diary import (
+    read_diary_entries as _read_diary_entries,
+)
+from civ_mcp.diary import (
+    write_diary_entry as _write_diary_entry,
+)
+from civ_mcp.game_state import GameState
 from civ_mcp.logger import GameLogger
 from civ_mcp.web_api import create_app
 
@@ -127,7 +133,9 @@ async def get_game_overview(ctx: Context) -> str:
         # Check for game-over state
         gameover = await gs.check_game_over()
         if gameover is not None:
-            vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+            vtype = (
+                gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+            )
             if gameover.is_defeat:
                 text += (
                     f"\n\n*** GAME OVER — DEFEAT ***\n"
@@ -135,10 +143,7 @@ async def get_game_overview(ctx: Context) -> str:
                     f"Use load_save to reload an earlier save, or start a new game."
                 )
             else:
-                text += (
-                    f"\n\n*** GAME OVER — VICTORY ***\n"
-                    f"You won a {vtype} victory!"
-                )
+                text += f"\n\n*** GAME OVER — VICTORY ***\nYou won a {vtype} victory!"
         return text
 
     return await _logged(ctx, "get_game_overview", {}, _run)
@@ -205,7 +210,9 @@ async def get_city_production(ctx: Context, city_id: int) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-async def get_map_area(ctx: Context, center_x: int, center_y: int, radius: int = 2) -> str:
+async def get_map_area(
+    ctx: Context, center_x: int, center_y: int, radius: int = 2
+) -> str:
     """Get terrain info for tiles around a point.
 
     Args:
@@ -220,7 +227,12 @@ async def get_map_area(ctx: Context, center_x: int, center_y: int, radius: int =
         tiles = await gs.get_map_area(center_x, center_y, radius)
         return nr.narrate_map(tiles)
 
-    return await _logged(ctx, "get_map_area", {"center_x": center_x, "center_y": center_y, "radius": radius}, _run)
+    return await _logged(
+        ctx,
+        "get_map_area",
+        {"center_x": center_x, "center_y": center_y, "radius": radius},
+        _run,
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -235,8 +247,12 @@ async def get_settle_advisor(ctx: Context, unit_id: int) -> str:
     """
     gs = _get_game(ctx)
     unit_index = unit_id % 65536
-    return await _logged(ctx, "get_settle_advisor", {"unit_id": unit_id},
-                         lambda: gs.get_settle_advisor(unit_index))
+    return await _logged(
+        ctx,
+        "get_settle_advisor",
+        {"unit_id": unit_id},
+        lambda: gs.get_settle_advisor(unit_index),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -249,8 +265,9 @@ async def get_minimap(ctx: Context) -> str:
     #=hills, T=forest/jungle, .=flat land, space=unexplored.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_minimap", {},
-                         lambda: _narrate(gs.get_minimap, nr.narrate_minimap))
+    return await _logged(
+        ctx, "get_minimap", {}, lambda: _narrate(gs.get_minimap, nr.narrate_minimap)
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -297,8 +314,12 @@ async def get_strategic_map(ctx: Context) -> str:
     and strategic resources on revealed but unowned land.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_strategic_map", {},
-                         lambda: _narrate(gs.get_strategic_map, nr.narrate_strategic_map))
+    return await _logged(
+        ctx,
+        "get_strategic_map",
+        {},
+        lambda: _narrate(gs.get_strategic_map, nr.narrate_strategic_map),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -311,7 +332,12 @@ async def get_diplomacy(ctx: Context) -> str:
     (name, population, loyalty, walls).
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_diplomacy", {}, lambda: _narrate(gs.get_diplomacy, nr.narrate_diplomacy))
+    return await _logged(
+        ctx,
+        "get_diplomacy",
+        {},
+        lambda: _narrate(gs.get_diplomacy, nr.narrate_diplomacy),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -322,7 +348,12 @@ async def get_tech_civics(ctx: Context) -> str:
     and lists of available technologies and civics to choose from.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_tech_civics", {}, lambda: _narrate(gs.get_tech_civics, nr.narrate_tech_civics))
+    return await _logged(
+        ctx,
+        "get_tech_civics",
+        {},
+        lambda: _narrate(gs.get_tech_civics, nr.narrate_tech_civics),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -333,8 +364,12 @@ async def get_pending_trades(ctx: Context) -> str:
     Use respond_to_trade to accept or reject.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_pending_trades", {},
-                         lambda: _narrate(gs.get_pending_deals, nr.narrate_pending_deals))
+    return await _logged(
+        ctx,
+        "get_pending_trades",
+        {},
+        lambda: _narrate(gs.get_pending_deals, nr.narrate_pending_deals),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -346,7 +381,9 @@ async def get_policies(ctx: Context) -> str:
     Wildcard slots accept any policy type.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_policies", {}, lambda: _narrate(gs.get_policies, nr.narrate_policies))
+    return await _logged(
+        ctx, "get_policies", {}, lambda: _narrate(gs.get_policies, nr.narrate_policies)
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -359,8 +396,12 @@ async def get_notifications(ctx: Context) -> str:
     ending the turn.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_notifications", {},
-                         lambda: _narrate(gs.get_notifications, nr.narrate_notifications))
+    return await _logged(
+        ctx,
+        "get_notifications",
+        {},
+        lambda: _narrate(gs.get_notifications, nr.narrate_notifications),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -372,8 +413,12 @@ async def get_pending_diplomacy(ctx: Context) -> str:
     dialogue text, visible buttons, and response guidance.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_pending_diplomacy", {},
-                         lambda: _narrate(gs.get_diplomacy_sessions, nr.narrate_diplomacy_sessions))
+    return await _logged(
+        ctx,
+        "get_pending_diplomacy",
+        {},
+        lambda: _narrate(gs.get_diplomacy_sessions, nr.narrate_diplomacy_sessions),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +434,12 @@ async def get_governors(ctx: Context) -> str:
     and governors available to appoint. Use appoint_governor to appoint one.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_governors", {}, lambda: _narrate(gs.get_governors, nr.narrate_governors))
+    return await _logged(
+        ctx,
+        "get_governors",
+        {},
+        lambda: _narrate(gs.get_governors, nr.narrate_governors),
+    )
 
 
 @mcp.tool()
@@ -402,8 +452,12 @@ async def appoint_governor(ctx: Context, governor_type: str) -> str:
     Requires available governor points. Use get_governors to see options.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "appoint_governor", {"governor_type": governor_type},
-                         lambda: gs.appoint_governor(governor_type))
+    return await _logged(
+        ctx,
+        "appoint_governor",
+        {"governor_type": governor_type},
+        lambda: gs.appoint_governor(governor_type),
+    )
 
 
 @mcp.tool()
@@ -417,12 +471,18 @@ async def assign_governor(ctx: Context, governor_type: str, city_id: int) -> str
     Governor must already be appointed. Takes several turns to establish.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "assign_governor", {"governor_type": governor_type, "city_id": city_id},
-                         lambda: gs.assign_governor(governor_type, city_id))
+    return await _logged(
+        ctx,
+        "assign_governor",
+        {"governor_type": governor_type, "city_id": city_id},
+        lambda: gs.assign_governor(governor_type, city_id),
+    )
 
 
 @mcp.tool()
-async def promote_governor(ctx: Context, governor_type: str, promotion_type: str) -> str:
+async def promote_governor(
+    ctx: Context, governor_type: str, promotion_type: str
+) -> str:
     """Promote a governor with a new ability.
 
     Args:
@@ -432,9 +492,12 @@ async def promote_governor(ctx: Context, governor_type: str, promotion_type: str
     Requires available governor points. Use get_governors to see available promotions.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "promote_governor",
-                         {"governor_type": governor_type, "promotion_type": promotion_type},
-                         lambda: gs.promote_governor(governor_type, promotion_type))
+    return await _logged(
+        ctx,
+        "promote_governor",
+        {"governor_type": governor_type, "promotion_type": promotion_type},
+        lambda: gs.promote_governor(governor_type, promotion_type),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -467,8 +530,12 @@ async def promote_unit(ctx: Context, unit_id: int, promotion_type: str) -> str:
     Use get_unit_promotions first to see available options.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "promote_unit", {"unit_id": unit_id, "promotion_type": promotion_type},
-                         lambda: gs.promote_unit(unit_id, promotion_type))
+    return await _logged(
+        ctx,
+        "promote_unit",
+        {"unit_id": unit_id, "promotion_type": promotion_type},
+        lambda: gs.promote_unit(unit_id, promotion_type),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -480,7 +547,12 @@ async def get_city_states(ctx: Context) -> str:
     Use send_envoy to send an envoy.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_city_states", {}, lambda: _narrate(gs.get_city_states, nr.narrate_city_states))
+    return await _logged(
+        ctx,
+        "get_city_states",
+        {},
+        lambda: _narrate(gs.get_city_states, nr.narrate_city_states),
+    )
 
 
 @mcp.tool()
@@ -493,8 +565,9 @@ async def send_envoy(ctx: Context, player_id: int) -> str:
     Requires available envoy tokens. Use get_city_states to see options.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "send_envoy", {"player_id": player_id},
-                         lambda: gs.send_envoy(player_id))
+    return await _logged(
+        ctx, "send_envoy", {"player_id": player_id}, lambda: gs.send_envoy(player_id)
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -524,8 +597,12 @@ async def choose_pantheon(ctx: Context, belief_type: str) -> str:
     and no existing pantheon.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "choose_pantheon", {"belief_type": belief_type},
-                         lambda: gs.choose_pantheon(belief_type))
+    return await _logged(
+        ctx,
+        "choose_pantheon",
+        {"belief_type": belief_type},
+        lambda: gs.choose_pantheon(belief_type),
+    )
 
 
 @mcp.tool()
@@ -546,7 +623,9 @@ async def get_religion_beliefs(ctx: Context) -> str:
 
 
 @mcp.tool()
-async def found_religion(ctx: Context, religion_type: str, follower_belief: str, founder_belief: str) -> str:
+async def found_religion(
+    ctx: Context, religion_type: str, follower_belief: str, founder_belief: str
+) -> str:
     """Found a religion with a chosen name, follower belief, and founder belief.
 
     Args:
@@ -559,11 +638,16 @@ async def found_religion(ctx: Context, religion_type: str, follower_belief: str,
     first to see available options.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "found_religion", {
-        "religion_type": religion_type,
-        "follower_belief": follower_belief,
-        "founder_belief": founder_belief,
-    }, lambda: gs.found_religion(religion_type, follower_belief, founder_belief))
+    return await _logged(
+        ctx,
+        "found_religion",
+        {
+            "religion_type": religion_type,
+            "follower_belief": follower_belief,
+            "founder_belief": founder_belief,
+        },
+        lambda: gs.found_religion(religion_type, follower_belief, founder_belief),
+    )
 
 
 @mcp.tool()
@@ -577,8 +661,9 @@ async def upgrade_unit(ctx: Context, unit_id: int) -> str:
     moves remaining. The unit's movement is consumed by upgrading.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "upgrade_unit", {"unit_id": unit_id},
-                         lambda: gs.upgrade_unit(unit_id))
+    return await _logged(
+        ctx, "upgrade_unit", {"unit_id": unit_id}, lambda: gs.upgrade_unit(unit_id)
+    )
 
 
 @mcp.tool()
@@ -608,8 +693,12 @@ async def choose_dedication(ctx: Context, dedication_index: int) -> str:
     Use get_dedications first to see available options and their bonuses.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "choose_dedication", {"dedication_index": dedication_index},
-                         lambda: gs.choose_dedication(dedication_index))
+    return await _logged(
+        ctx,
+        "choose_dedication",
+        {"dedication_index": dedication_index},
+        lambda: gs.choose_dedication(dedication_index),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -629,7 +718,9 @@ async def get_trade_options(ctx: Context, other_player_id: int) -> str:
         opts = await gs.get_deal_options(other_player_id)
         return nr.narrate_deal_options(opts)
 
-    return await _logged(ctx, "get_trade_options", {"other_player_id": other_player_id}, _run)
+    return await _logged(
+        ctx, "get_trade_options", {"other_player_id": other_player_id}, _run
+    )
 
 
 @mcp.tool()
@@ -643,8 +734,12 @@ async def respond_to_trade(ctx: Context, other_player_id: int, accept: bool) -> 
     Use get_pending_trades first to see what's being offered.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "respond_to_trade", {"other_player_id": other_player_id, "accept": accept},
-                         lambda: gs.respond_to_deal(other_player_id, accept))
+    return await _logged(
+        ctx,
+        "respond_to_trade",
+        {"other_player_id": other_player_id, "accept": accept},
+        lambda: gs.respond_to_deal(other_player_id, accept),
+    )
 
 
 @mcp.tool()
@@ -690,9 +785,13 @@ async def propose_trade(
     if offer_gold > 0:
         offer_items.append({"type": "GOLD", "amount": offer_gold, "duration": 0})
     if offer_gold_per_turn > 0:
-        offer_items.append({"type": "GOLD", "amount": offer_gold_per_turn, "duration": 30})
+        offer_items.append(
+            {"type": "GOLD", "amount": offer_gold_per_turn, "duration": 30}
+        )
     for res in (r.strip() for r in offer_resources.split(",") if r.strip()):
-        offer_items.append({"type": "RESOURCE", "name": res, "amount": 1, "duration": 30})
+        offer_items.append(
+            {"type": "RESOURCE", "name": res, "amount": 1, "duration": 30}
+        )
     if offer_favor > 0:
         offer_items.append({"type": "FAVOR", "amount": offer_favor})
     if offer_open_borders:
@@ -700,9 +799,13 @@ async def propose_trade(
     if request_gold > 0:
         request_items.append({"type": "GOLD", "amount": request_gold, "duration": 0})
     if request_gold_per_turn > 0:
-        request_items.append({"type": "GOLD", "amount": request_gold_per_turn, "duration": 30})
+        request_items.append(
+            {"type": "GOLD", "amount": request_gold_per_turn, "duration": 30}
+        )
     for res in (r.strip() for r in request_resources.split(",") if r.strip()):
-        request_items.append({"type": "RESOURCE", "name": res, "amount": 1, "duration": 30})
+        request_items.append(
+            {"type": "RESOURCE", "name": res, "amount": 1, "duration": 30}
+        )
     if request_favor > 0:
         request_items.append({"type": "FAVOR", "amount": request_favor})
     if request_open_borders:
@@ -716,8 +819,13 @@ async def propose_trade(
         return "Error: must specify at least one offer or request item"
 
     return await _logged(
-        ctx, "propose_trade",
-        {"other_player_id": other_player_id, "offer_items": offer_items, "request_items": request_items},
+        ctx,
+        "propose_trade",
+        {
+            "other_player_id": other_player_id,
+            "offer_items": offer_items,
+            "request_items": request_items,
+        },
         lambda: gs.propose_trade(other_player_id, offer_items, request_items),
     )
 
@@ -733,8 +841,12 @@ async def propose_peace(ctx: Context, other_player_id: int) -> str:
     The AI may accept or reject based on war score and relationship.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "propose_peace", {"other_player_id": other_player_id},
-                         lambda: gs.propose_peace(other_player_id))
+    return await _logged(
+        ctx,
+        "propose_peace",
+        {"other_player_id": other_player_id},
+        lambda: gs.propose_peace(other_player_id),
+    )
 
 
 @mcp.tool()
@@ -768,7 +880,9 @@ async def set_policies(ctx: Context, assignments: str) -> str:
 
 
 @mcp.tool()
-async def respond_to_diplomacy(ctx: Context, other_player_id: int, response: str) -> str:
+async def respond_to_diplomacy(
+    ctx: Context, other_player_id: int, response: str
+) -> str:
     """Respond to a pending diplomacy encounter.
 
     Args:
@@ -780,12 +894,18 @@ async def respond_to_diplomacy(ctx: Context, other_player_id: int, response: str
     If SESSION_CONTINUES is returned, send another response for the next round.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "respond_to_diplomacy", {"other_player_id": other_player_id, "response": response},
-                         lambda: gs.diplomacy_respond(other_player_id, response))
+    return await _logged(
+        ctx,
+        "respond_to_diplomacy",
+        {"other_player_id": other_player_id, "response": response},
+        lambda: gs.diplomacy_respond(other_player_id, response),
+    )
 
 
 @mcp.tool()
-async def send_diplomatic_action(ctx: Context, other_player_id: int, action: str) -> str:
+async def send_diplomatic_action(
+    ctx: Context, other_player_id: int, action: str
+) -> str:
     """Send a proactive diplomatic action to another civilization.
 
     Args:
@@ -797,13 +917,18 @@ async def send_diplomatic_action(ctx: Context, other_player_id: int, action: str
     Embassies require Writing tech. Use get_diplomacy to see available actions.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "send_diplomatic_action",
-                         {"other_player_id": other_player_id, "action": action},
-                         lambda: gs.send_diplomatic_action(other_player_id, action))
+    return await _logged(
+        ctx,
+        "send_diplomatic_action",
+        {"other_player_id": other_player_id, "action": action},
+        lambda: gs.send_diplomatic_action(other_player_id, action),
+    )
 
 
 @mcp.tool()
-async def form_alliance(ctx: Context, other_player_id: int, alliance_type: str = "MILITARY") -> str:
+async def form_alliance(
+    ctx: Context, other_player_id: int, alliance_type: str = "MILITARY"
+) -> str:
     """Form an alliance with another civilization.
 
     Args:
@@ -814,9 +939,12 @@ async def form_alliance(ctx: Context, other_player_id: int, alliance_type: str =
     Use get_trade_options to check alliance eligibility first.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "form_alliance",
-                         {"other_player_id": other_player_id, "alliance_type": alliance_type},
-                         lambda: gs.form_alliance(other_player_id, alliance_type.upper()))
+    return await _logged(
+        ctx,
+        "form_alliance",
+        {"other_player_id": other_player_id, "alliance_type": alliance_type},
+        lambda: gs.form_alliance(other_player_id, alliance_type.upper()),
+    )
 
 
 @mcp.tool()
@@ -850,13 +978,19 @@ async def city_action(
         case "attack":
             if target_x is None or target_y is None:
                 return "Error: attack requires target_x and target_y"
-            return await _logged(ctx, "city_attack",
-                                 {"city_id": city_id, "x": target_x, "y": target_y},
-                                 lambda: gs.city_attack(city_id, target_x, target_y))
+            return await _logged(
+                ctx,
+                "city_attack",
+                {"city_id": city_id, "x": target_x, "y": target_y},
+                lambda: gs.city_attack(city_id, target_x, target_y),
+            )
         case "keep" | "reject" | "raze" | "liberate_founder" | "liberate_previous":
-            return await _logged(ctx, "resolve_city_capture",
-                                 {"action": action},
-                                 lambda: gs.resolve_city_capture(action))
+            return await _logged(
+                ctx,
+                "resolve_city_capture",
+                {"action": action},
+                lambda: gs.resolve_city_capture(action),
+            )
         case _:
             return f"Error: Unknown city action '{action}'. Available: attack, keep, reject, raze, liberate_founder, liberate_previous"
 
@@ -959,13 +1093,19 @@ async def skip_remaining_units(ctx: Context) -> str:
     Uses GameCore FinishMoves on each unit — fast, reliable, no async issues.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "skip_remaining_units", {}, lambda: gs.skip_remaining_units())
+    return await _logged(
+        ctx, "skip_remaining_units", {}, lambda: gs.skip_remaining_units()
+    )
 
 
 @mcp.tool()
 async def set_city_production(
-    ctx: Context, city_id: int, item_type: str, item_name: str,
-    target_x: int | None = None, target_y: int | None = None,
+    ctx: Context,
+    city_id: int,
+    item_type: str,
+    item_name: str,
+    target_x: int | None = None,
+    target_y: int | None = None,
 ) -> str:
     """Set what a city should produce.
 
@@ -979,13 +1119,24 @@ async def set_city_production(
     Tip: call get_cities first to see your cities and their IDs.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "set_city_production",
-                         {"city_id": city_id, "item_type": item_type, "item_name": item_name},
-                         lambda: gs.set_city_production(city_id, item_type, item_name, target_x, target_y))
+    return await _logged(
+        ctx,
+        "set_city_production",
+        {"city_id": city_id, "item_type": item_type, "item_name": item_name},
+        lambda: gs.set_city_production(
+            city_id, item_type, item_name, target_x, target_y
+        ),
+    )
 
 
 @mcp.tool()
-async def purchase_item(ctx: Context, city_id: int, item_type: str, item_name: str, yield_type: str = "YIELD_GOLD") -> str:
+async def purchase_item(
+    ctx: Context,
+    city_id: int,
+    item_type: str,
+    item_name: str,
+    yield_type: str = "YIELD_GOLD",
+) -> str:
     """Purchase a unit or building instantly with gold or faith.
 
     Args:
@@ -997,9 +1148,17 @@ async def purchase_item(ctx: Context, city_id: int, item_type: str, item_name: s
     Costs gold/faith immediately. Use get_city_production to see what's available.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "purchase_item",
-                         {"city_id": city_id, "item_type": item_type, "item_name": item_name, "yield_type": yield_type},
-                         lambda: gs.purchase_item(city_id, item_type, item_name, yield_type))
+    return await _logged(
+        ctx,
+        "purchase_item",
+        {
+            "city_id": city_id,
+            "item_type": item_type,
+            "item_name": item_name,
+            "yield_type": yield_type,
+        },
+        lambda: gs.purchase_item(city_id, item_type, item_name, yield_type),
+    )
 
 
 @mcp.tool()
@@ -1019,7 +1178,12 @@ async def set_research(ctx: Context, tech_or_civic: str, category: str = "tech")
             return await gs.set_civic(tech_or_civic)
         return await gs.set_research(tech_or_civic)
 
-    return await _logged(ctx, "set_research", {"tech_or_civic": tech_or_civic, "category": category}, _run)
+    return await _logged(
+        ctx,
+        "set_research",
+        {"tech_or_civic": tech_or_civic, "category": category},
+        _run,
+    )
 
 
 @mcp.tool(annotations={"destructiveHint": True})
@@ -1047,8 +1211,11 @@ async def end_turn(
     gs = _get_game(ctx)
 
     reflections = {
-        "tactical": tactical, "strategic": strategic,
-        "tooling": tooling, "planning": planning, "hypothesis": hypothesis,
+        "tactical": tactical,
+        "strategic": strategic,
+        "tooling": tooling,
+        "planning": planning,
+        "hypothesis": hypothesis,
     }
     missing = [k for k, v in reflections.items() if not v.strip()]
     if missing:
@@ -1062,7 +1229,9 @@ async def end_turn(
     result = await _logged(ctx, "end_turn", {}, gs.end_turn)
 
     # Diary writes only when the turn actually advanced (result contains "->")
-    turn_advanced = "->" in result and "Cannot end turn" not in result and "Error" not in result
+    turn_advanced = (
+        "->" in result and "Cannot end turn" not in result and "Error" not in result
+    )
     if turn_advanced:
         # Capture score snapshot AFTER turn advanced (reflects new turn state)
         score = None
@@ -1073,9 +1242,7 @@ async def end_turn(
             civ = ov.civ_name
             # Diary records the turn that just ended, not the new one
             turn = max(ov.turn - 1, 0)
-            leader_score = max(
-                (r.score for r in (ov.rankings or [])), default=0
-            )
+            leader_score = max((r.score for r in (ov.rankings or [])), default=0)
             score = {
                 "total": ov.score,
                 "cities": ov.num_cities,
@@ -1096,7 +1263,11 @@ async def end_turn(
             # Own strategic resource stockpiles from post-turn snapshot
             if gs._last_snapshot and gs._last_snapshot.stockpiles:
                 score["stockpiles"] = {
-                    s.name: {"amount": s.amount, "per_turn": s.per_turn, "demand": s.demand}
+                    s.name: {
+                        "amount": s.amount,
+                        "per_turn": s.per_turn,
+                        "demand": s.demand,
+                    }
                     for s in gs._last_snapshot.stockpiles
                     if s.amount > 0 or s.per_turn > 0 or s.demand > 0
                 }
@@ -1109,11 +1280,20 @@ async def end_turn(
             rival_snaps = await gs.get_rival_snapshot()
             rivals_data = [
                 {
-                    "id": r.id, "name": r.name, "score": r.score,
-                    "cities": r.cities, "pop": r.pop,
-                    "sci": r.sci, "cul": r.cul, "gold": r.gold,
-                    "mil": r.mil, "techs": r.techs, "civics": r.civics,
-                    "faith": r.faith, "sci_vp": r.sci_vp, "diplo_vp": r.diplo_vp,
+                    "id": r.id,
+                    "name": r.name,
+                    "score": r.score,
+                    "cities": r.cities,
+                    "pop": r.pop,
+                    "sci": r.sci,
+                    "cul": r.cul,
+                    "gold": r.gold,
+                    "mil": r.mil,
+                    "techs": r.techs,
+                    "civics": r.civics,
+                    "faith": r.faith,
+                    "sci_vp": r.sci_vp,
+                    "diplo_vp": r.diplo_vp,
                     "stockpiles": r.stockpiles,
                 }
                 for r in rival_snaps
@@ -1211,8 +1391,12 @@ async def get_trade_routes(ctx: Context) -> str:
     units with their positions and whether they're idle or on a route.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "get_trade_routes", {},
-                         lambda: _narrate(gs.get_trade_routes, nr.narrate_trade_routes))
+    return await _logged(
+        ctx,
+        "get_trade_routes",
+        {},
+        lambda: _narrate(gs.get_trade_routes, nr.narrate_trade_routes),
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1257,7 +1441,12 @@ async def get_district_advisor(ctx: Context, city_id: int, district_type: str) -
         placements = await gs.get_district_advisor(city_id, district_type)
         return nr.narrate_district_advisor(placements, district_type)
 
-    return await _logged(ctx, "get_district_advisor", {"city_id": city_id, "district_type": district_type}, _run)
+    return await _logged(
+        ctx,
+        "get_district_advisor",
+        {"city_id": city_id, "district_type": district_type},
+        _run,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1296,8 +1485,12 @@ async def purchase_tile(ctx: Context, city_id: int, x: int, y: int) -> str:
     Use get_purchasable_tiles first to see costs and options.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "purchase_tile", {"city_id": city_id, "x": x, "y": y},
-                         lambda: gs.purchase_tile(city_id, x, y))
+    return await _logged(
+        ctx,
+        "purchase_tile",
+        {"city_id": city_id, "x": x, "y": y},
+        lambda: gs.purchase_tile(city_id, x, y),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1316,8 +1509,12 @@ async def change_government(ctx: Context, government_type: str) -> str:
     unlocking a new tier is free (no anarchy).
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "change_government", {"government_type": government_type},
-                         lambda: gs.change_government(government_type))
+    return await _logged(
+        ctx,
+        "change_government",
+        {"government_type": government_type},
+        lambda: gs.change_government(government_type),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1352,12 +1549,18 @@ async def recruit_great_person(ctx: Context, individual_id: int) -> str:
     The GP spawns in your capital. Use get_great_people to check [CAN RECRUIT] status.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "recruit_great_person", {"id": individual_id},
-                         lambda: gs.recruit_great_person(individual_id))
+    return await _logged(
+        ctx,
+        "recruit_great_person",
+        {"id": individual_id},
+        lambda: gs.recruit_great_person(individual_id),
+    )
 
 
 @mcp.tool()
-async def patronize_great_person(ctx: Context, individual_id: int, yield_type: str = "YIELD_GOLD") -> str:
+async def patronize_great_person(
+    ctx: Context, individual_id: int, yield_type: str = "YIELD_GOLD"
+) -> str:
     """Buy a Great Person instantly with gold or faith.
 
     Args:
@@ -1368,8 +1571,12 @@ async def patronize_great_person(ctx: Context, individual_id: int, yield_type: s
     Requires enough gold/faith to cover the cost.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "patronize_great_person", {"id": individual_id, "yield": yield_type},
-                         lambda: gs.patronize_great_person(individual_id, yield_type))
+    return await _logged(
+        ctx,
+        "patronize_great_person",
+        {"id": individual_id, "yield": yield_type},
+        lambda: gs.patronize_great_person(individual_id, yield_type),
+    )
 
 
 @mcp.tool()
@@ -1383,8 +1590,12 @@ async def reject_great_person(ctx: Context, individual_id: int) -> str:
     Use when you don't want the current GP and want to save points for a better one.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "reject_great_person", {"id": individual_id},
-                         lambda: gs.reject_great_person(individual_id))
+    return await _logged(
+        ctx,
+        "reject_great_person",
+        {"id": individual_id},
+        lambda: gs.reject_great_person(individual_id),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1411,8 +1622,11 @@ async def get_world_congress(ctx: Context) -> str:
 
 @mcp.tool()
 async def vote_world_congress(
-    ctx: Context, resolution_hash: int, option: int,
-    target_index: int, num_votes: int = 1,
+    ctx: Context,
+    resolution_hash: int,
+    option: int,
+    target_index: int,
+    num_votes: int = 1,
 ) -> str:
     """Vote on a World Congress resolution.
 
@@ -1427,12 +1641,16 @@ async def vote_world_congress(
     """
     gs = _get_game(ctx)
     params = {
-        "resolution_hash": resolution_hash, "option": option,
-        "target_index": target_index, "num_votes": num_votes,
+        "resolution_hash": resolution_hash,
+        "option": option,
+        "target_index": target_index,
+        "num_votes": num_votes,
     }
 
     async def _run():
-        return await gs.vote_world_congress(resolution_hash, option, target_index, num_votes)
+        return await gs.vote_world_congress(
+            resolution_hash, option, target_index, num_votes
+        )
 
     return await _logged(ctx, "vote_world_congress", params, _run)
 
@@ -1530,8 +1748,12 @@ async def set_city_focus(ctx: Context, city_id: int, focus: str) -> str:
     toward the chosen yield type when assigning new citizens.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "set_city_focus", {"city_id": city_id, "focus": focus},
-                         lambda: gs.set_city_focus(city_id, focus))
+    return await _logged(
+        ctx,
+        "set_city_focus",
+        {"city_id": city_id, "focus": focus},
+        lambda: gs.set_city_focus(city_id, focus),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1562,8 +1784,9 @@ async def run_lua(ctx: Context, code: str, context: str = "gamecore") -> str:
     Civ 6 API. Always use print() for output (not return).
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "run_lua", {"context": context},
-                         lambda: gs.execute_lua(code, context))
+    return await _logged(
+        ctx, "run_lua", {"context": context}, lambda: gs.execute_lua(code, context)
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1598,7 +1821,9 @@ if let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String:
 """
     result = subprocess.run(
         ["swift", "-e", swift_code],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     wid = result.stdout.strip()
     if not wid or not wid.isdigit():
@@ -1610,7 +1835,8 @@ if let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String:
     try:
         subprocess.run(
             ["screencapture", "-x", "-l", wid, tmp_path],
-            check=True, timeout=10,
+            check=True,
+            timeout=10,
         )
         return Image(data=Path(tmp_path).read_bytes(), format="png")
     finally:
@@ -1654,8 +1880,9 @@ async def load_save(ctx: Context, save_index: int) -> str:
     then use get_game_overview to verify the loaded state.
     """
     gs = _get_game(ctx)
-    return await _logged(ctx, "load_save", {"save_index": save_index},
-                         lambda: gs.load_save(save_index))
+    return await _logged(
+        ctx, "load_save", {"save_index": save_index}, lambda: gs.load_save(save_index)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1727,7 +1954,9 @@ async def restart_and_load(ctx: Context, save_name: str | None = None) -> str:
     return await game_launcher.restart_and_load(save_name)
 
 
-async def _narrate(query_fn: Callable[[], Awaitable[Any]], narrate_fn: Callable[..., str]) -> str:
+async def _narrate(
+    query_fn: Callable[[], Awaitable[Any]], narrate_fn: Callable[..., str]
+) -> str:
     """Helper: call a query function then narrate the result."""
     data = await query_fn()
     return narrate_fn(data)

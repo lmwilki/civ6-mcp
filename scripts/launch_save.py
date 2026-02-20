@@ -23,7 +23,6 @@ import Quartz
 import Vision
 from Foundation import NSURL
 
-
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -39,6 +38,7 @@ SAVE_DIR = os.path.expanduser(
 # ---------------------------------------------------------------------------
 # Low-level helpers
 # ---------------------------------------------------------------------------
+
 
 def screenshot(path="/tmp/civ_ocr_nav.png"):
     subprocess.run(["screencapture", "-x", path], check=True)
@@ -74,16 +74,21 @@ def ocr(image_path):
 def get_game_window():
     """Get the game window bounds (x, y, w, h) in screen coords."""
     for proc in [PROCESS_NAME, "Civ6_Exe", "Civ6"]:
-        r = subprocess.run([
-            "osascript", "-e",
-            f'tell application "System Events"\n'
-            f'  tell process "{proc}"\n'
-            f'    set {{x, y}} to position of window 1\n'
-            f'    set {{w, h}} to size of window 1\n'
-            f'    return (x as string) & "," & (y as string) & "," & (w as string) & "," & (h as string)\n'
-            f'  end tell\n'
-            f'end tell'
-        ], capture_output=True, text=True)
+        r = subprocess.run(
+            [
+                "osascript",
+                "-e",
+                f'tell application "System Events"\n'
+                f'  tell process "{proc}"\n'
+                f"    set {{x, y}} to position of window 1\n"
+                f"    set {{w, h}} to size of window 1\n"
+                f'    return (x as string) & "," & (y as string) & "," & (w as string) & "," & (h as string)\n'
+                f"  end tell\n"
+                f"end tell",
+            ],
+            capture_output=True,
+            text=True,
+        )
         parts = r.stdout.strip().split(",")
         if len(parts) == 4:
             return tuple(int(p) for p in parts)
@@ -118,10 +123,14 @@ def click(x, y):
 
 
 def bring_to_front():
-    subprocess.run([
-        "osascript", "-e",
-        f'tell application "System Events" to set frontmost of process "{PROCESS_NAME}" to true'
-    ], capture_output=True)
+    subprocess.run(
+        [
+            "osascript",
+            "-e",
+            f'tell application "System Events" to set frontmost of process "{PROCESS_NAME}" to true',
+        ],
+        capture_output=True,
+    )
     time.sleep(0.3)
 
 
@@ -172,6 +181,7 @@ def click_text(target, timeout=30, exact=False, post_delay=2):
 # Menu navigation
 # ---------------------------------------------------------------------------
 
+
 def get_latest_autosave():
     """Find the most recent autosave filename (without extension)."""
     saves = glob.glob(os.path.join(SAVE_DIR, "AutoSave_*.Civ6Save"))
@@ -220,8 +230,12 @@ def navigate_to_save(save_name):
     else:
         print("  No leader screen — game may be loading directly")
 
-    print("\nDone! Game should be loading. Use MCP tools to verify (get_game_overview).")
-    print("NOTE: Do NOT poll FireTuner port from scripts — only one connection allowed.")
+    print(
+        "\nDone! Game should be loading. Use MCP tools to verify (get_game_overview)."
+    )
+    print(
+        "NOTE: Do NOT poll FireTuner port from scripts — only one connection allowed."
+    )
     return True
 
 
@@ -229,11 +243,18 @@ def navigate_to_save(save_name):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(description="Launch Civ 6 and load a save")
-    parser.add_argument("save", nargs="?", help="Save name (default: most recent autosave)")
-    parser.add_argument("--kill-first", action="store_true", help="Kill existing game first")
-    parser.add_argument("--no-launch", action="store_true", help="Don't launch, just navigate")
+    parser.add_argument(
+        "save", nargs="?", help="Save name (default: most recent autosave)"
+    )
+    parser.add_argument(
+        "--kill-first", action="store_true", help="Kill existing game first"
+    )
+    parser.add_argument(
+        "--no-launch", action="store_true", help="Don't launch, just navigate"
+    )
     args = parser.parse_args()
 
     save_name = args.save or get_latest_autosave()

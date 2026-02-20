@@ -73,9 +73,12 @@ def create_app(gs: GameState) -> FastAPI:
 
     @app.get("/api/resources")
     async def resources(request: Request):
-        stockpiles, owned, nearby, luxury_count = (
-            await request.app.state.gs.get_empire_resources()
-        )
+        (
+            stockpiles,
+            owned,
+            nearby,
+            luxury_count,
+        ) = await request.app.state.gs.get_empire_resources()
         return {
             "stockpiles": _to_dict(stockpiles),
             "owned": _to_dict(owned),

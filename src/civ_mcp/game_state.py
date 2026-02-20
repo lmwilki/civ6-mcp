@@ -12,8 +12,8 @@ import asyncio
 import logging
 import re
 
-from civ_mcp.connection import GameConnection
 from civ_mcp import lua as lq
+from civ_mcp.connection import GameConnection
 from civ_mcp.narrate import narrate_combat_estimate, narrate_settle_candidates
 
 log = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class GameState:
         if self._game_identity is not None:
             return self._game_identity
         code = (
-            'local me = Game.GetLocalPlayer() '
-            'local cfg = PlayerConfigurations[me] '
+            "local me = Game.GetLocalPlayer() "
+            "local cfg = PlayerConfigurations[me] "
             'print("GAMESEED|" .. cfg:GetCivilizationTypeName() '
             '.. "|" .. tostring(GameConfiguration.GetValue("GAME_SYNC_RANDOM_SEED"))) '
             'print("---END---")'
@@ -117,7 +117,12 @@ class GameState:
 
     async def get_empire_resources(
         self,
-    ) -> tuple[list[lq.ResourceStockpile], list[lq.OwnedResource], list[lq.NearbyResource], dict[str, int]]:
+    ) -> tuple[
+        list[lq.ResourceStockpile],
+        list[lq.OwnedResource],
+        list[lq.NearbyResource],
+        dict[str, int],
+    ]:
         # InGame context needed for GetResourceStockpileCap etc.
         lines = await self.conn.execute_write(lq.build_empire_resources_query())
         return lq.parse_empire_resources_response(lines)
@@ -134,7 +139,8 @@ class GameState:
         if result.startswith("MOVING_TO") or result.startswith("CAPTURE_MOVE"):
             try:
                 pos_lines = await self.conn.execute_read(
-                    lq.build_unit_position_query(unit_index))
+                    lq.build_unit_position_query(unit_index)
+                )
                 for line in pos_lines:
                     if line.startswith("POS|") and "GONE" not in line:
                         parts = line.split("|")
@@ -147,9 +153,14 @@ class GameState:
                             if now_x == from_x and now_y == from_y:
                                 result += "|BLOCKED (unit did not move — impassable terrain, border, or no path)"
                             else:
-                                tgt_match = re.search(r"(?:MOVING_TO|CAPTURE_MOVE)\|(\d+),(\d+)", result)
+                                tgt_match = re.search(
+                                    r"(?:MOVING_TO|CAPTURE_MOVE)\|(\d+),(\d+)", result
+                                )
                                 if tgt_match:
-                                    tx, ty = int(tgt_match.group(1)), int(tgt_match.group(2))
+                                    tx, ty = (
+                                        int(tgt_match.group(1)),
+                                        int(tgt_match.group(2)),
+                                    )
                                     if (now_x, now_y) != (tx, ty):
                                         result += f"|STOPPED_MID_PATH (moves exhausted)"
                         break
@@ -181,7 +192,8 @@ class GameState:
         if result.startswith("RANGE_ATTACK") or result.startswith("MELEE_ATTACK"):
             try:
                 followup = await self.conn.execute_read(
-                    lq.build_attack_followup_query(target_x, target_y))
+                    lq.build_attack_followup_query(target_x, target_y)
+                )
                 followup_str = _format_attack_followup(followup)
 
                 # Calculate damage from pre-attack HP vs post-combat HP
@@ -196,9 +208,15 @@ class GameState:
                 result += damage_info + "\n  Post-combat: " + followup_str
 
                 # Warn if target HP unchanged (popup may have blocked the attack)
-                actual_pre = pre_hp if pre_hp is not None else (est.defender_hp if est else None)
+                actual_pre = (
+                    pre_hp if pre_hp is not None else (est.defender_hp if est else None)
+                )
                 if actual_pre is not None and est and est.est_damage_to_defender > 0:
-                    if followup_str != "Target eliminated" and post_hp is not None and post_hp >= actual_pre:
+                    if (
+                        followup_str != "Target eliminated"
+                        and post_hp is not None
+                        and post_hp >= actual_pre
+                    ):
                         result += (
                             "\n  !! WARNING: Target HP unchanged — attack may have been "
                             "blocked by a popup. Run dismiss_popup then retry."
@@ -214,7 +232,8 @@ class GameState:
         if result.startswith("CITY_RANGE_ATTACK"):
             try:
                 followup = await self.conn.execute_read(
-                    lq.build_attack_followup_query(target_x, target_y))
+                    lq.build_attack_followup_query(target_x, target_y)
+                )
                 followup_str = _format_attack_followup(followup)
 
                 pre_hp = _extract_pre_hp(result)
@@ -266,7 +285,9 @@ class GameState:
                             result = retry_result
                             verified = True
                 except Exception:
-                    log.debug("found_city retry after popup dismiss failed", exc_info=True)
+                    log.debug(
+                        "found_city retry after popup dismiss failed", exc_info=True
+                    )
                 if not verified:
                     result = (
                         f"Error: FOUND_FAILED|Founding at {x},{y} was requested but "
@@ -274,7 +295,9 @@ class GameState:
                     )
 
         # On settle failure, run the settle advisor to suggest alternatives
-        if result.startswith("Error: CANNOT_FOUND") or result.startswith("Error: FOUND_FAILED"):
+        if result.startswith("Error: CANNOT_FOUND") or result.startswith(
+            "Error: FOUND_FAILED"
+        ):
             try:
                 advisor_result = await self.get_settle_advisor(unit_index)
                 result += "\n\n" + advisor_result
@@ -369,8 +392,12 @@ class GameState:
         return _action_result(lines)
 
     async def set_city_production(
-        self, city_id: int, item_type: str, item_name: str,
-        target_x: int | None = None, target_y: int | None = None,
+        self,
+        city_id: int,
+        item_type: str,
+        item_name: str,
+        target_x: int | None = None,
+        target_y: int | None = None,
     ) -> str:
         lua = lq.build_produce_item(city_id, item_type, item_name, target_x, target_y)
         lines = await self.conn.execute_write(lua)
@@ -380,7 +407,8 @@ class GameState:
         if any("MAYBE:" in l for l in lines):
             try:
                 verify_lines = await self.conn.execute_read(
-                    lq.build_verify_production(city_id, item_name))
+                    lq.build_verify_production(city_id, item_name)
+                )
                 if any("CONFIRMED" in l for l in verify_lines):
                     turns = ""
                     for vl in verify_lines:
@@ -388,15 +416,23 @@ class GameState:
                             turns = vl.split("|", 1)[1]
                     return f"PRODUCING|{item_name}|{turns} (bypassed stale CanStartOperation)"
                 else:
-                    return (f"Error: CANNOT_START|{item_name} cannot start "
-                            f"(CanProduce=true but RequestOperation failed)")
+                    return (
+                        f"Error: CANNOT_START|{item_name} cannot start "
+                        f"(CanProduce=true but RequestOperation failed)"
+                    )
             except Exception:
                 log.debug("Production readback failed", exc_info=True)
                 return f"Error: CANNOT_START|{item_name} (readback failed)"
 
         return result
 
-    async def purchase_item(self, city_id: int, item_type: str, item_name: str, yield_type: str = "YIELD_GOLD") -> str:
+    async def purchase_item(
+        self,
+        city_id: int,
+        item_type: str,
+        item_name: str,
+        yield_type: str = "YIELD_GOLD",
+    ) -> str:
         lua = lq.build_purchase_item(city_id, item_type, item_name, yield_type)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
@@ -414,11 +450,13 @@ class GameState:
         if "OK:RESEARCHING" in result:
             # Verify InGame actually accepted it (desync check)
             verify = await self.conn.execute_read(
-                f'local me = Game.GetLocalPlayer(); '
-                f'print(Players[me]:GetTechs():GetResearchingTech()); '
+                f"local me = Game.GetLocalPlayer(); "
+                f"print(Players[me]:GetTechs():GetResearchingTech()); "
                 f'print("{lq.SENTINEL}")'
             )
-            gc_tech = int(verify[0]) if verify and verify[0].lstrip("-").isdigit() else -1
+            gc_tech = (
+                int(verify[0]) if verify and verify[0].lstrip("-").isdigit() else -1
+            )
             if gc_tech == -1:
                 # InGame silently failed — fall back to GameCore
                 gc_lua = lq.build_set_research_gamecore(tech_name)
@@ -433,11 +471,13 @@ class GameState:
         if "OK:PROGRESSING" in result:
             # Verify InGame actually accepted it (desync check)
             verify = await self.conn.execute_read(
-                f'local me = Game.GetLocalPlayer(); '
-                f'print(Players[me]:GetCulture():GetProgressingCivic()); '
+                f"local me = Game.GetLocalPlayer(); "
+                f"print(Players[me]:GetCulture():GetProgressingCivic()); "
                 f'print("{lq.SENTINEL}")'
             )
-            gc_civic = int(verify[0]) if verify and verify[0].lstrip("-").isdigit() else -1
+            gc_civic = (
+                int(verify[0]) if verify and verify[0].lstrip("-").isdigit() else -1
+            )
             if gc_civic == -1:
                 # InGame silently failed — fall back to GameCore
                 lua_gc = lq.build_set_civic_gamecore(civic_name)
@@ -497,8 +537,10 @@ class GameState:
 
         if post_text == pre_text:
             # Dialogue unchanged → goodbye phase. Force close.
-            log.info("Goodbye phase detected (text unchanged) for player %d — auto-closing",
-                     other_player_id)
+            log.info(
+                "Goodbye phase detected (text unchanged) for player %d — auto-closing",
+                other_player_id,
+            )
             close_lua = lq.build_diplomacy_respond(other_player_id, "EXIT")
             await self.conn.execute_write(close_lua)
             return f"OK:RESPONDED|{response.upper()}|SESSION_CLOSED (auto-closed goodbye phase)"
@@ -509,9 +551,9 @@ class GameState:
             if s.other_player_id == other_player_id:
                 post_reason = s.reason_text
                 break
-        dialogue_note = f"\nLeader says: \"{post_text}\""
+        dialogue_note = f'\nLeader says: "{post_text}"'
         if post_reason:
-            dialogue_note += f"\nReason/agenda: \"{post_reason}\""
+            dialogue_note += f'\nReason/agenda: "{post_reason}"'
         return f"OK:RESPONDED|{response.upper()}|SESSION_CONTINUES{dialogue_note}"
 
     async def send_diplomatic_action(self, other_player_id: int, action: str) -> str:
@@ -639,42 +681,42 @@ class GameState:
         if not result.startswith("Error"):
             try:
                 await self.conn.execute_write(
-                    f'local me = Game.GetLocalPlayer(); '
-                    f'local anyNeed = false; '
-                    f'for i, u in Players[me]:GetUnits():Members() do '
-                    f'  if u:GetX() ~= -9999 then '
-                    f'    local ok, exp = pcall(function() return u:GetExperience() end); '
-                    f'    if ok and exp then '
-                    f'      local xp = exp:GetExperiencePoints(); '
-                    f'      local threshold = exp:GetExperienceForNextLevel(); '
-                    f'      if xp >= threshold then '
-                    f'        local promoCount = 0; '
-                    f'        local ok2, pl = pcall(function() return exp:GetPromotions() end); '
-                    f'        if ok2 and pl then promoCount = #pl end; '
-                    f'        local lvl = 1; '
-                    f'        local ok3, l = pcall(function() return exp:GetLevel() end); '
-                    f'        if ok3 and l then lvl = l end; '
-                    f'        if promoCount < lvl then anyNeed = true end '
-                    f'      end '
-                    f'    end '
-                    f'  end '
-                    f'  if anyNeed then break end '
-                    f'end; '
-                    f'if not anyNeed then '
-                    f'  local list = NotificationManager.GetList(me); '
-                    f'  if list then '
-                    f'    for _, nid in ipairs(list) do '
-                    f'      local e = NotificationManager.Find(me, nid); '
-                    f'      if e and not e:IsDismissed() then '
-                    f'        local bt = e:GetEndTurnBlocking(); '
-                    f'        if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then '
-                    f'          pcall(function() NotificationManager.SendActivated(me, nid) end); '
-                    f'          pcall(function() NotificationManager.Dismiss(me, nid) end) '
-                    f'        end '
-                    f'      end '
-                    f'    end '
-                    f'  end '
-                    f'end; '
+                    f"local me = Game.GetLocalPlayer(); "
+                    f"local anyNeed = false; "
+                    f"for i, u in Players[me]:GetUnits():Members() do "
+                    f"  if u:GetX() ~= -9999 then "
+                    f"    local ok, exp = pcall(function() return u:GetExperience() end); "
+                    f"    if ok and exp then "
+                    f"      local xp = exp:GetExperiencePoints(); "
+                    f"      local threshold = exp:GetExperienceForNextLevel(); "
+                    f"      if xp >= threshold then "
+                    f"        local promoCount = 0; "
+                    f"        local ok2, pl = pcall(function() return exp:GetPromotions() end); "
+                    f"        if ok2 and pl then promoCount = #pl end; "
+                    f"        local lvl = 1; "
+                    f"        local ok3, l = pcall(function() return exp:GetLevel() end); "
+                    f"        if ok3 and l then lvl = l end; "
+                    f"        if promoCount < lvl then anyNeed = true end "
+                    f"      end "
+                    f"    end "
+                    f"  end "
+                    f"  if anyNeed then break end "
+                    f"end; "
+                    f"if not anyNeed then "
+                    f"  local list = NotificationManager.GetList(me); "
+                    f"  if list then "
+                    f"    for _, nid in ipairs(list) do "
+                    f"      local e = NotificationManager.Find(me, nid); "
+                    f"      if e and not e:IsDismissed() then "
+                    f"        local bt = e:GetEndTurnBlocking(); "
+                    f"        if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then "
+                    f"          pcall(function() NotificationManager.SendActivated(me, nid) end); "
+                    f"          pcall(function() NotificationManager.Dismiss(me, nid) end) "
+                    f"        end "
+                    f"      end "
+                    f"    end "
+                    f"  end "
+                    f"end; "
                     f'print("OK"); print("{lq.SENTINEL}")'
                 )
             except Exception:
@@ -699,8 +741,8 @@ class GameState:
             await asyncio.sleep(0.1)
             try:
                 verify_lines = await self.conn.execute_write(
-                    f'local me = Game.GetLocalPlayer(); '
-                    f'print(Players[me]:GetInfluence():GetTokensToGive()); '
+                    f"local me = Game.GetLocalPlayer(); "
+                    f"print(Players[me]:GetInfluence():GetTokensToGive()); "
                     f'print("{lq.SENTINEL}")'
                 )
                 if verify_lines and verify_lines[0].strip().lstrip("-").isdigit():
@@ -733,7 +775,9 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return lq.parse_religion_beliefs_response(lines)
 
-    async def found_religion(self, religion_type: str, follower_belief: str, founder_belief: str) -> str:
+    async def found_religion(
+        self, religion_type: str, follower_belief: str, founder_belief: str
+    ) -> str:
         lua = lq.build_found_religion(religion_type, follower_belief, founder_belief)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
@@ -772,7 +816,9 @@ class GameState:
     # District advisor
     # ------------------------------------------------------------------
 
-    async def get_district_advisor(self, city_id: int, district_type: str) -> list[lq.DistrictPlacement]:
+    async def get_district_advisor(
+        self, city_id: int, district_type: str
+    ) -> list[lq.DistrictPlacement]:
         lua = lq.build_district_advisor_query(city_id, district_type)
         lines = await self.conn.execute_write(lua)
         return lq.parse_district_advisor_response(lines)
@@ -814,7 +860,9 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return lines[0] if lines else "No response"
 
-    async def patronize_great_person(self, individual_id: int, yield_type: str = "YIELD_GOLD") -> str:
+    async def patronize_great_person(
+        self, individual_id: int, yield_type: str = "YIELD_GOLD"
+    ) -> str:
         lua = lq.build_patronize_great_person(individual_id, yield_type)
         lines = await self.conn.execute_write(lua)
         return lines[0] if lines else "No response"
@@ -834,15 +882,21 @@ class GameState:
 
     async def get_trade_routes(self) -> lq.TradeRouteStatus:
         lua = lq.build_trade_routes_query()
-        lines = await self.conn.execute_write(lua)  # InGame context (GetOutgoingRoutes is InGame-only)
+        lines = await self.conn.execute_write(
+            lua
+        )  # InGame context (GetOutgoingRoutes is InGame-only)
         return lq.parse_trade_routes_response(lines)
 
-    async def get_trade_destinations(self, unit_index: int) -> list[lq.TradeDestination]:
+    async def get_trade_destinations(
+        self, unit_index: int
+    ) -> list[lq.TradeDestination]:
         lua = lq.build_trade_destinations_query(unit_index)
         lines = await self.conn.execute_write(lua)
         return lq.parse_trade_destinations_response(lines)
 
-    async def make_trade_route(self, unit_index: int, target_x: int, target_y: int) -> str:
+    async def make_trade_route(
+        self, unit_index: int, target_x: int, target_y: int
+    ) -> str:
         lua = lq.build_make_trade_route(unit_index, target_x, target_y)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
@@ -865,7 +919,9 @@ class GameState:
     # Trader teleport (InGame context)
     # ------------------------------------------------------------------
 
-    async def teleport_to_city(self, unit_index: int, target_x: int, target_y: int) -> str:
+    async def teleport_to_city(
+        self, unit_index: int, target_x: int, target_y: int
+    ) -> str:
         lua = lq.build_teleport_to_city(unit_index, target_x, target_y)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
@@ -879,7 +935,9 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return lq.parse_world_congress_response(lines)
 
-    async def vote_world_congress(self, resolution_hash: int, option: int, target_index: int, num_votes: int) -> str:
+    async def vote_world_congress(
+        self, resolution_hash: int, option: int, target_index: int, num_votes: int
+    ) -> str:
         lua = lq.build_congress_vote(resolution_hash, option, target_index, num_votes)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
@@ -917,7 +975,9 @@ class GameState:
     # Snapshot-diff for turn event detection
     # ------------------------------------------------------------------
 
-    async def _take_snapshot(self, overview: lq.GameOverview | None = None) -> lq.TurnSnapshot:
+    async def _take_snapshot(
+        self, overview: lq.GameOverview | None = None
+    ) -> lq.TurnSnapshot:
         """Capture current game state for diffing."""
         if overview is None:
             ov_lines = await self.conn.execute_write(lq.build_overview_query())
@@ -956,77 +1016,118 @@ class GameState:
         )
 
     @staticmethod
-    def _diff_snapshots(before: lq.TurnSnapshot, after: lq.TurnSnapshot) -> list[lq.TurnEvent]:
+    def _diff_snapshots(
+        before: lq.TurnSnapshot, after: lq.TurnSnapshot
+    ) -> list[lq.TurnEvent]:
         """Compare two snapshots and generate events."""
         events: list[lq.TurnEvent] = []
 
         # --- Unit events ---
         for uid, ub in before.units.items():
             if uid not in after.units:
-                events.append(lq.TurnEvent(
-                    priority=1, category="unit",
-                    message=f"Your {ub.name} ({ub.unit_type}) was killed! Last seen at ({ub.x},{ub.y}).",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=1,
+                        category="unit",
+                        message=f"Your {ub.name} ({ub.unit_type}) was killed! Last seen at ({ub.x},{ub.y}).",
+                    )
+                )
             else:
                 ua = after.units[uid]
                 dmg = ub.health - ua.health
                 if dmg > 0:
-                    events.append(lq.TurnEvent(
-                        priority=2, category="unit",
-                        message=f"Your {ua.name} ({ua.unit_type}) took {dmg} damage! HP: {ua.health}/{ua.max_health} at ({ua.x},{ua.y}).",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=2,
+                            category="unit",
+                            message=f"Your {ua.name} ({ua.unit_type}) took {dmg} damage! HP: {ua.health}/{ua.max_health} at ({ua.x},{ua.y}).",
+                        )
+                    )
                 elif dmg < 0:
-                    events.append(lq.TurnEvent(
-                        priority=3, category="unit",
-                        message=f"Your {ua.name} ({ua.unit_type}) healed {-dmg} HP. HP: {ua.health}/{ua.max_health}.",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=3,
+                            category="unit",
+                            message=f"Your {ua.name} ({ua.unit_type}) healed {-dmg} HP. HP: {ua.health}/{ua.max_health}.",
+                        )
+                    )
 
         for uid, ua in after.units.items():
             if uid not in before.units:
-                events.append(lq.TurnEvent(
-                    priority=3, category="unit",
-                    message=f"New unit: {ua.name} ({ua.unit_type}) at ({ua.x},{ua.y}).",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=3,
+                        category="unit",
+                        message=f"New unit: {ua.name} ({ua.unit_type}) at ({ua.x},{ua.y}).",
+                    )
+                )
 
         # --- City events ---
         for cid, cb in before.cities.items():
             if cid not in after.cities:
-                events.append(lq.TurnEvent(
-                    priority=1, category="city",
-                    message=f"City {cb.name} was lost!",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=1,
+                        category="city",
+                        message=f"City {cb.name} was lost!",
+                    )
+                )
             else:
                 ca = after.cities[cid]
                 if ca.population > cb.population:
-                    events.append(lq.TurnEvent(
-                        priority=3, category="city",
-                        message=f"{ca.name} grew to population {ca.population}.",
-                    ))
-                if cb.currently_building != "NONE" and ca.currently_building != cb.currently_building:
-                    events.append(lq.TurnEvent(
-                        priority=2, category="city",
-                        message=f"{ca.name} finished building {cb.currently_building}. Now: {ca.currently_building if ca.currently_building != 'NONE' else 'nothing (queue empty)'}.",
-                    ))
+                    events.append(
+                        lq.TurnEvent(
+                            priority=3,
+                            category="city",
+                            message=f"{ca.name} grew to population {ca.population}.",
+                        )
+                    )
+                if (
+                    cb.currently_building != "NONE"
+                    and ca.currently_building != cb.currently_building
+                ):
+                    events.append(
+                        lq.TurnEvent(
+                            priority=2,
+                            category="city",
+                            message=f"{ca.name} finished building {cb.currently_building}. Now: {ca.currently_building if ca.currently_building != 'NONE' else 'nothing (queue empty)'}.",
+                        )
+                    )
 
         for cid, ca in after.cities.items():
             if cid not in before.cities:
-                events.append(lq.TurnEvent(
-                    priority=2, category="city",
-                    message=f"New city founded: {ca.name}!",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=2,
+                        category="city",
+                        message=f"New city founded: {ca.name}!",
+                    )
+                )
 
         # --- Research/civic events ---
-        if before.current_research != "None" and after.current_research != before.current_research:
-            events.append(lq.TurnEvent(
-                priority=2, category="research",
-                message=f"Research complete: {before.current_research}! Now: {after.current_research}.",
-            ))
+        if (
+            before.current_research != "None"
+            and after.current_research != before.current_research
+        ):
+            events.append(
+                lq.TurnEvent(
+                    priority=2,
+                    category="research",
+                    message=f"Research complete: {before.current_research}! Now: {after.current_research}.",
+                )
+            )
 
-        if before.current_civic != "None" and after.current_civic != before.current_civic:
-            events.append(lq.TurnEvent(
-                priority=2, category="civic",
-                message=f"Civic complete: {before.current_civic}! Now: {after.current_civic}.",
-            ))
+        if (
+            before.current_civic != "None"
+            and after.current_civic != before.current_civic
+        ):
+            events.append(
+                lq.TurnEvent(
+                    priority=2,
+                    category="civic",
+                    message=f"Civic complete: {before.current_civic}! Now: {after.current_civic}.",
+                )
+            )
 
         # --- Stockpile events ---
         before_stk = {s.name: s for s in before.stockpiles}
@@ -1035,10 +1136,13 @@ class GameState:
             sb = before_stk.get(name)
             if sb and sb.amount > 0 and sa.amount == 0:
                 net = sa.per_turn - sa.demand + sa.imported
-                events.append(lq.TurnEvent(
-                    priority=2, category="resources",
-                    message=f"DEPLETED: {name} stockpile hit 0 ({net:+d}/t) — units requiring {name} may be disbanded.",
-                ))
+                events.append(
+                    lq.TurnEvent(
+                        priority=2,
+                        category="resources",
+                        message=f"DEPLETED: {name} stockpile hit 0 ({net:+d}/t) — units requiring {name} may be disbanded.",
+                    )
+                )
 
         events.sort(key=lambda e: e.priority)
         return events
@@ -1055,7 +1159,9 @@ class GameState:
         lines = [f"Turn {turn_before} -> {turn_after}"]
 
         if stockpiles:
-            visible = [s for s in stockpiles if s.amount > 0 or s.per_turn > 0 or s.demand > 0]
+            visible = [
+                s for s in stockpiles if s.amount > 0 or s.per_turn > 0 or s.demand > 0
+            ]
             if visible:
                 parts = []
                 for s in visible:
@@ -1076,7 +1182,11 @@ class GameState:
         # Only show informational notifications from the last 2 turns — older ones
         # are stale (e.g. "Wonder Completed" from 3 turns ago) and clutter the report.
         recent_cutoff = (turn_after or 0) - 2
-        info_notifs = [n for n in notifications if not n.is_action_required and n.turn >= recent_cutoff]
+        info_notifs = [
+            n
+            for n in notifications
+            if not n.is_action_required and n.turn >= recent_cutoff
+        ]
 
         if action_required:
             lines.append("")
@@ -1100,34 +1210,38 @@ class GameState:
     async def end_turn(self) -> str:
         """End the turn with snapshot-diff event detection."""
         from civ_mcp.end_turn import execute_end_turn
-        return await execute_end_turn(self)
 
+        return await execute_end_turn(self)
 
     async def dismiss_popup(self) -> str:
         """Dismiss any blocking popup or UI overlay."""
         from civ_mcp.game_lifecycle import dismiss_popup
+
         return await dismiss_popup(self.conn)
 
     async def quicksave(self) -> str:
         """Create a quick-save."""
         from civ_mcp.game_lifecycle import quicksave
+
         return await quicksave(self.conn)
 
     async def list_saves(self) -> str:
         """List available save files."""
         from civ_mcp.game_lifecycle import list_saves
+
         return await list_saves(self.conn)
 
     async def load_save(self, save_index: int) -> str:
         """Load a save file by index."""
         from civ_mcp.game_lifecycle import load_save
+
         return await load_save(self.conn, save_index)
 
     async def execute_lua(self, code: str, context: str = "gamecore") -> str:
         """Escape hatch: run arbitrary Lua code."""
         from civ_mcp.game_lifecycle import execute_lua
-        return await execute_lua(self.conn, code, context)
 
+        return await execute_lua(self.conn, code, context)
 
 
 def _action_result(lines: list[str]) -> str:
@@ -1164,12 +1278,13 @@ def _format_attack_followup(lines: list[str]) -> str:
 def _extract_pre_hp(result: str) -> int | None:
     """Extract pre-attack enemy HP from attack result line."""
     import re
+
     # Ranged/city: pre_hp:80/100
-    m = re.search(r'pre_hp:(\d+)/', result)
+    m = re.search(r"pre_hp:(\d+)/", result)
     if m:
         return int(m.group(1))
     # Melee: enemy HP:100 -> 80/100
-    m = re.search(r'enemy HP:(\d+) ->', result)
+    m = re.search(r"enemy HP:(\d+) ->", result)
     if m:
         return int(m.group(1))
     return None

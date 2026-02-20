@@ -116,15 +116,17 @@ def parse_notifications_response(lines: list[str]) -> list[GameNotification]:
         type_name = parts[1]
         is_action = any(kw in type_name.upper() for kw in _ACTION_KEYWORDS)
         hint = NOTIFICATION_TOOL_MAP.get(type_name)
-        notifs.append(GameNotification(
-            type_name=type_name,
-            message=parts[2],
-            turn=int(parts[3]),
-            x=int(x_str),
-            y=int(y_str),
-            is_action_required=is_action,
-            resolution_hint=hint,
-        ))
+        notifs.append(
+            GameNotification(
+                type_name=type_name,
+                message=parts[2],
+                turn=int(parts[3]),
+                x=int(x_str),
+                y=int(y_str),
+                is_action_required=is_action,
+                resolution_hint=hint,
+            )
+        )
     return notifs
 
 
@@ -168,7 +170,18 @@ NOTIFICATION_TOOL_MAP: dict[str, str] = {
 }
 
 
-_ACTION_KEYWORDS = ("CHOOSE", "FILL", "CONSIDER", "GOVERNOR", "PANTHEON", "PROMOTION", "CLAIM", "INFLUENCE_TOKEN", "COMMEMORATION", "WORLD_CONGRESS")
+_ACTION_KEYWORDS = (
+    "CHOOSE",
+    "FILL",
+    "CONSIDER",
+    "GOVERNOR",
+    "PANTHEON",
+    "PROMOTION",
+    "CLAIM",
+    "INFLUENCE_TOKEN",
+    "COMMEMORATION",
+    "WORLD_CONGRESS",
+)
 
 
 BLOCKING_TOOL_MAP: dict[str, str] = {

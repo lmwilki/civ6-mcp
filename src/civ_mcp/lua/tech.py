@@ -247,48 +247,67 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
         elif line.startswith("TECH|"):
             parts = line.split("|")
             if len(parts) >= 9:
-                available_techs.append(TechOption(
-                    name=parts[1],
-                    tech_type=parts[2],
-                    cost=int(parts[3]),
-                    progress_pct=int(parts[4]),
-                    turns=int(parts[5]),
-                    boosted=parts[6] == "BOOSTED",
-                    boost_desc=parts[7],
-                    unlocks=parts[8],
-                ))
+                available_techs.append(
+                    TechOption(
+                        name=parts[1],
+                        tech_type=parts[2],
+                        cost=int(parts[3]),
+                        progress_pct=int(parts[4]),
+                        turns=int(parts[5]),
+                        boosted=parts[6] == "BOOSTED",
+                        boost_desc=parts[7],
+                        unlocks=parts[8],
+                    )
+                )
             elif len(parts) >= 3:
-                available_techs.append(TechOption(
-                    name=parts[1], tech_type=parts[2],
-                    cost=0, progress_pct=0, turns=0,
-                    boosted=False, boost_desc="", unlocks="",
-                ))
+                available_techs.append(
+                    TechOption(
+                        name=parts[1],
+                        tech_type=parts[2],
+                        cost=0,
+                        progress_pct=0,
+                        turns=0,
+                        boosted=False,
+                        boost_desc="",
+                        unlocks="",
+                    )
+                )
         elif line.startswith("CIVIC|"):
             parts = line.split("|")
             if len(parts) >= 8:
-                available_civics.append(CivicOption(
-                    name=parts[1],
-                    civic_type=parts[2],
-                    cost=int(parts[3]),
-                    progress_pct=int(parts[4]),
-                    turns=int(parts[5]),
-                    boosted=parts[6] == "BOOSTED",
-                    boost_desc=parts[7],
-                ))
+                available_civics.append(
+                    CivicOption(
+                        name=parts[1],
+                        civic_type=parts[2],
+                        cost=int(parts[3]),
+                        progress_pct=int(parts[4]),
+                        turns=int(parts[5]),
+                        boosted=parts[6] == "BOOSTED",
+                        boost_desc=parts[7],
+                    )
+                )
             elif len(parts) >= 3:
-                available_civics.append(CivicOption(
-                    name=parts[1], civic_type=parts[2],
-                    cost=0, progress_pct=0, turns=0,
-                    boosted=False, boost_desc="",
-                ))
+                available_civics.append(
+                    CivicOption(
+                        name=parts[1],
+                        civic_type=parts[2],
+                        cost=0,
+                        progress_pct=0,
+                        turns=0,
+                        boosted=False,
+                        boost_desc="",
+                    )
+                )
         elif line.startswith("LOCKED_CIVIC|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                locked_civics.append(LockedCivic(
-                    name=parts[1],
-                    civic_type=parts[2],
-                    missing_prereqs=parts[3].split(","),
-                ))
+                locked_civics.append(
+                    LockedCivic(
+                        name=parts[1],
+                        civic_type=parts[2],
+                        missing_prereqs=parts[3].split(","),
+                    )
+                )
 
     return TechCivicStatus(
         current_research=current_research,

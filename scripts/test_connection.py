@@ -77,7 +77,9 @@ async def main() -> None:
         if result:
             print(f"   Current turn: {result}")
         else:
-            print("   (no response — may need a different Lua state, or no game in progress)")
+            print(
+                "   (no response — may need a different Lua state, or no game in progress)"
+            )
 
         extras = await drain_messages(reader, timeout=1.0)
         for msg in extras:

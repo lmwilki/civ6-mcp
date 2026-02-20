@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_unit
-from civ_mcp.lua.models import CongressProposal, CongressResolution, GreatPersonInfo, TradeDestination, TradeRouteStatus, TraderInfo, WorldCongressStatus
+from civ_mcp.lua.models import (
+    CongressProposal,
+    CongressResolution,
+    GreatPersonInfo,
+    TradeDestination,
+    TraderInfo,
+    TradeRouteStatus,
+    WorldCongressStatus,
+)
 
 
 def build_great_people_query() -> str:
@@ -124,7 +132,9 @@ print("{SENTINEL}")
 """
 
 
-def build_patronize_great_person(individual_id: int, yield_type: str = "YIELD_GOLD") -> str:
+def build_patronize_great_person(
+    individual_id: int, yield_type: str = "YIELD_GOLD"
+) -> str:
     """Buy a Great Person with gold or faith (InGame context)."""
     yield_idx = 2 if yield_type == "YIELD_GOLD" else 5  # YieldTypes.GOLD=2, FAITH=5
     return f"""
@@ -143,7 +153,7 @@ UI.RequestPlayerOperation(me, PlayerOperations.PATRONIZE_GREAT_PERSON, kParams)
 local ind = GameInfo.GreatPersonIndividuals[{individual_id}]
 local name = ind and Locale.Lookup(ind.Name) or "unknown"
 local cost = gp:GetPatronizeCost(me, {individual_id}, {yield_idx})
-print("OK:PATRONIZED|" .. name .. "|cost:" .. cost .. " {yield_type.replace('YIELD_', '').lower()}")
+print("OK:PATRONIZED|" .. name .. "|cost:" .. cost .. " {yield_type.replace("YIELD_", "").lower()}")
 print("{SENTINEL}")
 """
 
@@ -462,7 +472,14 @@ def _parse_compact_yields(s: str) -> str:
     """
     if not s:
         return ""
-    _names = {"F": "Food", "P": "Prod", "G": "Gold", "S": "Sci", "C": "Cul", "A": "Faith"}
+    _names = {
+        "F": "Food",
+        "P": "Prod",
+        "G": "Gold",
+        "S": "Sci",
+        "C": "Cul",
+        "A": "Faith",
+    }
     totals: dict[str, float] = {}
     i = 0
     while i < len(s):
@@ -507,36 +524,44 @@ def parse_trade_routes_response(lines: list[str]) -> TradeRouteStatus:
             parts = line.split("|")
             if len(parts) >= 15:
                 uid = int(parts[1])
-                traders.append(TraderInfo(
-                    unit_id=uid,
-                    x=0, y=0,  # active traders don't need position
-                    has_moves=False,
-                    on_route=True,
-                    route_origin=parts[2],
-                    route_dest=parts[3],
-                    route_owner=parts[4],
-                    is_domestic=parts[5] == "1",
-                    is_city_state=parts[6] == "1",
-                    has_quest=parts[7] == "1",
-                    origin_yields=_parse_compact_yields(parts[13]),
-                    dest_yields=_parse_compact_yields(parts[14]),
-                    pressure_out=float(parts[9]) if parts[9] else 0.0,
-                    religion_out=parts[10],
-                    pressure_in=float(parts[11]) if parts[11] else 0.0,
-                    religion_in=parts[12],
-                ))
+                traders.append(
+                    TraderInfo(
+                        unit_id=uid,
+                        x=0,
+                        y=0,  # active traders don't need position
+                        has_moves=False,
+                        on_route=True,
+                        route_origin=parts[2],
+                        route_dest=parts[3],
+                        route_owner=parts[4],
+                        is_domestic=parts[5] == "1",
+                        is_city_state=parts[6] == "1",
+                        has_quest=parts[7] == "1",
+                        origin_yields=_parse_compact_yields(parts[13]),
+                        dest_yields=_parse_compact_yields(parts[14]),
+                        pressure_out=float(parts[9]) if parts[9] else 0.0,
+                        religion_out=parts[10],
+                        pressure_in=float(parts[11]) if parts[11] else 0.0,
+                        religion_in=parts[12],
+                    )
+                )
         elif line.startswith("IDLE_TRADER|"):
             parts = line.split("|")
             if len(parts) >= 3:
                 uid = int(parts[1])
                 xy = parts[2].split(",")
-                traders.append(TraderInfo(
-                    unit_id=uid,
-                    x=int(xy[0]), y=int(xy[1]),
-                    has_moves=True,
-                    on_route=False,
-                ))
-    return TradeRouteStatus(capacity=capacity, active_count=active, traders=traders, ghost_count=ghost)
+                traders.append(
+                    TraderInfo(
+                        unit_id=uid,
+                        x=int(xy[0]),
+                        y=int(xy[1]),
+                        has_moves=True,
+                        on_route=False,
+                    )
+                )
+    return TradeRouteStatus(
+        capacity=capacity, active_count=active, traders=traders, ghost_count=ghost
+    )
 
 
 def parse_trade_destinations_response(lines: list[str]) -> list[TradeDestination]:
@@ -550,32 +575,36 @@ def parse_trade_destinations_response(lines: list[str]) -> list[TradeDestination
             parts = line.split("|")
             if len(parts) >= 14:
                 coords = parts[3].split(",")
-                results.append(TradeDestination(
-                    city_name=parts[1],
-                    owner_name=parts[2],
-                    x=int(coords[0]),
-                    y=int(coords[1]),
-                    is_domestic=parts[4] == "1",
-                    is_city_state=parts[5] == "1",
-                    has_quest=parts[6] == "1",
-                    has_trading_post=parts[7] == "1",
-                    origin_yields=_parse_compact_yields(parts[12]),
-                    dest_yields=_parse_compact_yields(parts[13]),
-                    pressure_out=float(parts[8]) if parts[8] else 0.0,
-                    religion_out=parts[9],
-                    pressure_in=float(parts[10]) if parts[10] else 0.0,
-                    religion_in=parts[11],
-                ))
+                results.append(
+                    TradeDestination(
+                        city_name=parts[1],
+                        owner_name=parts[2],
+                        x=int(coords[0]),
+                        y=int(coords[1]),
+                        is_domestic=parts[4] == "1",
+                        is_city_state=parts[5] == "1",
+                        has_quest=parts[6] == "1",
+                        has_trading_post=parts[7] == "1",
+                        origin_yields=_parse_compact_yields(parts[12]),
+                        dest_yields=_parse_compact_yields(parts[13]),
+                        pressure_out=float(parts[8]) if parts[8] else 0.0,
+                        religion_out=parts[9],
+                        pressure_in=float(parts[10]) if parts[10] else 0.0,
+                        religion_in=parts[11],
+                    )
+                )
             elif len(parts) >= 5:
                 # Fallback for old format
                 coords = parts[3].split(",")
-                results.append(TradeDestination(
-                    city_name=parts[1],
-                    owner_name=parts[2],
-                    x=int(coords[0]),
-                    y=int(coords[1]),
-                    is_domestic=parts[4] == "1",
-                ))
+                results.append(
+                    TradeDestination(
+                        city_name=parts[1],
+                        owner_name=parts[2],
+                        x=int(coords[0]),
+                        y=int(coords[1]),
+                        is_domestic=parts[4] == "1",
+                    )
+                )
     return results
 
 
@@ -814,8 +843,13 @@ print("{SENTINEL}")
 def parse_world_congress_response(lines: list[str]) -> WorldCongressStatus:
     """Parse WC_STATUS / WC_RES / WC_PROP lines into WorldCongressStatus."""
     status = WorldCongressStatus(
-        is_in_session=False, turns_until_next=-1, favor=0,
-        max_votes=5, favor_costs=[], resolutions=[], proposals=[],
+        is_in_session=False,
+        turns_until_next=-1,
+        favor=0,
+        max_votes=5,
+        favor_costs=[],
+        resolutions=[],
+        proposals=[],
     )
     for line in lines:
         if line.startswith("WC_STATUS|"):
@@ -829,32 +863,38 @@ def parse_world_congress_response(lines: list[str]) -> WorldCongressStatus:
         elif line.startswith("WC_RES|"):
             parts = line.split("|")
             targets = parts[10].split("~") if len(parts) > 10 and parts[10] else []
-            status.resolutions.append(CongressResolution(
-                resolution_type=parts[2],
-                resolution_hash=int(parts[1]),
-                name=parts[3],
-                target_kind=parts[4],
-                effect_a=parts[5],
-                effect_b=parts[6],
-                possible_targets=targets,
-                is_passed=parts[7] == "1",
-                winner=int(parts[8]),
-                chosen_thing=parts[9],
-            ))
+            status.resolutions.append(
+                CongressResolution(
+                    resolution_type=parts[2],
+                    resolution_hash=int(parts[1]),
+                    name=parts[3],
+                    target_kind=parts[4],
+                    effect_a=parts[5],
+                    effect_b=parts[6],
+                    possible_targets=targets,
+                    is_passed=parts[7] == "1",
+                    winner=int(parts[8]),
+                    chosen_thing=parts[9],
+                )
+            )
         elif line.startswith("WC_PROP|"):
             parts = line.split("|")
-            status.proposals.append(CongressProposal(
-                sender_id=int(parts[1]),
-                sender_name=parts[2],
-                target_id=int(parts[3]),
-                target_name=parts[4],
-                proposal_type=int(parts[5]),
-                description=parts[6] if len(parts) > 6 else "",
-            ))
+            status.proposals.append(
+                CongressProposal(
+                    sender_id=int(parts[1]),
+                    sender_name=parts[2],
+                    target_id=int(parts[3]),
+                    target_name=parts[4],
+                    proposal_type=int(parts[5]),
+                    description=parts[6] if len(parts) > 6 else "",
+                )
+            )
     return status
 
 
-def build_congress_vote(resolution_hash: int, option: int, target_index: int, num_votes: int) -> str:
+def build_congress_vote(
+    resolution_hash: int, option: int, target_index: int, num_votes: int
+) -> str:
     """Vote on a World Congress resolution (InGame context).
 
     option: 1=A, 2=B
@@ -1038,17 +1078,19 @@ def parse_great_people_response(lines: list[str]) -> list[GreatPersonInfo]:
                         elif k == "recruit":
                             can_recruit = v == "true"
                     individual_id = int(float(parts[9]))
-                results.append(GreatPersonInfo(
-                    class_name=parts[1],
-                    individual_name=parts[2],
-                    era_name=parts[3],
-                    cost=int(float(parts[4])),
-                    claimant=parts[5],
-                    player_points=int(float(parts[6])),
-                    ability=ability,
-                    gold_cost=gold_cost,
-                    faith_cost=faith_cost,
-                    can_recruit=can_recruit,
-                    individual_id=individual_id,
-                ))
+                results.append(
+                    GreatPersonInfo(
+                        class_name=parts[1],
+                        individual_name=parts[2],
+                        era_name=parts[3],
+                        cost=int(float(parts[4])),
+                        claimant=parts[5],
+                        player_points=int(float(parts[6])),
+                        ability=ability,
+                        gold_cost=gold_cost,
+                        faith_cost=faith_cost,
+                        can_recruit=can_recruit,
+                        individual_id=individual_id,
+                    )
+                )
     return results

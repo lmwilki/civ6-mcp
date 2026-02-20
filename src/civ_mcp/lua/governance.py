@@ -2,8 +2,29 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_city, _lua_get_unit, _lua_get_unit_gamecore
-from civ_mcp.lua.models import AppointedGovernor, CityStateInfo, DedicationChoice, DedicationStatus, EnvoyStatus, GovernmentStatus, GovernorInfo, GovernorPromotion, GovernorStatus, PolicyInfo, PolicySlot, PromotionOption, UnitPromotionStatus
+from civ_mcp.lua._helpers import (
+    SENTINEL,
+    _bail,
+    _bail_lua,
+    _lua_get_city,
+    _lua_get_unit,
+    _lua_get_unit_gamecore,
+)
+from civ_mcp.lua.models import (
+    AppointedGovernor,
+    CityStateInfo,
+    DedicationChoice,
+    DedicationStatus,
+    EnvoyStatus,
+    GovernmentStatus,
+    GovernorInfo,
+    GovernorPromotion,
+    GovernorStatus,
+    PolicyInfo,
+    PolicySlot,
+    PromotionOption,
+    UnitPromotionStatus,
+)
 
 
 def build_policies_query() -> str:
@@ -70,14 +91,14 @@ def build_set_policies(assignments: dict[int, str]) -> str:
     for slot_idx, policy_type in assignments.items():
         add_entries.append(
             f'local pe_{slot_idx} = GameInfo.Policies["{policy_type}"]; '
-            f'if pe_{slot_idx} == nil then {_bail(f"ERR:POLICY_NOT_FOUND|{policy_type}")} end; '
-            f'local sType_{slot_idx} = pCulture:GetSlotType({slot_idx}); '
-            f'local pSlot_{slot_idx} = slotTypeMap[pe_{slot_idx}.GovernmentSlotType] or -1; '
-            f'if sType_{slot_idx} < 2 and pSlot_{slot_idx} ~= sType_{slot_idx} then '
+            f"if pe_{slot_idx} == nil then {_bail(f'ERR:POLICY_NOT_FOUND|{policy_type}')} end; "
+            f"local sType_{slot_idx} = pCulture:GetSlotType({slot_idx}); "
+            f"local pSlot_{slot_idx} = slotTypeMap[pe_{slot_idx}.GovernmentSlotType] or -1; "
+            f"if sType_{slot_idx} < 2 and pSlot_{slot_idx} ~= sType_{slot_idx} then "
             f'local sName = slotNames[sType_{slot_idx}] or "unknown"; '
             f'local pType = pe_{slot_idx}.GovernmentSlotType or "unknown"; '
             f'{_bail_lua(f""" "ERR:SLOT_MISMATCH|{policy_type} (" .. pType .. ") cannot go in slot {slot_idx} (" .. sName .. ")" """)} end; '
-            f'addList[{slot_idx}] = pe_{slot_idx}.Hash'
+            f"addList[{slot_idx}] = pe_{slot_idx}.Hash"
         )
     add_lua = " ".join(add_entries)
 
@@ -559,21 +580,25 @@ def parse_policies_response(lines: list[str]) -> GovernmentStatus:
             if len(parts) >= 5:
                 policy_type = None if parts[3] == "NONE" else parts[3]
                 policy_name = None if parts[4] == "Empty" else parts[4]
-                slots.append(PolicySlot(
-                    slot_index=int(parts[1]),
-                    slot_type=parts[2],
-                    current_policy=policy_type,
-                    current_policy_name=policy_name,
-                ))
+                slots.append(
+                    PolicySlot(
+                        slot_index=int(parts[1]),
+                        slot_type=parts[2],
+                        current_policy=policy_type,
+                        current_policy_name=policy_name,
+                    )
+                )
         elif line.startswith("AVAIL|"):
             parts = line.split("|")
             if len(parts) >= 5:
-                available.append(PolicyInfo(
-                    policy_type=parts[1],
-                    name=parts[2],
-                    description=parts[3],
-                    slot_type=parts[4],
-                ))
+                available.append(
+                    PolicyInfo(
+                        policy_type=parts[1],
+                        name=parts[2],
+                        description=parts[3],
+                        slot_type=parts[4],
+                    )
+                )
 
     return GovernmentStatus(
         government_name=gov_name,
@@ -603,31 +628,37 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
         elif line.startswith("APPOINTED|"):
             parts = line.split("|")
             if len(parts) >= 7:
-                appointed.append(AppointedGovernor(
-                    governor_type=parts[1],
-                    name=parts[2],
-                    assigned_city_id=int(parts[4]),
-                    assigned_city_name=parts[5],
-                    is_established=parts[6] == "1",
-                    turns_to_establish=int(parts[7]) if len(parts) >= 8 else 0,
-                ))
+                appointed.append(
+                    AppointedGovernor(
+                        governor_type=parts[1],
+                        name=parts[2],
+                        assigned_city_id=int(parts[4]),
+                        assigned_city_name=parts[5],
+                        is_established=parts[6] == "1",
+                        turns_to_establish=int(parts[7]) if len(parts) >= 8 else 0,
+                    )
+                )
         elif line.startswith("GOV_PROMO|"):
             parts = line.split("|")
             if len(parts) >= 5:
                 gov_type = parts[1]
-                promos_by_gov.setdefault(gov_type, []).append(GovernorPromotion(
-                    promotion_type=parts[2],
-                    name=parts[3],
-                    description=parts[4],
-                ))
+                promos_by_gov.setdefault(gov_type, []).append(
+                    GovernorPromotion(
+                        promotion_type=parts[2],
+                        name=parts[3],
+                        description=parts[4],
+                    )
+                )
         elif line.startswith("AVAILABLE|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                available.append(GovernorInfo(
-                    governor_type=parts[1],
-                    name=parts[2],
-                    title=parts[3],
-                ))
+                available.append(
+                    GovernorInfo(
+                        governor_type=parts[1],
+                        name=parts[2],
+                        title=parts[3],
+                    )
+                )
 
     # Attach promotions to their governors
     for gov in appointed:
@@ -661,11 +692,13 @@ def parse_unit_promotions_response(lines: list[str]) -> UnitPromotionStatus:
         elif line.startswith("PROMO|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                promotions.append(PromotionOption(
-                    promotion_type=parts[1],
-                    name=parts[2],
-                    description=parts[3],
-                ))
+                promotions.append(
+                    PromotionOption(
+                        promotion_type=parts[1],
+                        name=parts[2],
+                        description=parts[3],
+                    )
+                )
 
     return UnitPromotionStatus(
         unit_id=unit_id,
@@ -686,15 +719,17 @@ def parse_city_states_response(lines: list[str]) -> EnvoyStatus:
         elif line.startswith("CS|"):
             parts = line.split("|")
             if len(parts) >= 8:
-                city_states.append(CityStateInfo(
-                    player_id=int(parts[1]),
-                    name=parts[2],
-                    city_state_type=parts[3],
-                    envoys_sent=int(parts[4]),
-                    suzerain_id=int(parts[5]),
-                    suzerain_name=parts[6],
-                    can_send_envoy=parts[7] == "1",
-                ))
+                city_states.append(
+                    CityStateInfo(
+                        player_id=int(parts[1]),
+                        name=parts[2],
+                        city_state_type=parts[3],
+                        envoys_sent=int(parts[4]),
+                        suzerain_id=int(parts[5]),
+                        suzerain_name=parts[6],
+                        can_send_envoy=parts[7] == "1",
+                    )
+                )
 
     return EnvoyStatus(tokens_available=tokens, city_states=city_states)
 
@@ -725,13 +760,15 @@ def parse_dedications_response(lines: list[str]) -> DedicationStatus:
         elif line.startswith("CHOICE|"):
             parts = line.split("|", 5)
             if len(parts) >= 6:
-                choices.append(DedicationChoice(
-                    index=int(parts[1]),
-                    name=parts[2],
-                    normal_desc=parts[3],
-                    golden_desc=parts[4],
-                    dark_desc=parts[5],
-                ))
+                choices.append(
+                    DedicationChoice(
+                        index=int(parts[1]),
+                        name=parts[2],
+                        normal_desc=parts[3],
+                        golden_desc=parts[4],
+                        dark_desc=parts[5],
+                    )
+                )
 
     return DedicationStatus(
         age_type=age_type,

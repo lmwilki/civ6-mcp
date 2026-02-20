@@ -41,7 +41,9 @@ def main():
                 malformed += 1
 
     total = sum(len(v) for v in lines_by_session.values())
-    print(f"Found {total} entries across {len(lines_by_session)} sessions ({malformed} malformed lines skipped)")
+    print(
+        f"Found {total} entries across {len(lines_by_session)} sessions ({malformed} malformed lines skipped)"
+    )
 
     written = 0
     skipped = 0

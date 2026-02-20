@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_unit
-from civ_mcp.lua.models import BeliefInfo, CityReligionInfo, PantheonStatus, ReligionBeliefOption, ReligionFoundingStatus, ReligionStatus, ReligionSummary
+from civ_mcp.lua.models import (
+    BeliefInfo,
+    CityReligionInfo,
+    PantheonStatus,
+    ReligionBeliefOption,
+    ReligionFoundingStatus,
+    ReligionStatus,
+    ReligionSummary,
+)
 
 
 def build_pantheon_status_query() -> str:
@@ -131,8 +139,11 @@ print("{SENTINEL}")
 def parse_religion_beliefs_response(lines: list[str]) -> ReligionFoundingStatus:
     """Parse the output of build_religion_beliefs_query."""
     status = ReligionFoundingStatus(
-        has_religion=False, religion_type=None, religion_name=None,
-        pantheon_index=-1, faith_balance=0.0,
+        has_religion=False,
+        religion_type=None,
+        religion_name=None,
+        pantheon_index=-1,
+        faith_balance=0.0,
     )
     for line in lines:
         if line.startswith("MYRELIGION|"):
@@ -168,7 +179,9 @@ def parse_religion_beliefs_response(lines: list[str]) -> ReligionFoundingStatus:
     return status
 
 
-def build_found_religion(religion_type: str, follower_belief: str, founder_belief: str) -> str:
+def build_found_religion(
+    religion_type: str, follower_belief: str, founder_belief: str
+) -> str:
     """Found a religion with chosen name and beliefs (InGame context).
 
     Requires Great Prophet already activated on Holy Site (UNITOPERATION_FOUND_RELIGION).
@@ -258,11 +271,13 @@ def parse_pantheon_status_response(lines: list[str]) -> PantheonStatus:
         elif line.startswith("BELIEF|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                beliefs.append(BeliefInfo(
-                    belief_type=parts[1],
-                    name=parts[2],
-                    description=parts[3],
-                ))
+                beliefs.append(
+                    BeliefInfo(
+                        belief_type=parts[1],
+                        name=parts[2],
+                        description=parts[3],
+                    )
+                )
 
     return PantheonStatus(
         has_pantheon=has_pantheon,
@@ -353,20 +368,24 @@ def parse_religion_status_response(lines: list[str]) -> ReligionStatus:
                                 followers[name] = int(count)
                             except ValueError:
                                 pass
-                cities.append(CityReligionInfo(
-                    player_id=int(parts[1]),
-                    civ_name=parts[2],
-                    city_name=parts[3],
-                    majority_religion=parts[4],
-                    population=int(parts[5]),
-                    followers=followers,
-                ))
+                cities.append(
+                    CityReligionInfo(
+                        player_id=int(parts[1]),
+                        civ_name=parts[2],
+                        city_name=parts[3],
+                        majority_religion=parts[4],
+                        population=int(parts[5]),
+                        followers=followers,
+                    )
+                )
         elif line.startswith("RSUMMARY|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                summary.append(ReligionSummary(
-                    religion_name=parts[1],
-                    civs_with_majority=int(parts[2]),
-                    total_majors=int(parts[3]),
-                ))
+                summary.append(
+                    ReligionSummary(
+                        religion_name=parts[1],
+                        civs_with_majority=int(parts[2]),
+                        total_majors=int(parts[3]),
+                    )
+                )
     return ReligionStatus(cities=cities, summary=summary)
