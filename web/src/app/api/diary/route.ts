@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { readFileSync, readdirSync, existsSync } from "fs"
+import { readFileSync, readdirSync, existsSync, statSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
 
@@ -11,18 +11,23 @@ function getDiaryDir(): string {
 function listDiaries(dir: string): { filename: string; label: string; count: number }[] {
   if (!existsSync(dir)) return []
   const files = readdirSync(dir).filter((f) => f.startsWith("diary_") && f.endsWith(".jsonl"))
-  return files.map((f) => {
-    const match = f.match(/^diary_(.+?)_/)
-    const label = match ? match[1].replace(/_/g, " ") : f
-    let count = 0
-    try {
-      const content = readFileSync(join(dir, f), "utf-8")
-      count = content.split("\n").filter((l) => l.trim()).length
-    } catch {
-      // ignore
-    }
-    return { filename: f, label, count }
-  })
+  return files
+    .map((f) => {
+      const match = f.match(/^diary_(.+?)_/)
+      const label = match ? match[1].replace(/_/g, " ") : f
+      let count = 0
+      let mtime = 0
+      try {
+        const content = readFileSync(join(dir, f), "utf-8")
+        count = content.split("\n").filter((l) => l.trim()).length
+        mtime = statSync(join(dir, f)).mtimeMs
+      } catch {
+        // ignore
+      }
+      return { filename: f, label, count, mtime }
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .map(({ mtime: _, ...rest }) => rest)
 }
 
 /** Read entries from a specific diary file */
