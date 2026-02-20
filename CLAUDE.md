@@ -506,8 +506,10 @@ queue_wc_votes(votes='[{"hash": -513644209, "option": 1, "target": 0, "votes": 5
 - 1 free vote per resolution; extras cost increasing diplomatic favor (10/30/60/100/150)
 - Between sessions: `get_world_congress` shows passed resolutions and turns until next session
 - The `ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK` blocker (review results) is auto-resolved by `end_turn`
-- **Vote for Diplomatic Victory Points when available.** This is the primary use of accumulated favor.
-- **Deploy ALL your diplomatic favor** on key resolutions — hoarded favor is wasted favor.
+- **Always cast the 1 free vote** on every resolution — it costs nothing.
+- **Spend extra favor only when**: (a) a Diplomatic Victory Point resolution is on the table, or (b) losing would be catastrophic (e.g. a resolution that bans your key luxury, or gives a rival 5+ DV points).
+- **Maintain a 50-100 favor reserve** between sessions. Extra votes cost 10/30/60/100/150 each (cumulative) — spending all favor for marginal vote gains leaves you helpless for the next 30 turns.
+- **Do not dump all favor every session.** The AI civs also vote; overspending rarely flips a losing resolution and depletes your reserves.
 
 ## Victory Conditions
 
