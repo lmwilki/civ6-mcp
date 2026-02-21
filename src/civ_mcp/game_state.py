@@ -854,6 +854,13 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return lq.parse_district_advisor_response(lines)
 
+    async def get_wonder_advisor(
+        self, city_id: int, wonder_name: str
+    ) -> list[lq.WonderPlacement]:
+        lua = lq.build_wonder_advisor_query(city_id, wonder_name)
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_wonder_advisor_response(lines)
+
     # ------------------------------------------------------------------
     # Tile purchase methods (InGame context)
     # ------------------------------------------------------------------

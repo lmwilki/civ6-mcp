@@ -1511,6 +1511,34 @@ async def get_district_advisor(ctx: Context, city_id: int, district_type: str) -
     )
 
 
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_wonder_advisor(ctx: Context, city_id: int, wonder_name: str) -> str:
+    """Show best tiles to place a wonder with displacement cost analysis.
+
+    Args:
+        city_id: City ID (from get_cities output)
+        wonder_name: Wonder building type, e.g. BUILDING_CHICHEN_ITZA, BUILDING_ORSZAGHAZ
+
+    Returns valid placement tiles ranked by displacement cost (lowest = best):
+    tiles with no improvements or resources are preferred over productive tiles.
+    Also shows terrain, feature, river/coastal status, and any resources/improvements
+    that would be removed by placing the wonder there.
+    Use set_city_production with target_x/target_y to build the wonder.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        placements = await gs.get_wonder_advisor(city_id, wonder_name)
+        return nr.narrate_wonder_advisor(placements, wonder_name)
+
+    return await _logged(
+        ctx,
+        "get_wonder_advisor",
+        {"city_id": city_id, "wonder_name": wonder_name},
+        _run,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tile purchase tools
 # ---------------------------------------------------------------------------

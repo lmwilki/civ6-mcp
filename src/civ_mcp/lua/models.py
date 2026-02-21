@@ -765,6 +765,21 @@ class DistrictPlacement:
 
 
 @dataclass
+class WonderPlacement:
+    """A valid tile for placing a wonder, ranked by displacement cost."""
+
+    x: int
+    y: int
+    terrain: str          # e.g. "TERRAIN_GRASS_HILLS"
+    feature: str          # e.g. "FEATURE_JUNGLE" or "none"
+    has_river: bool
+    is_coastal: bool
+    resource: str         # e.g. "RESOURCE_IRON" or "none"
+    improvement: str      # e.g. "IMPROVEMENT_FARM" or "none"
+    displacement_score: int  # 0 = empty bare tile (best), higher = more valuable yields lost
+
+
+@dataclass
 class PurchasableTile:
     """A tile that can be purchased with gold."""
 

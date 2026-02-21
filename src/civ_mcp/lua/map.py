@@ -13,6 +13,7 @@ from civ_mcp.lua.models import (
     DistrictPlacement,
     FogBoundary,
     MinimapData,
+    WonderPlacement,
     NearbyResource,
     OwnedResource,
     PurchasableTile,
@@ -739,6 +740,80 @@ print("{SENTINEL}")
 """
 
 
+def build_wonder_advisor_query(city_id: int, wonder_name: str) -> str:
+    """Find valid tiles for placing a wonder, ranked by displacement cost (InGame context).
+
+    Uses CityManager.GetOperationTargets with PARAM_BUILDING_TYPE — the same API
+    used by the game UI — so all terrain/river/coast/feature constraints are enforced
+    automatically. Ranks tiles by how much productive value is lost (lower = better choice).
+    """
+    return f"""
+{_lua_get_city(city_id)}
+local brow = GameInfo.Buildings["{wonder_name}"]
+if brow == nil then {_bail(f"ERR:WONDER_NOT_FOUND|{wonder_name}")} end
+if not brow.IsWonder then {_bail(f"ERR:NOT_A_WONDER|{wonder_name} is not a wonder")} end
+local bq = pCity:GetBuildQueue()
+if not bq:CanProduce(brow.Hash, true) then
+  {_bail(f"ERR:CANNOT_PRODUCE|{wonder_name} cannot be produced in this city")}
+end
+local targets = CityManager.GetOperationTargets(pCity, CityOperationTypes.BUILD,
+  {{[CityOperationTypes.PARAM_BUILDING_TYPE] = brow.Hash}})
+if targets == nil then {_bail("ERR:NO_TARGETS|No valid placement targets found")} end
+local plotIndices = {{}}
+for k, v in pairs(targets) do
+  if type(v) == "table" then
+    for _, idx in ipairs(v) do table.insert(plotIndices, idx) end
+  end
+end
+if #plotIndices == 0 then {_bail("ERR:NO_TILES|No valid placement tiles found")} end
+local results = {{}}
+for _, pIdx in ipairs(plotIndices) do
+  local plot = Map.GetPlotByIndex(pIdx)
+  if plot then
+    local px, py = plot:GetX(), plot:GetY()
+    local terrainName = "?"
+    local tInfo = GameInfo.Terrains[plot:GetTerrainType()]
+    if tInfo then terrainName = tInfo.TerrainType end
+    local featName = "none"
+    local feat = plot:GetFeatureType()
+    if feat >= 0 then
+      local fInfo = GameInfo.Features[feat]
+      if fInfo then featName = fInfo.FeatureType end
+    end
+    local isRiver = plot:IsRiver()
+    local isCoastal = plot:IsCoastalLand()
+    local resName = "none"
+    local res = plot:GetResourceType()
+    if res >= 0 then
+      local rInfo = GameInfo.Resources[res]
+      if rInfo then resName = rInfo.ResourceType end
+    end
+    local impName = "none"
+    local imp = plot:GetImprovementType()
+    if imp >= 0 then
+      local iInfo = GameInfo.Improvements[imp]
+      if iInfo then impName = iInfo.ImprovementType end
+    end
+    local score = 0
+    if resName ~= "none" then score = score + 10 end
+    if impName ~= "none" then score = score + 5 end
+    if featName ~= "none" then score = score + 2 end
+    if plot:IsHills() then score = score + 1 end
+    if isRiver then score = score + 1 end
+    table.insert(results, {{x=px, y=py, terrain=terrainName, feat=featName,
+      river=tostring(isRiver), coastal=tostring(isCoastal),
+      resource=resName, improvement=impName, score=score}})
+  end
+end
+table.sort(results, function(a, b) return a.score < b.score end)
+for i = 1, math.min(#results, 15) do
+  local r = results[i]
+  print("WPLOT|"..r.x..","..r.y.."|"..r.terrain.."|"..r.feat.."|"..r.river.."|"..r.coastal.."|"..r.resource.."|"..r.improvement.."|"..r.score)
+end
+print("{SENTINEL}")
+"""
+
+
 def build_purchasable_tiles_query(city_id: int) -> str:
     """List tiles a city can purchase with gold (InGame context)."""
     return f"""
@@ -1066,6 +1141,30 @@ def parse_district_advisor_response(lines: list[str]) -> list[DistrictPlacement]
                         adjacency=adjacency,
                         total_adjacency=int(parts[7]),
                         terrain_desc=parts[8],
+                    )
+                )
+    return results
+
+
+def parse_wonder_advisor_response(lines: list[str]) -> list[WonderPlacement]:
+    """Parse WPLOT| lines from build_wonder_advisor_query."""
+    results: list[WonderPlacement] = []
+    for line in lines:
+        if line.startswith("WPLOT|"):
+            parts = line.split("|")
+            if len(parts) >= 9:
+                coords = parts[1].split(",")
+                results.append(
+                    WonderPlacement(
+                        x=int(coords[0]),
+                        y=int(coords[1]),
+                        terrain=parts[2],
+                        feature=parts[3],
+                        has_river=parts[4] == "true",
+                        is_coastal=parts[5] == "true",
+                        resource=parts[6],
+                        improvement=parts[7],
+                        displacement_score=int(parts[8]),
                     )
                 )
     return results

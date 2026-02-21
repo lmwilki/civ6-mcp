@@ -111,6 +111,7 @@ from civ_mcp.lua.map import (  # noqa: F401
     build_stockpile_query,
     build_strategic_map_query,
     build_verify_city_at,
+    build_wonder_advisor_query,
     parse_district_advisor_response,
     parse_empire_resources_response,
     parse_map_response,
@@ -120,6 +121,7 @@ from civ_mcp.lua.map import (  # noqa: F401
     parse_stockpile_response,
     parse_strategic_map_response,
     parse_verify_city_at,
+    parse_wonder_advisor_response,
 )
 
 # Re-export all models
@@ -193,6 +195,7 @@ from civ_mcp.lua.models import (  # noqa: F401
     VictoryProgress,
     VisibleCity,
     WorldCongressStatus,
+    WonderPlacement,
 )
 from civ_mcp.lua.notifications import (  # noqa: F401
     BLOCKING_TOOL_MAP,

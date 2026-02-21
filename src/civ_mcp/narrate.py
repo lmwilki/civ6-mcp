@@ -1009,6 +1009,49 @@ def narrate_district_advisor(
     return "\n".join(lines)
 
 
+def narrate_wonder_advisor(
+    placements: list[lq.WonderPlacement], wonder_name: str
+) -> str:
+    if not placements:
+        return f"No valid placement tiles for {wonder_name} in this city."
+    short_name = wonder_name.replace("BUILDING_", "").replace("_", " ").title()
+    lines = [f"{wonder_name} placement options ({len(placements)} tiles):"]
+    for i, p in enumerate(placements, 1):
+        # Build terrain description
+        terrain = p.terrain.replace("TERRAIN_", "").replace("_", " ").lower()
+        feat = ""
+        if p.feature != "none":
+            feat = " " + p.feature.replace("FEATURE_", "").replace("_", " ").lower()
+        tags = []
+        if p.has_river:
+            tags.append("river")
+        if p.is_coastal:
+            tags.append("coastal")
+        tag_str = f" [{', '.join(tags)}]" if tags else ""
+        warn_parts = []
+        if p.improvement != "none":
+            imp = p.improvement.replace("IMPROVEMENT_", "").replace("_", " ").lower()
+            warn_parts.append(f"⚠ REMOVES {imp}")
+        if p.resource != "none":
+            res = p.resource.replace("RESOURCE_", "").replace("_", " ").lower()
+            warn_parts.append(f"⚠ DISPLACES {res}")
+        warn_str = f" — {', '.join(warn_parts)}" if warn_parts else ""
+        prefix = "!!" if warn_parts else "  "
+        lines.append(
+            f"{prefix} #{i} ({p.x},{p.y}) {terrain}{feat}{tag_str}"
+            f" — score:{p.displacement_score}{warn_str}"
+        )
+    best = placements[0]
+    lines.append(
+        f"\nRecommended: ({best.x},{best.y}) — lowest displacement"
+    )
+    lines.append(
+        f"Use: set_city_production(city_id=<id>, item_type=\"BUILDING\","
+        f" item_name=\"{wonder_name}\", target_x={best.x}, target_y={best.y})"
+    )
+    return "\n".join(lines)
+
+
 def narrate_purchasable_tiles(tiles: list[lq.PurchasableTile]) -> str:
     if not tiles:
         return "No purchasable tiles."
