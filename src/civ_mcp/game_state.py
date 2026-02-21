@@ -26,6 +26,7 @@ class GameState:
         self.conn = connection
         self._last_snapshot: lq.TurnSnapshot | None = None
         self._game_identity: tuple[str, int] | None = None  # (civ_type, seed)
+        self._diary_written_turn: int | None = None  # guard against double-write per turn
 
     async def get_game_identity(self) -> tuple[str, int]:
         """Return (civ_type_lower, random_seed) for the current game. Cached."""
@@ -169,6 +170,9 @@ class GameState:
                             if now_x == from_x and now_y == from_y:
                                 result += "|BLOCKED (unit did not move — impassable terrain, border, or no path)"
                             else:
+                                dx = now_x - from_x
+                                dy = now_y - from_y  # positive dy = south (higher Y = south in Civ 6)
+                                result += f"|(moved dx:{dx:+d} dy:{dy:+d})"
                                 tgt_match = re.search(
                                     r"(?:MOVING_TO|CAPTURE_MOVE)\|(\d+),(\d+)", result
                                 )

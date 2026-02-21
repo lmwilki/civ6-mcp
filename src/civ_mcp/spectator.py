@@ -41,6 +41,7 @@ _NONCRITICAL_POPUPS = [
     "InGamePopup",
     "GenericPopup",
     "PopupDialog",
+    "TechCivicCompletedPopup",
     "BoostUnlockedPopup",
     "GreatWorkShowcase",
     "NaturalWonderPopup",

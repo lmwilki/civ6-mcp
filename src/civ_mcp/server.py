@@ -1294,6 +1294,12 @@ async def end_turn(
         tooling: Tool issues or observations. Write "No issues" if none.
         planning: Concrete actions for the next 5-10 turns.
         hypothesis: Predictions — enemy behavior, resource needs, timelines.
+
+    IMPORTANT: Reflections are recorded BEFORE the AI processes its turn.
+    Anything that surfaces after end_turn (diplomacy proposals, AI movements,
+    events reported in the turn result) belongs in the NEXT turn's diary.
+    If end_turn is blocked and you call it again after resolving the blocker,
+    the diary entry from the first call is kept — do not repeat reflections.
     """
     gs = _get_game(ctx)
 
@@ -1312,98 +1318,105 @@ async def end_turn(
             "tactical, strategic, tooling, planning, hypothesis."
         )
 
-    # Advance the turn first — diary only writes on success
+    # Capture diary state and write BEFORE advancing the turn.
+    # This ensures the entry is saved even if the session is interrupted
+    # during AI turn processing. The guard prevents double-writes if
+    # end_turn is called again after resolving a blocker (e.g. diplomacy).
+    _diary_turn = 0
+    _diary_civ = "unknown"
+    _diary_civ_type = None
+    _diary_seed = None
+    _diary_score = None
+    _diary_rivals = None
+    try:
+        ov = await gs.get_game_overview()
+        _diary_civ = ov.civ_name
+        _diary_turn = ov.turn  # current turn being ended — no -1 needed
+        leader_score = max((r.score for r in (ov.rankings or [])), default=0)
+        _diary_score = {
+            "total": ov.score,
+            "cities": ov.num_cities,
+            "population": ov.total_population,
+            "science": round(ov.science_yield, 1),
+            "culture": round(ov.culture_yield, 1),
+            "gold": round(ov.gold),
+            "gold_per_turn": round(ov.gold_per_turn),
+            "faith": round(ov.faith),
+            "favor": ov.diplomatic_favor,
+            "exploration_pct": round(ov.explored_land * 100 / max(ov.total_land, 1)),
+            "era": ov.era_name,
+            "era_score": ov.era_score,
+            "leader_score": leader_score,
+        }
+        if gs._last_snapshot and gs._last_snapshot.stockpiles:
+            _diary_score["stockpiles"] = {
+                s.name: {
+                    "amount": s.amount,
+                    "per_turn": s.per_turn,
+                    "demand": s.demand,
+                }
+                for s in gs._last_snapshot.stockpiles
+                if s.amount > 0 or s.per_turn > 0 or s.demand > 0
+            }
+    except Exception:
+        log.warning("Diary: failed to capture overview", exc_info=True)
+    try:
+        rival_snaps = await gs.get_rival_snapshot()
+        _diary_rivals = [
+            {
+                "id": r.id,
+                "name": r.name,
+                "score": r.score,
+                "cities": r.cities,
+                "pop": r.pop,
+                "sci": r.sci,
+                "cul": r.cul,
+                "gold": r.gold,
+                "mil": r.mil,
+                "techs": r.techs,
+                "civics": r.civics,
+                "faith": r.faith,
+                "sci_vp": r.sci_vp,
+                "diplo_vp": r.diplo_vp,
+                "stockpiles": r.stockpiles,
+            }
+            for r in rival_snaps
+        ]
+    except Exception:
+        log.warning("Diary: failed to capture rival snapshot", exc_info=True)
+    try:
+        _diary_civ_type, _diary_seed = await gs.get_game_identity()
+    except Exception:
+        log.warning("Diary: failed to get game identity", exc_info=True)
+    if (
+        _diary_civ_type is not None
+        and _diary_turn > 0
+        and gs._diary_written_turn != _diary_turn
+    ):
+        entry = {
+            "turn": _diary_turn,
+            "civ": _diary_civ,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "score": _diary_score,
+            "rivals": _diary_rivals,
+            "reflections": reflections,
+        }
+        try:
+            path = _diary_path(_diary_civ_type, _diary_seed)
+            _write_diary_entry(path, entry)
+            gs._diary_written_turn = _diary_turn
+        except Exception:
+            log.warning("Diary: failed to write entry", exc_info=True)
+
+    # Advance the turn
     result = await _logged(ctx, "end_turn", {}, gs.end_turn)
 
-    # Diary writes only when the turn actually advanced (result contains "->")
+    # Clear stale camera events on successful turn advance
     turn_advanced = (
         "->" in result and "Cannot end turn" not in result and "Error" not in result
     )
     if turn_advanced:
-        # Clear stale camera events from last turn (don't hop during AI turn)
         _get_camera(ctx).clear()
-        # Capture score snapshot AFTER turn advanced (reflects new turn state)
-        score = None
-        civ = "unknown"
-        turn = 0
-        try:
-            ov = await gs.get_game_overview()
-            civ = ov.civ_name
-            # Diary records the turn that just ended, not the new one
-            turn = max(ov.turn - 1, 0)
-            leader_score = max((r.score for r in (ov.rankings or [])), default=0)
-            score = {
-                "total": ov.score,
-                "cities": ov.num_cities,
-                "population": ov.total_population,
-                "science": round(ov.science_yield, 1),
-                "culture": round(ov.culture_yield, 1),
-                "gold": round(ov.gold),
-                "gold_per_turn": round(ov.gold_per_turn),
-                "faith": round(ov.faith),
-                "favor": ov.diplomatic_favor,
-                "exploration_pct": (
-                    round(ov.explored_land * 100 / max(ov.total_land, 1))
-                ),
-                "era": ov.era_name,
-                "era_score": ov.era_score,
-                "leader_score": leader_score,
-            }
-            # Own strategic resource stockpiles from post-turn snapshot
-            if gs._last_snapshot and gs._last_snapshot.stockpiles:
-                score["stockpiles"] = {
-                    s.name: {
-                        "amount": s.amount,
-                        "per_turn": s.per_turn,
-                        "demand": s.demand,
-                    }
-                    for s in gs._last_snapshot.stockpiles
-                    if s.amount > 0 or s.per_turn > 0 or s.demand > 0
-                }
-        except Exception:
-            log.warning("Diary: failed to capture overview", exc_info=True)
-
-        # Capture rival stats for power curve tracking
-        rivals_data = None
-        try:
-            rival_snaps = await gs.get_rival_snapshot()
-            rivals_data = [
-                {
-                    "id": r.id,
-                    "name": r.name,
-                    "score": r.score,
-                    "cities": r.cities,
-                    "pop": r.pop,
-                    "sci": r.sci,
-                    "cul": r.cul,
-                    "gold": r.gold,
-                    "mil": r.mil,
-                    "techs": r.techs,
-                    "civics": r.civics,
-                    "faith": r.faith,
-                    "sci_vp": r.sci_vp,
-                    "diplo_vp": r.diplo_vp,
-                    "stockpiles": r.stockpiles,
-                }
-                for r in rival_snaps
-            ]
-        except Exception:
-            log.warning("Diary: failed to capture rival snapshot", exc_info=True)
-
-        entry = {
-            "turn": turn,
-            "civ": civ,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "score": score,
-            "rivals": rivals_data,
-            "reflections": reflections,
-        }
-        try:
-            civ_type, seed = await gs.get_game_identity()
-            path = _diary_path(civ_type, seed)
-            _write_diary_entry(path, entry)
-        except Exception:
-            log.warning("Diary: failed to write entry", exc_info=True)
 
     return result
 
@@ -2083,5 +2096,15 @@ async def _narrate(
 
 def main():
     """Entry point for the MCP server."""
+    import signal
+
     logging.basicConfig(level=logging.INFO)
+
+    # Remap SIGTERM → SIGINT so asyncio's existing SIGINT handler triggers a
+    # graceful shutdown (cancels all tasks → lifespan finally block runs →
+    # conn.disconnect() closes the FireTuner TCP connection cleanly).
+    # Without this, SIGTERM kills the process immediately, leaving the game
+    # with an abrupt TCP RST which can cause it to crash.
+    signal.signal(signal.SIGTERM, lambda sig, frame: os.kill(os.getpid(), signal.SIGINT))
+
     mcp.run(transport="stdio")

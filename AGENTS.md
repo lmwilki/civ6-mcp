@@ -39,6 +39,8 @@ Each turn in order:
 
 The diary is your persistent memory across sessions. When context compacts or you return to a game, `get_diary` is how you reconstruct where you were and why you made the decisions you did. Entries with specific details — unit names, coordinates, yield numbers, reasoning — are far more useful to your future self than brief summaries.
 
+Reflections are recorded **before** AI processing begins — write what YOU observed and did this turn. Anything that surfaces after `end_turn` (a diplomacy proposal, AI units entering your territory, events in the turn result) belongs in the **next** turn's diary, not this one.
+
 Five fields each turn:
 - **tactical**: What happened — specific units, tiles, outcomes.
 - **strategic**: Standings vs rivals — yields, city count, victory path viability with numbers.
