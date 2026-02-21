@@ -689,20 +689,22 @@ def narrate_tech_civics(tc: lq.TechCivicStatus) -> str:
         lines.append("No civic being progressed!")
     if tc.available_techs:
         lines.append("\nAvailable techs:")
-        for t in tc.available_techs:
+        for t in sorted(tc.available_techs, key=lambda x: x.turns):
             boost_str = " BOOSTED" if t.boosted else ""
             boost_desc = f" [Boost: {t.boost_desc}]" if t.boost_desc else ""
             unlocks = f" -> {t.unlocks}" if t.unlocks else ""
+            flag = " !! GRAB THIS" if t.turns <= 2 else ""
             lines.append(
-                f"  {t.name} ({t.tech_type}) — {t.progress_pct}%, {t.turns} turns{boost_str}{boost_desc}{unlocks}"
+                f"  {t.name} ({t.tech_type}) — {t.progress_pct}%, {t.turns} turns{boost_str}{boost_desc}{unlocks}{flag}"
             )
     if tc.available_civics:
         lines.append("\nAvailable civics:")
-        for c in tc.available_civics:
+        for c in sorted(tc.available_civics, key=lambda x: x.turns):
             boost_str = " BOOSTED" if c.boosted else ""
             boost_desc = f" [Boost: {c.boost_desc}]" if c.boost_desc else ""
+            flag = " !! GRAB THIS" if c.turns <= 2 else ""
             lines.append(
-                f"  {c.name} ({c.civic_type}) — {c.progress_pct}%, {c.turns} turns{boost_str}{boost_desc}"
+                f"  {c.name} ({c.civic_type}) — {c.progress_pct}%, {c.turns} turns{boost_str}{boost_desc}{flag}"
             )
     if tc.locked_civics:
         lines.append("\nLocked civics (prerequisites missing):")
