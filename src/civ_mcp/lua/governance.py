@@ -329,11 +329,21 @@ if not canPromote then {_bail("ERR:CANNOT_PROMOTE|Unit cannot receive this promo
 if exp:HasPromotion(promo.Index) then {_bail(f"ERR:ALREADY_HAS_PROMOTION|{promotion_type}")} end
 exp:SetPromotion(promo.Index)
 if not exp:HasPromotion(promo.Index) then {_bail("ERR:PROMOTION_FAILED|SetPromotion did not apply")} end
-pcall(function() exp:ChangeStoredPromotions(-1) end)
+-- Consume the stored promotion so CanPromote returns false after this call.
+-- ChangeStoredPromotions(-1) is the only available API; if it fails, end_turn's
+-- CanPromote check will still see a promotion available and fire again (double-promo).
+local stored_before = -1
+pcall(function() stored_before = exp:GetStoredPromotions() end)
+exp:ChangeStoredPromotions(-1)
+local stored_after = -1
+pcall(function() stored_after = exp:GetStoredPromotions() end)
 pcall(function() unit:SetDamage(0) end)
-UnitManager.FinishMoves(unit)
 local promoName = Locale.Lookup(promo.Name)
-print("OK:PROMOTED|" .. promoName)
+local warn = ""
+if stored_before >= 0 and stored_after >= 0 and stored_after >= stored_before then
+    warn = "|WARN:STORED_PROMO_NOT_CONSUMED(before=" .. stored_before .. ",after=" .. stored_after .. ")"
+end
+print("OK:PROMOTED|" .. promoName .. warn)
 print("{SENTINEL}")
 """
 

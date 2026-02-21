@@ -69,21 +69,14 @@ for i, u in Players[id]:GetUnits():Members() do
             end
             if #tgtList > 0 then targets = table.concat(tgtList, ";") end
         end
+        -- NOTE: promotion detection is intentionally omitted here.
+        -- GetExperiencePoints() >= GetExperienceForNextLevel() stays true after
+        -- SetPromotion() (level and XP are not consumed), so any mid-turn check
+        -- fires one turn early AND causes double-promotions when end_turn's
+        -- authoritative GameCore CanPromote check also fires.
+        -- All promotion handling is routed through the end_turn blocker (which
+        -- uses CanPromote in GameCore — the only correct check).
         local promo = "0"
-        local exp = u:GetExperience()
-        if exp then
-            local xp = exp:GetExperiencePoints()
-            local threshold = exp:GetExperienceForNextLevel()
-            if xp >= threshold then
-                local promoCount = 0
-                local ok_p, promoList = pcall(function() return exp:GetPromotions() end)
-                if ok_p and promoList then promoCount = #promoList end
-                local lvl = 1
-                local ok_l, l = pcall(function() return exp:GetLevel() end)
-                if ok_l and l then lvl = l end
-                if promoCount < lvl then promo = "1" end
-            end
-        end
         -- Upgrade info (InGame only: CanStartCommand)
         local canUp, upName, upCost = "0", "", "0"
         local ok1, _ = pcall(function()
