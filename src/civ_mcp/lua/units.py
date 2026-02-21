@@ -237,14 +237,13 @@ if isRanged then
     UnitManager.RequestOperation(unit, UnitOperationTypes.RANGE_ATTACK, params)
     print("OK:RANGE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|pre_hp:" .. enemyHP .. "/" .. enemyMaxHP .. "|your HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
 else
-    -- Melee: must be adjacent (dist == 1)
-    if dist > 1 then
-        {_bail_lua('"ERR:NOT_ADJACENT|Melee attack needs adjacency (dist=1) but target is " .. dist .. " tiles away. Move adjacent first, then attack."')}
-    end
+    -- Melee: let CanStartOperation be the authority on adjacency/validity.
+    -- Map.GetPlotDistance can misreport distance on offset hex grids, so we
+    -- do not use it as a gate here — only as a diagnostic in the error message.
     local myCS = unitInfo and unitInfo.Combat or 0
     params[UnitOperationTypes.PARAM_MODIFIERS] = UnitOperationMoveModifiers.ATTACK
     if not UnitManager.CanStartOperation(unit, UnitOperationTypes.MOVE_TO, nil, params) then
-        {_bail_lua(f'"ERR:ATTACK_BLOCKED|Cannot attack " .. enemyName .. " at ({target_x},{target_y}). Check for popups or diplomacy blocking operations."')}
+        {_bail_lua('"ERR:ATTACK_BLOCKED|Cannot attack " .. enemyName .. " at ({target_x},{target_y}) (map dist=" .. dist .. "). Unit not adjacent or blocked by popup/diplomacy."')}
     end
     UnitManager.RequestOperation(unit, UnitOperationTypes.MOVE_TO, params)
     -- Try to read post-combat state (may fail if units moved/died)
