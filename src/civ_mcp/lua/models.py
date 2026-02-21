@@ -181,6 +181,7 @@ class TileInfo:
     resource_class: str | None = None  # "strategic", "luxury", "bonus"
     is_pillaged: bool = False
     district: str | None = None  # e.g. "DISTRICT_CAMPUS", None if no district
+    owner_name: str | None = None  # resolved name, e.g. "Vatican City" (with :CS suffix for city-states)
 
 
 @dataclass

@@ -165,6 +165,17 @@ for dy = -r, r do
                 local river = plot:IsRiver() and "1" or "0"
                 local coastal = plot:IsCoastalLand() and "1" or "0"
                 local owner = plot:GetOwner()
+                local ownerName = ""
+                if owner >= 0 then
+                    local cfg = PlayerConfigurations[owner]
+                    local p = Players[owner]
+                    if cfg and p and p:IsAlive() then
+                        ownerName = Locale.Lookup(cfg:GetCivilizationShortDescription())
+                        if not p:IsMajor() then ownerName = ownerName .. ":CS" end
+                    elseif owner == 63 then
+                        ownerName = "Barbarian"
+                    end
+                end
                 local featureIdx = plot:GetFeatureType()
                 local feature = "none"
                 if featureIdx >= 0 then feature = GameInfo.Features[featureIdx].FeatureType end
@@ -219,7 +230,7 @@ for dy = -r, r do
                     local dInfo = GameInfo.Districts[distIdx]
                     if dInfo then distName = dInfo.DistrictType end
                 end
-                print(x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. river .. "|" .. coastal .. "|" .. imp .. "|" .. owner .. "|" .. unitStr .. "|" .. visTag .. "|" .. freshWater .. "|" .. yields .. "|" .. distName)
+                print(x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. river .. "|" .. coastal .. "|" .. imp .. "|" .. owner .. "|" .. unitStr .. "|" .. visTag .. "|" .. freshWater .. "|" .. yields .. "|" .. distName .. "|" .. ownerName)
             end
         end
     end
@@ -945,6 +956,7 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
                 imp_pillaged = True
             else:
                 imp_name = imp_raw
+        owner_name = parts[14] if len(parts) > 14 and parts[14] else None
         tiles.append(
             TileInfo(
                 x=int(x_str),
@@ -966,6 +978,7 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
                 district=None
                 if (len(parts) <= 13 or parts[13] == "none")
                 else parts[13],
+                owner_name=owner_name,
             )
         )
     return tiles

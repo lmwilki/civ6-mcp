@@ -376,7 +376,13 @@ def narrate_map(tiles: list[lq.TileInfo]) -> str:
                 if val > 0:
                     yield_str += f" {label}:{val}"
             parts.append(f"{{{yield_str}}}")
-        owner = f" (owned by player {t.owner_id})" if t.owner_id >= 0 else ""
+        if t.owner_id < 0:
+            owner = ""
+        elif t.owner_name:
+            label = t.owner_name.replace(":CS", " [City-State]")
+            owner = f" (owned by {label})"
+        else:
+            owner = f" (owned by player {t.owner_id})"
         vis_tag = ""
         if t.visibility == "revealed":
             vis_tag = " [fog]"
