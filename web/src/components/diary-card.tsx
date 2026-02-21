@@ -23,7 +23,24 @@ import {
   Pickaxe,
   Swords,
   Shield,
+  Anvil,
+  ChessKnight,
+  Flame as FlameIcon,
+  Factory,
+  Droplet,
+  Rocket,
+  Radiation,
 } from "lucide-react"
+
+const RESOURCE_META: Record<string, { icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; color: string }> = {
+  HORSES: { icon: ChessKnight, color: "text-amber-700" },
+  IRON: { icon: Anvil, color: "text-slate-500" },
+  NITER: { icon: FlameIcon, color: "text-orange-500" },
+  COAL: { icon: Factory, color: "text-stone-600" },
+  OIL: { icon: Droplet, color: "text-amber-950" },
+  ALUMINUM: { icon: Rocket, color: "text-sky-400" },
+  URANIUM: { icon: Radiation, color: "text-lime-500" },
+}
 
 function ScoreDelta({ current, prev, suffix }: { current: number; prev?: number; suffix?: string }) {
   if (prev === undefined) return null
@@ -185,13 +202,13 @@ export function DiaryCard({ entry, prev, index, total }: DiaryCardProps) {
               const net = res.per_turn - res.demand
               const prevRes = ps?.stockpiles?.[name]
               const prevNet = prevRes ? prevRes.per_turn - prevRes.demand : undefined
-              const short = name.replace("RESOURCE_", "").charAt(0) + name.replace("RESOURCE_", "").slice(1).toLowerCase()
+              const short = name.charAt(0) + name.slice(1).toLowerCase()
               return (
                 <div
                   key={name}
                   className="flex items-center gap-1 rounded-sm bg-marble-100 px-2 py-1"
                 >
-                  <Pickaxe className="h-3 w-3 text-marble-500" />
+                  {(() => { const meta = RESOURCE_META[name]; const Icon = meta?.icon || Pickaxe; return <Icon className={`h-3.5 w-3.5 ${meta?.color || "text-marble-500"}`} /> })()}
                   <span className="font-mono text-xs tabular-nums text-marble-800">
                     {short}: {res.amount}
                   </span>
