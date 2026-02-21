@@ -224,13 +224,27 @@ for dy = -r, r do
                     end
                     if #uParts > 0 then unitStr = table.concat(uParts, ";") end
                 end
+                -- Own units: always known regardless of visibility
+                local myUnitStr = "none"
+                local myParts = {{}}
+                local myPlayerUnits = Players[me]:GetUnits()
+                if myPlayerUnits then
+                    for _, u in myPlayerUnits:Members() do
+                        if u:GetX() == x and u:GetY() == y then
+                            local entry = GameInfo.Units[u:GetType()]
+                            local ut = entry and entry.UnitType or "UNKNOWN"
+                            table.insert(myParts, (ut:gsub("UNIT_", "")))
+                        end
+                    end
+                end
+                if #myParts > 0 then myUnitStr = table.concat(myParts, ";") end
                 local distName = "none"
                 local distIdx = plot:GetDistrictType()
                 if distIdx >= 0 then
                     local dInfo = GameInfo.Districts[distIdx]
                     if dInfo then distName = dInfo.DistrictType end
                 end
-                print(x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. river .. "|" .. coastal .. "|" .. imp .. "|" .. owner .. "|" .. unitStr .. "|" .. visTag .. "|" .. freshWater .. "|" .. yields .. "|" .. distName .. "|" .. ownerName)
+                print(x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. river .. "|" .. coastal .. "|" .. imp .. "|" .. owner .. "|" .. unitStr .. "|" .. visTag .. "|" .. freshWater .. "|" .. yields .. "|" .. distName .. "|" .. ownerName .. "|" .. myUnitStr)
             end
         end
     end
@@ -957,6 +971,9 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
             else:
                 imp_name = imp_raw
         owner_name = parts[14] if len(parts) > 14 and parts[14] else None
+        own_unit_list = None
+        if len(parts) > 15 and parts[15] != "none":
+            own_unit_list = [p for p in parts[15].split(";") if p]
         tiles.append(
             TileInfo(
                 x=int(x_str),
@@ -979,6 +996,7 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
                 if (len(parts) <= 13 or parts[13] == "none")
                 else parts[13],
                 owner_name=owner_name,
+                own_units=own_unit_list,
             )
         )
     return tiles

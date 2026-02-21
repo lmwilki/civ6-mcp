@@ -74,6 +74,7 @@ class GameOverview:
     era_score: int = 0
     era_dark_threshold: int = 0
     era_golden_threshold: int = 0
+    max_turns: int = 0  # 0 = unlimited / not set
 
 
 @dataclass
@@ -178,6 +179,7 @@ class TileInfo:
     is_fresh_water: bool = False
     yields: tuple[int, ...] | None = None  # (food, prod, gold, science, culture, faith)
     units: list[str] | None = None  # visible foreign units, e.g. ["Barbarian WARRIOR"]
+    own_units: list[str] | None = None  # player's own units on this tile, e.g. ["WARRIOR", "BUILDER"]
     resource_class: str | None = None  # "strategic", "luxury", "bonus"
     is_pillaged: bool = False
     district: str | None = None  # e.g. "DISTRICT_CAMPUS", None if no district

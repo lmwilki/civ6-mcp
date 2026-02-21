@@ -10,7 +10,7 @@ from civ_mcp import lua as lq
 
 def narrate_overview(ov: lq.GameOverview) -> str:
     lines = [
-        f"Turn {ov.turn} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}",
+        f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}",
         f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn) | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor} ({ov.favor_per_turn:+d}/turn)",
         f"Research: {ov.current_research} | Civic: {ov.current_civic}",
         f"Cities: {ov.num_cities} | Population: {ov.total_population} | Units: {ov.num_units}",
@@ -389,7 +389,10 @@ def narrate_map(tiles: list[lq.TileInfo]) -> str:
         unit_str = ""
         if t.units:
             unit_str = f" **[{', '.join(t.units)}]**"
-        lines.append(f"  ({t.x},{t.y}): {' '.join(parts)}{owner}{vis_tag}{unit_str}")
+        own_str = ""
+        if t.own_units:
+            own_str = f" [my: {', '.join(t.own_units)}]"
+        lines.append(f"  ({t.x},{t.y}): {' '.join(parts)}{owner}{vis_tag}{own_str}{unit_str}")
     return "\n".join(lines)
 
 

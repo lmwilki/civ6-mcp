@@ -117,6 +117,8 @@ local eraScore = eraManager:GetPlayerCurrentScore(id)
 local darkThresh = eraManager:GetPlayerDarkAgeThreshold(id)
 local goldenThresh = eraManager:GetPlayerGoldenAgeThreshold(id)
 print("ERA|" .. eraName .. "|" .. eraScore .. "|" .. darkThresh .. "|" .. goldenThresh)
+local maxTurns = GameConfiguration.GetValue("GAME_MAX_TURNS") or 0
+print("MAXTURNS|" .. maxTurns)
 print("{SENTINEL}")
 """
 
@@ -245,6 +247,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     era_score = 0
     era_dark_threshold = 0
     era_golden_threshold = 0
+    max_turns = 0
     player_id_parsed = int(parts[1])
     for line in lines[1:]:
         if line.startswith("RANK|"):
@@ -285,6 +288,10 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
                 era_score = int(ep[2])
                 era_dark_threshold = int(ep[3])
                 era_golden_threshold = int(ep[4])
+        elif line.startswith("MAXTURNS|"):
+            ep = line.split("|")
+            if len(ep) >= 2:
+                max_turns = int(ep[1])
     return GameOverview(
         turn=int(parts[0]),
         player_id=int(parts[1]),
@@ -314,6 +321,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         era_score=era_score,
         era_dark_threshold=era_dark_threshold,
         era_golden_threshold=era_golden_threshold,
+        max_turns=max_turns,
     )
 
 
