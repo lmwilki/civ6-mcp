@@ -696,19 +696,30 @@ end
 
 -- All other Great People: standard activation command
 local cmdHash = GameInfo.UnitCommands["UNITCOMMAND_ACTIVATE_GREAT_PERSON"].Hash
-local can = UnitManager.CanStartCommand(unit, cmdHash, nil, true)
+local can, failTable = UnitManager.CanStartCommand(unit, cmdHash, nil, true)
 if not can then
-    local plot = Map.GetPlot(ux, uy)
-    local dt = plot:GetDistrictType()
-    local dtName = "none"
-    if dt >= 0 then
-        local dinfo = GameInfo.Districts[dt]
-        if dinfo then dtName = dinfo.DistrictType end
+    -- Extract game's own requirement strings from the failure table.
+    -- Structure: top-level strings are category names (skip); nested tables hold
+    -- sequential string arrays — requirements ("Must be...") and effect descriptions.
+    local requirements = {{}}
+    if failTable then
+        for _, v in pairs(failTable) do
+            if type(v) == "table" then
+                for _, s in pairs(v) do
+                    if type(s) == "string" and s ~= "" then
+                        -- Strip icon codes like [ICON_GreatWork_Artifact]
+                        local clean = s:gsub("%[ICON_[^%]]*%]", ""):gsub("%s+", " "):match("^%s*(.-)%s*$")
+                        if clean and clean ~= "" then
+                            table.insert(requirements, clean)
+                        end
+                    end
+                end
+            end
+        end
     end
-    -- Gather diagnostic info: charges, moves, valid tiles
+    -- Also gather valid activation tiles as a fallback hint
     local gp = unit:GetGreatPerson()
     local charges = gp and gp:GetActionCharges() or -1
-    local movesLeft = unit:GetMovesRemaining()
     local validTiles = {{}}
     if gp then
         local ok, plots = pcall(function() return gp:GetActivationHighlightPlots() end)
@@ -727,8 +738,9 @@ if not can then
             end
         end
     end
+    local reqStr = #requirements > 0 and " Requirements: " .. table.concat(requirements, "; ") or ""
     local tilesStr = #validTiles > 0 and " Valid tiles: " .. table.concat(validTiles, "; ") or " No valid activation tiles found."
-    {_bail_lua('"ERR:CANNOT_ACTIVATE|GP at (" .. ux .. "," .. uy .. ") district=" .. dtName .. " moves=" .. movesLeft .. " charges=" .. charges .. "." .. tilesStr')}
+    {_bail_lua('"ERR:CANNOT_ACTIVATE|" .. Locale.Lookup(unit:GetName()) .. " at (" .. ux .. "," .. uy .. ") charges=" .. charges .. "." .. reqStr .. tilesStr')}
 end
 UnitManager.RequestCommand(unit, cmdHash, {{}})
 print("OK:GP_ACTIVATED|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ") at " .. ux .. "," .. uy)
