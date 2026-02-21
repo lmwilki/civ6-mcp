@@ -188,17 +188,17 @@ for dy = -r, r do
                     end
                 end
                 local imp = "none"
+                local impIdx = plot:GetImprovementType()
+                if impIdx >= 0 then
+                    imp = GameInfo.Improvements[impIdx].ImprovementType
+                    if plot:IsImprovementPillaged() then imp = imp .. ":PILLAGED" end
+                end
                 local freshWater = "0"
                 local yields = "0,0,0,0,0,0"
                 local unitStr = "none"
                 local visTag = "revealed"
                 if visible then
                     visTag = "visible"
-                    local impIdx = plot:GetImprovementType()
-                    if impIdx >= 0 then
-                        imp = GameInfo.Improvements[impIdx].ImprovementType
-                        if plot:IsImprovementPillaged() then imp = imp .. ":PILLAGED" end
-                    end
                     freshWater = plot:IsFreshWater() and "1" or "0"
                     yields = plot:GetYield(0) .. "," .. plot:GetYield(1) .. "," .. plot:GetYield(2) .. "," .. plot:GetYield(3) .. "," .. plot:GetYield(4) .. "," .. plot:GetYield(5)
                     local uParts = {{}}
