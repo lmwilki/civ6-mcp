@@ -39,6 +39,7 @@ from civ_mcp.diary import (
 )
 from civ_mcp.game_state import GameState
 from civ_mcp.logger import GameLogger
+from civ_mcp.spectator import CameraController, PopupWatcher
 from civ_mcp.web_api import create_app
 
 log = logging.getLogger(__name__)
@@ -48,6 +49,8 @@ log = logging.getLogger(__name__)
 class AppContext:
     game: GameState
     logger: GameLogger
+    camera: CameraController
+    popup_watcher: PopupWatcher
 
 
 @asynccontextmanager
@@ -57,6 +60,12 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     gs = GameState(conn)
     log.info("Game log: %s", logger.path)
 
+    # Spectator-mode background services (camera tracking + popup auto-dismiss)
+    camera = CameraController(conn)
+    popup_watcher = PopupWatcher(conn)
+    camera.start()
+    popup_watcher.start()
+
     # Start the web dashboard API as a background task (port 8000)
     web_app = create_app(gs)
     uvi_config = uvicorn.Config(web_app, host="0.0.0.0", port=8000, log_level="info")
@@ -65,8 +74,10 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     log.info("Web API starting on http://0.0.0.0:8000")
 
     try:
-        yield AppContext(game=gs, logger=logger)
+        yield AppContext(game=gs, logger=logger, camera=camera, popup_watcher=popup_watcher)
     finally:
+        await camera.stop()
+        await popup_watcher.stop()
         uvi_server.should_exit = True
         await api_task
         await conn.disconnect()
@@ -85,6 +96,10 @@ def _get_game(ctx: Context) -> GameState:
 
 def _get_logger(ctx: Context) -> GameLogger:
     return ctx.request_context.lifespan_context.logger
+
+
+def _get_camera(ctx: Context) -> CameraController:
+    return ctx.request_context.lifespan_context.camera
 
 
 async def _logged(
@@ -233,7 +248,9 @@ async def spy_action(
             return await gs.spy_travel(unit_index, target_x, target_y)
         return await gs.spy_mission(unit_index, action.upper(), target_x, target_y)
 
-    return await _logged(ctx, "spy_action", params, _run)
+    result = await _logged(ctx, "spy_action", params, _run)
+    _get_camera(ctx).push(target_x, target_y, f"spy {action}")
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -289,12 +306,14 @@ async def get_map_area(
         tiles = await gs.get_map_area(center_x, center_y, radius)
         return nr.narrate_map(tiles)
 
-    return await _logged(
+    result = await _logged(
         ctx,
         "get_map_area",
         {"center_x": center_x, "center_y": center_y, "radius": radius},
         _run,
     )
+    _get_camera(ctx).push(center_x, center_y, f"map_area ({center_x},{center_y})")
+    return result
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1040,12 +1059,14 @@ async def city_action(
         case "attack":
             if target_x is None or target_y is None:
                 return "Error: attack requires target_x and target_y"
-            return await _logged(
+            result = await _logged(
                 ctx,
                 "city_attack",
                 {"city_id": city_id, "x": target_x, "y": target_y},
                 lambda: gs.city_attack(city_id, target_x, target_y),
             )
+            _get_camera(ctx).push(target_x, target_y, "city attack")
+            return result
         case "keep" | "reject" | "raze" | "liberate_founder" | "liberate_previous":
             return await _logged(
                 ctx,
@@ -1144,7 +1165,11 @@ async def unit_action(
             case _:
                 return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion"
 
-    return await _logged(ctx, "unit_action", params, _run)
+    result = await _logged(ctx, "unit_action", params, _run)
+    if action.lower() in ("move", "attack", "trade_route", "teleport") \
+            and target_x is not None and target_y is not None:
+        _get_camera(ctx).push(target_x, target_y, f"{action}→({target_x},{target_y})")
+    return result
 
 
 @mcp.tool()
@@ -1295,6 +1320,8 @@ async def end_turn(
         "->" in result and "Cannot end turn" not in result and "Error" not in result
     )
     if turn_advanced:
+        # Clear stale camera events from last turn (don't hop during AI turn)
+        _get_camera(ctx).clear()
         # Capture score snapshot AFTER turn advanced (reflects new turn state)
         score = None
         civ = "unknown"
@@ -1575,12 +1602,14 @@ async def purchase_tile(ctx: Context, city_id: int, x: int, y: int) -> str:
     Use get_purchasable_tiles first to see costs and options.
     """
     gs = _get_game(ctx)
-    return await _logged(
+    result = await _logged(
         ctx,
         "purchase_tile",
         {"city_id": city_id, "x": x, "y": y},
         lambda: gs.purchase_tile(city_id, x, y),
     )
+    _get_camera(ctx).push(x, y, f"purchase tile ({x},{y})")
+    return result
 
 
 # ---------------------------------------------------------------------------
