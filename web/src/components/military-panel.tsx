@@ -4,6 +4,8 @@ import type { PlayerRow } from "@/lib/diary-types"
 import { ScoreDelta } from "./agent-overview"
 import { AnimatedNumber } from "./animated-number"
 import { CollapsiblePanel } from "./collapsible-panel"
+import { CivIcon } from "./civ-icon"
+import { CIV6_COLORS } from "@/lib/civ-colors"
 import { Swords, Shield } from "lucide-react"
 
 interface MilitaryPanelProps {
@@ -16,7 +18,7 @@ export function MilitaryPanel({ agent, prevAgent }: MilitaryPanelProps) {
 
   return (
     <CollapsiblePanel
-      icon={<Shield className="h-3.5 w-3.5 shrink-0 text-marble-600" />}
+      icon={<CivIcon icon={Shield} color={CIV6_COLORS.military} size="sm" />}
       title="Military"
       summary={
         <span className="font-mono text-xs tabular-nums text-marble-600">

@@ -4,13 +4,16 @@ import type { PlayerRow } from "@/lib/diary-types"
 import { cleanCivName } from "@/lib/diary-types"
 import { ScoreDelta } from "./agent-overview"
 import { CollapsiblePanel } from "./collapsible-panel"
+import { CivIcon } from "./civ-icon"
+import { CIV6_COLORS } from "@/lib/civ-colors"
 import {
   FlaskConical,
   BookOpen,
   ScrollText,
   Church,
   Sparkles,
-  Crown,
+  Layers,
+  UserRound,
 } from "lucide-react"
 
 interface ProgressPanelProps {
@@ -27,7 +30,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
 
   return (
     <CollapsiblePanel
-      icon={<FlaskConical className="h-3.5 w-3.5 shrink-0 text-blue-600" />}
+      icon={<CivIcon icon={Layers} color={CIV6_COLORS.marine} size="sm" />}
       title="Progress"
       summary={
         <span className="font-mono text-xs tabular-nums text-marble-600">
@@ -95,13 +98,13 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         {agent.governors && agent.governors.length > 0 && (
           <div>
             <h4 className="mb-1 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
-              <Crown className="mr-1 inline h-3 w-3" />
+              <UserRound className="mr-1 inline h-3 w-3" />
               Governors
             </h4>
             <div className="space-y-1">
               {agent.governors.map((g, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-sm bg-marble-100 px-2 py-1 text-xs">
-                  <Crown className="h-3 w-3 text-marble-500" />
+                  <UserRound className="h-3 w-3 text-marble-500" />
                   <span className="font-medium text-marble-700">
                     {g.type.replace(/^GOVERNOR_THE_/, "").replace(/_/g, " ")}
                   </span>

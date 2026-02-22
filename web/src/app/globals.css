@@ -11,26 +11,27 @@
   --font-mono: var(--font-jetbrains);
   --font-display: var(--font-cinzel);
 
-  /* Marble surface scale */
-  --color-marble-50: #FAFAF8;
-  --color-marble-100: #F5F3EF;
-  --color-marble-200: #EBE8E2;
-  --color-marble-300: #E0DBD3;
-  --color-marble-400: #C8C1B7;
-  --color-marble-500: #A39B8F;
-  --color-marble-600: #7A7269;
-  --color-marble-700: #5C5549;
-  --color-marble-800: #3D3832;
-  --color-marble-900: #2A2521;
+  /* Marble surface scale — resolved via CSS vars for theme switching */
+  --color-marble-50: var(--marble-50);
+  --color-marble-100: var(--marble-100);
+  --color-marble-200: var(--marble-200);
+  --color-marble-300: var(--marble-300);
+  --color-marble-400: var(--marble-400);
+  --color-marble-500: var(--marble-500);
+  --color-marble-600: var(--marble-600);
+  --color-marble-700: var(--marble-700);
+  --color-marble-800: var(--marble-800);
+  --color-marble-900: var(--marble-900);
 
-  /* Accent colors */
-  --color-gold: #D4A853;
-  --color-gold-light: #E8C97A;
-  --color-gold-dark: #8C6E2C;
-  --color-patina: #7A9B8A;
-  --color-terracotta: #C4785C;
-  --color-vein: #D4CFC8;
-  --color-vein-dark: #8A8279;
+  /* Accent colors — resolved via CSS vars for theme switching */
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-gold-dark: var(--gold-dark);
+  --color-patina: var(--patina);
+  --color-terracotta: var(--terracotta);
+  --color-ocean: var(--ocean);
+  --color-vein: var(--vein);
+  --color-vein-dark: var(--vein-dark);
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -70,9 +71,33 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* ── Light theme (marble palace) ── */
 :root {
   --radius: 0.375rem;
 
+  /* Marble surface scale */
+  --marble-50: #FAFAF8;
+  --marble-100: #F5F3EF;
+  --marble-200: #EBE8E2;
+  --marble-300: #E0DBD3;
+  --marble-400: #C8C1B7;
+  --marble-500: #A39B8F;
+  --marble-600: #7A7269;
+  --marble-700: #5C5549;
+  --marble-800: #3D3832;
+  --marble-900: #2A2521;
+
+  /* Accent colors */
+  --gold: #D4A853;
+  --gold-light: #E8C97A;
+  --gold-dark: #8C6E2C;
+  --patina: #7A9B8A;
+  --terracotta: #C4785C;
+  --ocean: #4A90A4;
+  --vein: #D4CFC8;
+  --vein-dark: #8A8279;
+
+  /* Shadcn semantic tokens */
   --background: #FAFAF8;
   --foreground: #3D3832;
   --card: #F5F3EF;
@@ -106,6 +131,64 @@
   --sidebar-ring: #D4A853;
 }
 
+/* ── Dark theme (obsidian temple) ── */
+.dark {
+  /* Marble surface scale — inverted semantic: 50=subtlest bg, 900=strongest text */
+  --marble-50: #1C1916;
+  --marble-100: #252220;
+  --marble-200: #332F2B;
+  --marble-300: #443F39;
+  --marble-400: #5C5549;
+  --marble-500: #7A7269;
+  --marble-600: #A39B8F;
+  --marble-700: #C8C1B7;
+  --marble-800: #E0DBD3;
+  --marble-900: #F5F3EF;
+
+  /* Accent colors — brightened for dark bg contrast */
+  --gold: #D4A853;
+  --gold-light: #E8C97A;
+  --gold-dark: #D4A853;
+  --patina: #8FB09E;
+  --terracotta: #D4886C;
+  --ocean: #6DA4B8;
+  --vein: #443F39;
+  --vein-dark: #7A7269;
+
+  /* Shadcn semantic tokens */
+  --background: #1C1916;
+  --foreground: #E0DBD3;
+  --card: #252220;
+  --card-foreground: #E0DBD3;
+  --popover: #252220;
+  --popover-foreground: #E0DBD3;
+  --primary: #D4A853;
+  --primary-foreground: #1C1916;
+  --secondary: #332F2B;
+  --secondary-foreground: #E0DBD3;
+  --muted: #332F2B;
+  --muted-foreground: #A39B8F;
+  --accent: #332F2B;
+  --accent-foreground: #E0DBD3;
+  --destructive: #D4886C;
+  --border: #443F39;
+  --input: #332F2B;
+  --ring: #D4A853;
+  --chart-1: #D4A853;
+  --chart-2: #8FB09E;
+  --chart-3: #D4886C;
+  --chart-4: #A39B8F;
+  --chart-5: #6DA4B8;
+  --sidebar: #252220;
+  --sidebar-foreground: #E0DBD3;
+  --sidebar-primary: #D4A853;
+  --sidebar-primary-foreground: #1C1916;
+  --sidebar-accent: #332F2B;
+  --sidebar-accent-foreground: #E0DBD3;
+  --sidebar-border: #443F39;
+  --sidebar-ring: #D4A853;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -126,4 +209,8 @@ body::before {
   background-size: 200px;
   pointer-events: none;
   z-index: 50;
+}
+
+.dark body::before {
+  opacity: 0.03;
 }

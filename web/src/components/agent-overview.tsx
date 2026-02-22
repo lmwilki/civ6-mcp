@@ -2,6 +2,8 @@
 
 import type { TurnData } from "@/lib/diary-types"
 import { cleanCivName } from "@/lib/diary-types"
+import { CIV6_COLORS } from "@/lib/civ-colors"
+import { CivIcon } from "./civ-icon"
 import { AnimatedNumber } from "./animated-number"
 import {
   Coins,
@@ -16,16 +18,16 @@ import {
   MapPin,
   Hammer,
   Pickaxe,
-  Swords as SwordsIcon,
   Anvil,
   ChessKnight,
   Factory,
   Droplet,
   Rocket,
   Radiation,
-  Flame as FlameIcon,
+  Zap,
   Crown,
-  Shield,
+  Globe,
+  Hourglass,
 } from "lucide-react"
 
 function ScoreDelta({ current, prev, suffix }: { current: number; prev?: number; suffix?: string }) {
@@ -68,20 +70,20 @@ function YieldPill({
 }
 
 const RESOURCE_META: Record<string, { icon: React.ComponentType<React.SVGProps<SVGSVGElement>>; color: string }> = {
-  HORSES: { icon: ChessKnight, color: "text-amber-700" },
-  IRON: { icon: Anvil, color: "text-slate-500" },
-  NITER: { icon: FlameIcon, color: "text-orange-500" },
-  COAL: { icon: Factory, color: "text-stone-600" },
-  OIL: { icon: Droplet, color: "text-amber-950" },
-  ALUMINUM: { icon: Rocket, color: "text-sky-400" },
-  URANIUM: { icon: Radiation, color: "text-lime-500" },
+  HORSES: { icon: ChessKnight, color: CIV6_COLORS.horses },
+  IRON: { icon: Anvil, color: CIV6_COLORS.iron },
+  NITER: { icon: Zap, color: CIV6_COLORS.niter },
+  COAL: { icon: Factory, color: CIV6_COLORS.coal },
+  OIL: { icon: Droplet, color: CIV6_COLORS.oil },
+  ALUMINUM: { icon: Rocket, color: CIV6_COLORS.aluminum },
+  URANIUM: { icon: Radiation, color: CIV6_COLORS.uranium },
 }
 
 const AGE_COLORS: Record<string, string> = {
-  GOLDEN: "text-gold-dark",
-  HEROIC: "text-purple-600",
-  DARK: "text-red-700",
-  NORMAL: "text-marble-600",
+  GOLDEN: CIV6_COLORS.golden,
+  HEROIC: CIV6_COLORS.heroic,
+  DARK: CIV6_COLORS.dark,
+  NORMAL: CIV6_COLORS.normal,
 }
 
 
@@ -118,7 +120,7 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
         </div>
         <div className="text-right">
           <div className="flex items-center gap-1.5 font-mono text-lg tabular-nums text-marble-800">
-            <Star className="h-4 w-4 text-gold" />
+            <CivIcon icon={Star} color={CIV6_COLORS.goldMetal} size="sm" />
             <AnimatedNumber value={a.score} decimals={0} />
             <ScoreDelta current={a.score} prev={pa?.score} />
           </div>
@@ -130,24 +132,24 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
 
       {/* Yield grid */}
       <div className="mb-4 grid grid-cols-4 gap-2">
-        <YieldPill icon={<FlaskConical className="h-3.5 w-3.5 text-blue-600" />} value={a.science} prev={pa?.science} label="Science" suffix="/t" />
-        <YieldPill icon={<Palette className="h-3.5 w-3.5 text-purple-600" />} value={a.culture} prev={pa?.culture} label="Culture" suffix="/t" />
-        <YieldPill icon={<Coins className="h-3.5 w-3.5 text-gold-dark" />} value={a.gold} prev={pa?.gold} label="Gold" />
-        <YieldPill icon={<Coins className="h-3 w-3 text-gold" />} value={a.gold_per_turn} prev={pa?.gold_per_turn} label="GPT" suffix="/t" />
-        <YieldPill icon={<Flame className="h-3.5 w-3.5 text-terracotta" />} value={a.faith} prev={pa?.faith} label="Faith" />
-        <YieldPill icon={<Flame className="h-3 w-3 text-terracotta/70" />} value={a.faith_per_turn} prev={pa?.faith_per_turn} label="Faith/t" suffix="/t" />
-        <YieldPill icon={<Building2 className="h-3.5 w-3.5 text-marble-700" />} value={a.cities} prev={pa?.cities} label="Cities" />
-        <YieldPill icon={<Users className="h-3.5 w-3.5 text-marble-600" />} value={a.pop} prev={pa?.pop} label="Pop" />
-        <YieldPill icon={<Shield className="h-3.5 w-3.5 text-marble-500" />} value={a.favor} prev={pa?.favor} label="Favor" />
-        <YieldPill icon={<MapPin className="h-3.5 w-3.5 text-patina" />} value={a.territory} prev={pa?.territory} label="Territory" />
-        <YieldPill icon={<Compass className="h-3.5 w-3.5 text-patina" />} value={a.exploration_pct ?? 0} prev={pa?.exploration_pct} label="Explored" suffix="%" />
-        <YieldPill icon={<Hammer className="h-3.5 w-3.5 text-marble-600" />} value={a.improvements} prev={pa?.improvements} label="Improved" />
+        <YieldPill icon={<CivIcon icon={FlaskConical} color={CIV6_COLORS.science} />} value={a.science} prev={pa?.science} label="Science" suffix="/t" />
+        <YieldPill icon={<CivIcon icon={Palette} color={CIV6_COLORS.culture} />} value={a.culture} prev={pa?.culture} label="Culture" suffix="/t" />
+        <YieldPill icon={<CivIcon icon={Coins} color={CIV6_COLORS.goldDark} />} value={a.gold} prev={pa?.gold} label="Gold" />
+        <YieldPill icon={<CivIcon icon={Coins} color={CIV6_COLORS.gold} />} value={a.gold_per_turn} prev={pa?.gold_per_turn} label="GPT" suffix="/t" />
+        <YieldPill icon={<CivIcon icon={Flame} color={CIV6_COLORS.faith} />} value={a.faith} prev={pa?.faith} label="Faith" />
+        <YieldPill icon={<CivIcon icon={Flame} color={CIV6_COLORS.faith} />} value={a.faith_per_turn} prev={pa?.faith_per_turn} label="Faith/t" suffix="/t" />
+        <YieldPill icon={<CivIcon icon={Building2} color={CIV6_COLORS.growth} />} value={a.cities} prev={pa?.cities} label="Cities" />
+        <YieldPill icon={<CivIcon icon={Users} color={CIV6_COLORS.growth} />} value={a.pop} prev={pa?.pop} label="Pop" />
+        <YieldPill icon={<CivIcon icon={Globe} color={CIV6_COLORS.favor} />} value={a.favor} prev={pa?.favor} label="Favor" />
+        <YieldPill icon={<CivIcon icon={MapPin} color={CIV6_COLORS.marine} />} value={a.territory} prev={pa?.territory} label="Territory" />
+        <YieldPill icon={<CivIcon icon={Compass} color={CIV6_COLORS.favor} />} value={a.exploration_pct ?? 0} prev={pa?.exploration_pct} label="Explored" suffix="%" />
+        <YieldPill icon={<CivIcon icon={Hammer} color={CIV6_COLORS.production} />} value={a.improvements} prev={pa?.improvements} label="Improved" />
       </div>
 
       {/* Era / age / government row */}
       <div className="mb-4 flex flex-wrap gap-2">
         <div className="flex items-center gap-1.5 rounded-sm bg-marble-100 px-2 py-1">
-          <Trophy className="h-3.5 w-3.5 text-gold-dark" />
+          <CivIcon icon={Trophy} color={CIV6_COLORS.goldMetal} size="sm" />
           <div className="flex flex-col">
             <span className="font-mono text-sm tabular-nums text-marble-800">
               <AnimatedNumber value={a.era_score} decimals={0} />
@@ -157,7 +159,7 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
           </div>
         </div>
         <div className="flex items-center gap-1.5 rounded-sm bg-marble-100 px-2 py-1">
-          <Star className={`h-3.5 w-3.5 ${AGE_COLORS[a.age] ?? "text-marble-500"}`} />
+          <CivIcon icon={Hourglass} color={AGE_COLORS[a.age] ?? CIV6_COLORS.normal} size="sm" />
           <div className="flex flex-col">
             <span className="font-mono text-sm text-marble-800">{a.age}</span>
             <span className="text-[9px] uppercase tracking-wider text-marble-500">Age</span>
@@ -165,7 +167,7 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
         </div>
         {a.government !== "NONE" && (
           <div className="flex items-center gap-1.5 rounded-sm bg-marble-100 px-2 py-1">
-            <Crown className="h-3.5 w-3.5 text-marble-600" />
+            <CivIcon icon={Crown} color={CIV6_COLORS.goldMetal} size="sm" />
             <div className="flex flex-col">
               <span className="font-mono text-sm text-marble-800">{cleanCivName(a.government)}</span>
               <span className="text-[9px] uppercase tracking-wider text-marble-500">Government</span>
@@ -186,7 +188,7 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
               const Icon = meta?.icon || Pickaxe
               return (
                 <div key={name} className="flex items-center gap-1 rounded-sm bg-marble-100 px-2 py-1">
-                  <Icon className={`h-3.5 w-3.5 ${meta?.color || "text-marble-500"}`} />
+                  <CivIcon icon={Icon} color={meta?.color || CIV6_COLORS.normal} size="sm" />
                   <span className="font-mono text-xs tabular-nums text-marble-800">
                     {name.charAt(0) + name.slice(1).toLowerCase()}: {amt}
                   </span>

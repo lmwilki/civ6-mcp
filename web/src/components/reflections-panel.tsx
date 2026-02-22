@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import type { Reflections } from "@/lib/diary-types"
+import { CIV6_COLORS } from "@/lib/civ-colors"
+import { CivIcon } from "./civ-icon"
 import {
   Crosshair,
   BrainCircuit,
@@ -13,11 +15,11 @@ import {
 } from "lucide-react"
 
 const reflectionConfig = [
-  { key: "tactical" as const, label: "Tactical", icon: Crosshair, color: "text-terracotta" },
-  { key: "strategic" as const, label: "Strategic", icon: BrainCircuit, color: "text-blue-600" },
-  { key: "tooling" as const, label: "Tooling", icon: Wrench, color: "text-marble-600" },
-  { key: "planning" as const, label: "Planning", icon: CalendarClock, color: "text-patina" },
-  { key: "hypothesis" as const, label: "Hypothesis", icon: Lightbulb, color: "text-gold-dark" },
+  { key: "tactical" as const, label: "Tactical", icon: Crosshair, color: CIV6_COLORS.military },
+  { key: "strategic" as const, label: "Strategic", icon: BrainCircuit, color: CIV6_COLORS.science },
+  { key: "tooling" as const, label: "Tooling", icon: Wrench, color: CIV6_COLORS.iron },
+  { key: "planning" as const, label: "Planning", icon: CalendarClock, color: CIV6_COLORS.marine },
+  { key: "hypothesis" as const, label: "Hypothesis", icon: Lightbulb, color: CIV6_COLORS.goldMetal },
 ]
 
 interface ReflectionsPanelProps {
@@ -40,7 +42,7 @@ export function ReflectionsPanel({ reflections }: ReflectionsPanelProps) {
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-1">
-      {reflectionConfig.map(({ key, label, icon: Icon, color }) => {
+      {reflectionConfig.map(({ key, label, icon, color }) => {
         const text = reflections[key]
         if (!text) return null
         const isOpen = expanded.has(key)
@@ -50,7 +52,7 @@ export function ReflectionsPanel({ reflections }: ReflectionsPanelProps) {
               onClick={() => toggle(key)}
               className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-marble-100"
             >
-              <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+              <CivIcon icon={icon} color={color} size="sm" />
               <span className="flex-1 font-display text-xs font-bold uppercase tracking-[0.1em] text-marble-700">
                 {label}
               </span>

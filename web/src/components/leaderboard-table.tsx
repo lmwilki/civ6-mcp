@@ -3,7 +3,9 @@
 import type { TurnData, PlayerRow } from "@/lib/diary-types"
 import { ScoreDelta } from "./agent-overview"
 import { CollapsiblePanel } from "./collapsible-panel"
-import { Swords } from "lucide-react"
+import { CivIcon } from "./civ-icon"
+import { CIV6_COLORS } from "@/lib/civ-colors"
+import { Medal } from "lucide-react"
 
 interface LeaderboardTableProps {
   turnData: TurnData
@@ -21,7 +23,7 @@ export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTablePro
 
   return (
     <CollapsiblePanel
-      icon={<Swords className="h-3.5 w-3.5 shrink-0 text-terracotta" />}
+      icon={<CivIcon icon={Medal} color={CIV6_COLORS.goldMetal} size="sm" />}
       title={`Leaderboard (${allPlayers.length} civs)`}
       defaultOpen
     >

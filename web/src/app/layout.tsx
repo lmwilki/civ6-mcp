@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Cinzel, Cormorant_Garamond, JetBrains_Mono } from "next/font/google"
+import { ThemeProvider } from "next-themes"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "./globals.css"
 
@@ -32,11 +33,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${cinzel.variable} ${cormorant.variable} ${jetbrains.variable} antialiased`}
       >
-        <TooltipProvider>{children}</TooltipProvider>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          <TooltipProvider>{children}</TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

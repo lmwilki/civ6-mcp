@@ -2,6 +2,8 @@
 
 import type { CityRow } from "@/lib/diary-types"
 import { CollapsiblePanel } from "./collapsible-panel"
+import { CivIcon } from "./civ-icon"
+import { CIV6_COLORS } from "@/lib/civ-colors"
 import { Building2 } from "lucide-react"
 
 interface CitiesPanelProps {
@@ -13,7 +15,7 @@ export function CitiesPanel({ cities }: CitiesPanelProps) {
 
   return (
     <CollapsiblePanel
-      icon={<Building2 className="h-3.5 w-3.5 shrink-0 text-marble-700" />}
+      icon={<CivIcon icon={Building2} color={CIV6_COLORS.growth} size="sm" />}
       title={`Cities (${cities.length})`}
       defaultOpen
     >

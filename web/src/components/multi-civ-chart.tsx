@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import type { TurnData, NumericPlayerField, PlayerRow } from "@/lib/diary-types"
+import { CIV6_COLORS } from "@/lib/civ-colors"
 
 const RIVAL_COLORS = [
   "#E63946", "#457B9D", "#2A9D8F", "#E9C46A",
@@ -144,7 +145,7 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
         <polyline
           points={agentPoints}
           fill="none"
-          stroke="#D4A853"
+          stroke={CIV6_COLORS.goldMetal}
           strokeWidth="2.5"
           strokeLinejoin="round"
           opacity="0.9"
@@ -158,7 +159,7 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
       {/* Legend */}
       <div className="mt-1.5 space-y-0.5">
         <div className="flex items-center gap-1.5">
-          <div className="h-2 w-3 rounded-sm" style={{ backgroundColor: "#D4A853" }} />
+          <div className="h-2 w-3 rounded-sm" style={{ backgroundColor: CIV6_COLORS.goldMetal }} />
           <span className="flex-1 text-[10px] text-marble-600">{currentTurn?.agent.civ ?? "You"}</span>
           <span className="font-mono text-[10px] tabular-nums text-marble-700">
             {agentValues[currentIndex]}

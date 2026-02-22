@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { ThemeToggle } from "./theme-toggle"
 
 interface NavBarProps {
   active: "diary" | "timeline"
@@ -45,6 +46,7 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
               Turn {turn}
             </span>
           )}
+          <ThemeToggle />
           <span className="relative flex h-2 w-2">
             <span
               className={`inline-flex h-2 w-2 rounded-full ${

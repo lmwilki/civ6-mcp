@@ -27,11 +27,21 @@ export function useDiaryList() {
 function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
   const turnMap = new Map<number, { players: PlayerRow[]; cities: CityRow[] }>()
 
+  // Deduplicate players per (turn, pid) — last row wins (handles interrupted writes)
+  const deduped = new Map<string, PlayerRow>()
   for (const p of players) {
+    deduped.set(`${p.turn}:${p.pid}`, p)
+  }
+  for (const p of deduped.values()) {
     if (!turnMap.has(p.turn)) turnMap.set(p.turn, { players: [], cities: [] })
     turnMap.get(p.turn)!.players.push(p)
   }
+  // Deduplicate cities per (turn, city_id) — last row wins
+  const dedupedCities = new Map<string, CityRow>()
   for (const c of cities) {
+    dedupedCities.set(`${c.turn}:${c.city_id}`, c)
+  }
+  for (const c of dedupedCities.values()) {
     if (!turnMap.has(c.turn)) turnMap.set(c.turn, { players: [], cities: [] })
     turnMap.get(c.turn)!.cities.push(c)
   }

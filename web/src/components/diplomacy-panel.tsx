@@ -3,7 +3,9 @@
 import type { PlayerRow } from "@/lib/diary-types"
 import { DIPLO_STATE_NAMES, DIPLO_STATE_COLORS } from "@/lib/diary-types"
 import { CollapsiblePanel } from "./collapsible-panel"
-import { Handshake } from "lucide-react"
+import { CivIcon } from "./civ-icon"
+import { CIV6_COLORS } from "@/lib/civ-colors"
+import { Crown, Handshake } from "lucide-react"
 
 interface DiplomacyPanelProps {
   agent: PlayerRow
@@ -22,7 +24,7 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
 
   return (
     <CollapsiblePanel
-      icon={<Handshake className="h-3.5 w-3.5 shrink-0 text-blue-600" />}
+      icon={<CivIcon icon={Handshake} color={CIV6_COLORS.favor} size="sm" />}
       title="Diplomacy"
     >
       <div className="space-y-3">
@@ -83,13 +85,18 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(envoysSent)
                   .sort(([, a], [, b]) => b - a)
-                  .map(([cs, count]) => (
-                    <div key={cs} className="rounded-sm bg-marble-100 px-2 py-0.5">
-                      <span className="font-mono text-xs text-marble-700">
-                        {cs} <span className="text-marble-500">x{count}</span>
-                      </span>
-                    </div>
-                  ))}
+                  .map(([rawCs, count]) => {
+                    const isSuzerain = rawCs.endsWith("*")
+                    const cs = isSuzerain ? rawCs.slice(0, -1) : rawCs
+                    return (
+                      <div key={cs} className={`flex items-center gap-1 rounded-sm px-2 py-0.5 ${isSuzerain ? "bg-gold/10 ring-1 ring-gold/25" : "bg-marble-100"}`}>
+                        {isSuzerain && <Crown className="h-3 w-3 text-gold" />}
+                        <span className="font-mono text-xs text-marble-700">
+                          {cs} <span className="text-marble-500">x{count}</span>
+                        </span>
+                      </div>
+                    )
+                  })}
               </div>
             )}
           </div>
