@@ -36,18 +36,17 @@ local nUnits = 0; for _ in p:GetUnits():Members() do nUnits = nUnits + 1 end
 local myScore = p:GetScore()
 local favor = p:GetFavor()
 local favorPerTurn = 0
--- GetFavorPerTurn() returns 0 (broken API) — compute manually
 local pDiplo = p:GetDiplomacy()
--- 1. Government tier bonus
+-- 1. Government tier bonus (govRow.Tier is a string like "GOVERNMENT_TIER_1")
 local govIdx = cu:GetCurrentGovernment()
 if govIdx >= 0 then
     local govRow = GameInfo.Governments[govIdx]
-    if govRow then
-        local ok, tier = pcall(function() return govRow.Tier end)
-        if ok and tier then favorPerTurn = favorPerTurn + (tonumber(tier) or 0) end
+    if govRow and govRow.Tier then
+        local n = tonumber(tostring(govRow.Tier):match("(%d+)$")) or 0
+        favorPerTurn = favorPerTurn + math.max(1, n)
     end
 end
--- 2. Friendships (+1 each) and Alliances (level-based)
+-- 2. Alliances (level-based, +1 per alliance level)
 for i = 0, 62 do
     if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
         local ok, ai = pcall(function() return Players[i]:GetDiplomaticAI() end)
@@ -55,7 +54,6 @@ for i = 0, 62 do
             local ok2, stateIdx = pcall(function() return ai:GetDiplomaticStateIndex(id) end)
             if ok2 and stateIdx then
                 local si = tonumber(stateIdx) or -1
-                if si == 1 then favorPerTurn = favorPerTurn + 1 end
                 if si == 0 then
                     local ok3, aLvl = pcall(function() return pDiplo:GetAllianceLevel(i) end)
                     favorPerTurn = favorPerTurn + (tonumber(ok3 and aLvl) or 1)
@@ -64,13 +62,13 @@ for i = 0, 62 do
         end
     end
 end
--- 3. Suzerainties (+2 each)
+-- 3. Suzerainties (+1 each)
 for i = 0, 62 do
     if Players[i] and Players[i]:IsAlive() then
         local ok, canRecv = pcall(function() return Players[i]:GetInfluence():CanReceiveInfluence() end)
         if ok and canRecv then
             local suzID = Players[i]:GetInfluence():GetSuzerain()
-            if suzID == id then favorPerTurn = favorPerTurn + 2 end
+            if suzID == id then favorPerTurn = favorPerTurn + 1 end
         end
     end
 end
@@ -433,7 +431,8 @@ def build_diary_full_query() -> str:
               faith|faithPT|favor|favorPT|mil|techsN|civicsN|
               districts|wonders|greatWorks|territory|improvements|
               gov|tourism|stay|relCities|sciVP|diploVP|
-              era|eraScore|age|curResearch|curCivic|pantheon|religion
+              era|eraScore|age|curResearch|curCivic|pantheon|religion|
+              explorePct
         PTECHS|pid|TECH1,TECH2,...
         PCIVICS|pid|CIVIC1,CIVIC2,...
         PPOLICIES|pid|POLICY1,POLICY2,...
@@ -445,7 +444,6 @@ def build_diary_full_query() -> str:
               housing|am|amNeed|districts|producing|loyalty|loyaltyPT
 
     Agent-only (local player):
-        AEXPLORE|pct
         ADIPLO|rivalName|stateIdx|allianceType|allianceLevel|grievances
         ACS|suzerainties|envoysAvail|name:N,name:N,...
         AGOV|govType|city|established|promo1,promo2,...
@@ -460,9 +458,21 @@ def build_diary_full_query() -> str:
         "local eraIdx = eraManager:GetCurrentEra() "
         "local eraEntry = GameInfo.Eras[eraIdx] "
         'local eraType = eraEntry and eraEntry.EraType or "UNKNOWN" '
-        # Pre-compute territory + improvement counts per player (single map scan)
+        # Pre-compute territory, improvement, and exploration counts per player
+        # (single map scan — also counts revealed land tiles per player)
         "local ownerTerritory = {} "
         "local ownerImprove = {} "
+        "local ownerRevealed = {} "
+        "local totalLand = 0 "
+        # Build alive-major player list + visibility handles once
+        "local aliveMajors = {} "
+        "local aliveVis = {} "
+        "for i = 0, 62 do "
+        "  if Players[i] and Players[i]:IsMajor() and Players[i]:IsAlive() then "
+        "    aliveMajors[#aliveMajors+1] = i "
+        "    aliveVis[i] = PlayersVisibility[i] "
+        "  end "
+        "end "
         "for idx = 0, Map.GetPlotCount() - 1 do "
         "  local plot = Map.GetPlotByIndex(idx) "
         "  local owner = plot:GetOwner() "
@@ -470,6 +480,15 @@ def build_diary_full_query() -> str:
         "    ownerTerritory[owner] = (ownerTerritory[owner] or 0) + 1 "
         "    if plot:GetImprovementType() >= 0 then "
         "      ownerImprove[owner] = (ownerImprove[owner] or 0) + 1 "
+        "    end "
+        "  end "
+        "  if not plot:IsWater() then "
+        "    totalLand = totalLand + 1 "
+        "    local px, py = plot:GetX(), plot:GetY() "
+        "    for _, pid in ipairs(aliveMajors) do "
+        "      if aliveVis[pid]:IsRevealed(px, py) then "
+        "        ownerRevealed[pid] = (ownerRevealed[pid] or 0) + 1 "
+        "      end "
         "    end "
         "  end "
         "end "
@@ -589,13 +608,15 @@ def build_diary_full_query() -> str:
         # Favor per turn (agent only — complex computation)
         "  if i == me then "
         "    local pDiplo = p:GetDiplomacy() "
+        # Government tier (Tier is a string like "GOVERNMENT_TIER_1")
         "    if govIdx >= 0 then "
         "      local govRow = GameInfo.Governments[govIdx] "
-        "      if govRow then "
-        "        local ok, tier = pcall(function() return govRow.Tier end) "
-        "        if ok and tier then favorPT = favorPT + (tonumber(tier) or 0) end "
+        "      if govRow and govRow.Tier then "
+        "        local n = tonumber(tostring(govRow.Tier):match('(%d+)$')) or 0 "
+        "        favorPT = favorPT + math.max(1, n) "
         "      end "
         "    end "
+        # Alliances (level-based, +1 per alliance level)
         "    for j = 0, 62 do "
         "      if j ~= i and Players[j] and Players[j]:IsAlive() "
         "        and Players[j]:IsMajor() and pDiplo:HasMet(j) then "
@@ -606,7 +627,6 @@ def build_diary_full_query() -> str:
         "            return ai:GetDiplomaticStateIndex(i) end) "
         "          if ok2 and si then "
         "            si = tonumber(si) or -1 "
-        "            if si == 1 then favorPT = favorPT + 1 end "
         "            if si == 0 then "
         "              local ok3, aLvl = pcall(function() "
         "                return pDiplo:GetAllianceLevel(j) end) "
@@ -616,18 +636,21 @@ def build_diary_full_query() -> str:
         "        end "
         "      end "
         "    end "
+        # Suzerainties (+1 each)
         "    for j = 0, 62 do "
         "      if Players[j] and Players[j]:IsAlive() then "
         "        local ok, canRecv = pcall(function() "
         "          return Players[j]:GetInfluence():CanReceiveInfluence() end) "
         "        if ok and canRecv then "
         "          local suzID = Players[j]:GetInfluence():GetSuzerain() "
-        "          if suzID == i then favorPT = favorPT + 2 end "
+        "          if suzID == i then favorPT = favorPT + 1 end "
         "        end "
         "      end "
         "    end "
         "  end "
         # --- PLAYER line ---
+        "  local explorePct = totalLand > 0 "
+        "    and math.floor(100 * (ownerRevealed[i] or 0) / totalLand) or 0 "
         '  print("PLAYER|" .. i '
         '    .. "|" .. civName .. "|" .. leaderName '
         '    .. "|" .. sScore .. "|" .. nCities .. "|" .. totalPop '
@@ -647,7 +670,8 @@ def build_diary_full_query() -> str:
         '    .. "|" .. sciVP .. "|" .. diploVP '
         '    .. "|" .. eraType .. "|" .. eraScore .. "|" .. age '
         '    .. "|" .. curResearch .. "|" .. curCivic '
-        '    .. "|" .. pantheon .. "|" .. religion) '
+        '    .. "|" .. pantheon .. "|" .. religion '
+        '    .. "|" .. explorePct) '
         # --- PTECHS ---
         '  local techStr = "" '
         "  for row in GameInfo.Technologies() do "
@@ -808,22 +832,6 @@ def build_diary_full_query() -> str:
         "end "
         "end "
         # === Agent-only section ===
-        # Exploration %
-        "local pVis = PlayersVisibility[me] "
-        "local totalPlots = Map.GetPlotCount() "
-        "local revLand, totalLand = 0, 0 "
-        "for idx = 0, totalPlots - 1 do "
-        "  local plot = Map.GetPlotByIndex(idx) "
-        "  if not plot:IsWater() then "
-        "    totalLand = totalLand + 1 "
-        "    if pVis:IsRevealed(plot:GetX(), plot:GetY()) then "
-        "      revLand = revLand + 1 "
-        "    end "
-        "  end "
-        "end "
-        "local explorePct = totalLand > 0 "
-        "  and math.floor(100 * revLand / totalLand) or 0 "
-        'print("AEXPLORE|" .. explorePct) '
         # Diplomacy per rival (met majors only)
         "local pDiplo = Players[me]:GetDiplomacy() "
         "for i = 0, 62 do "
@@ -1014,6 +1022,7 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
                 current_civic=p[33],
                 pantheon=p[34],
                 religion=p[35],
+                exploration_pct=int(float(p[36])) if len(p) > 36 else 0,
             )
             players.append(row)
             player_map[pid] = row
@@ -1103,11 +1112,6 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
                 ))
 
         # --- Agent-only lines ---
-        elif line.startswith("AEXPLORE|"):
-            p = line.split("|")
-            if len(p) >= 2:
-                agent.exploration_pct = int(float(p[1]))
-
         elif line.startswith("ADIPLO|"):
             p = line.split("|")
             if len(p) >= 6:

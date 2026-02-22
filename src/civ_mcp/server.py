@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -1341,6 +1342,8 @@ async def end_turn(
         ov = await gs.get_game_overview()
         _diary_player_id = ov.player_id
         _diary_turn = ov.turn
+        # Keep logger turn in sync (agent may not call get_game_overview every turn)
+        _get_logger(ctx).set_turn(ov.turn)
     except Exception:
         log.warning("Diary: failed to capture overview", exc_info=True)
     try:
@@ -1400,7 +1403,6 @@ async def end_turn(
                         row["is_agent"] = True
                         # Merge agent extras
                         ag = _diary_snapshot.agent
-                        row["exploration_pct"] = ag.exploration_pct
                         row["diplo_states"] = ag.diplo_states
                         row["suzerainties"] = ag.suzerainties
                         row["envoys_available"] = ag.envoys_available
@@ -1439,6 +1441,10 @@ async def end_turn(
     if turn_advanced:
         _get_camera(ctx).clear()
         gs._end_turn_blocked = False
+        # Update logger turn from result ("Turn X -> Y")
+        m = re.search(r"Turn \d+ -> (\d+)", result)
+        if m:
+            _get_logger(ctx).set_turn(int(m.group(1)))
     elif "Turn paused" in result or "World Congress fires" in result:
         gs._end_turn_blocked = True
 

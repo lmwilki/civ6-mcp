@@ -73,6 +73,7 @@ class PlayerRow:
     great_works: int = 0
     territory: int = 0
     improvements: int = 0
+    exploration_pct: int = 0
     # Governance
     era: str = ""
     era_score: int = 0
@@ -120,7 +121,6 @@ class CityRow:
 class AgentExtras:
     """Agent-only data not recorded for AI players."""
 
-    exploration_pct: int = 0
     diplo_states: dict[str, dict] = field(default_factory=dict)
     suzerainties: int = 0
     envoys_available: int = 0

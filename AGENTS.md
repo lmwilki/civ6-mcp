@@ -97,7 +97,7 @@ Stagnant cities fall behind exponentially. If any city has food surplus ≤ 0, t
 You can't settle what you can't see, and you can't counter threats you don't know exist. A scout set to `automate` is one of the best investments in the early game. If a scout is lost or stuck, replacing it early keeps the information flow going. Exploration benchmarks: T25 ≥15%, T50 ≥25%, T75 ≥35%, T100 ≥50%.
 
 ### Diplomacy
-Diplomacy generates yield: each friendship is +1 favor/turn, each alliance +1 favor/turn, each suzerainty +2 favor/turn. This compounds. Delegations (25g) are cheap on first meeting. Friendships open up when a civ is Friendly. Alliances require friendship (30+ turns) and Diplomatic Service civic. Embassies are available once Writing is researched.
+Diplomacy generates yield: each alliance +1 favor/turn per alliance level, each suzerainty +1 favor/turn. Government tier also gives favor. This compounds. Friendships don't give favor directly but enable alliances (which do). Delegations (25g) are cheap on first meeting. Friendships open up when a civ is Friendly. Alliances require friendship (30+ turns) and Diplomatic Service civic. Embassies are available once Writing is researched.
 
 If favor is accumulating above 100 with no World Congress imminent, it's worth thinking about whether it could be better deployed in trade or alliance building.
 
@@ -186,9 +186,9 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 - `propose_peace(player_id)` — white peace; 10t war cooldown required
 - Check `get_diplomacy` for defensive pacts before declaring war
 
-**City-states:** `get_city_states` → `send_envoy`. Suzerainty = +2 favor/turn. Types: Scientific/Industrial/Trade/Cultural/Religious/Militaristic.
+**City-states:** `get_city_states` → `send_envoy`. Suzerainty = +1 favor/turn. Types: Scientific/Industrial/Trade/Cultural/Religious/Militaristic.
 
-**Diplomatic Favor:** earned from friendships (+1/t), alliances (+1/t), suzerainties (+2/t). Spend in World Congress for Diplomatic Victory Points.
+**Diplomatic Favor:** earned from government tier (base +1, scales with tier), alliances (+1/t per level), suzerainties (+1/t). Spend in World Congress for Diplomatic Victory Points.
 
 ## Production & Research
 
