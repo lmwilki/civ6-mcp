@@ -163,7 +163,7 @@ class GameLogger:
             params=params,
             result=result,
             duration_ms=duration_ms,
-            success=True,
+            success=not result.startswith(("Error", "ERR")),
         )
         await self._write(entry)
 
