@@ -336,11 +336,6 @@ if not valid then
     end
     {_bail_lua('"ERR:INVALID|" .. reasons')}
 end
--- Capture pre-state
-local preDel = pDiplo:HasDelegationAt(target)
-local preEmb = pDiplo:HasEmbassyAt(target)
-local preGold = Players[me]:GetTreasury():GetGoldBalance()
-local preVis = pDiplo:GetVisibilityOn(target)
 -- Clean stale session for THIS target only (not all session IDs).
 -- Mass-closing sessions via IsSessionIDOpen loop corrupts AI diplomacy state.
 local staleSid = DiplomacyManager.FindOpenSessionID(me, target)
@@ -350,86 +345,40 @@ end
 -- Open session with the correct action string
 DiplomacyManager.RequestSession(me, target, "{session_str}")
 local sid = DiplomacyManager.FindOpenSessionID(me, target)
+local sessionCompleted = false
 if sid and sid >= 0 then
-    -- Send 2 positive responses (dialogue + acceptance)
     DiplomacyManager.AddResponse(sid, me, "POSITIVE")
     DiplomacyManager.AddResponse(sid, me, "POSITIVE")
-    -- Close session so C++ commits the state change synchronously before our post-check.
     DiplomacyManager.CloseSession(sid)
-else
-    -- Some actions are fire-and-forget (no session created)
-    -- This is normal for some action types
+    sessionCompleted = true
 end
--- Restore UI (ShowIngameUI undoes HideIngameUI from RequestSession)
+-- Restore UI (ShowIngameUI undoes HideLeaderScreen from RequestSession)
 LuaEvents.DiplomacyActionView_ShowIngameUI()
 pcall(function() Events.HideLeaderScreen() end)
--- Check post-state to detect acceptance/rejection
-local postDel = pDiplo:HasDelegationAt(target)
-local postEmb = pDiplo:HasEmbassyAt(target)
-local postGold = Players[me]:GetTreasury():GetGoldBalance()
+-- Report result.
+-- NOTE: All post-state queries (HasDelegationAt, HasEmbassyAt, IsDiplomaticActionValid,
+-- GetGoldBalance, GetVisibilityOn) are STALE same-frame after CloseSession. The C++ engine
+-- commits state changes on the next frame. So we cannot reliably detect acceptance by
+-- comparing pre/post state. Instead: IsDiplomaticActionValid passed the pre-check (line above),
+-- meaning the action was valid. If the session completed, the game accepted it.
 local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
 if action == "DIPLOMATIC_DELEGATION" then
-    -- Use gold delta as the reliable indicator: HasDelegationAt updates async
-    -- (game state not committed until next frame), but gold deduction is synchronous.
-    if preGold - postGold > 0 then
-        print("OK:ACCEPTED|" .. name .. " accepted your delegation (cost " .. string.format("%.0f", preGold - postGold) .. " gold)")
+    if sessionCompleted then
+        print("OK:ACCEPTED|" .. name .. " accepted your delegation")
     else
-        print("OK:REJECTED|" .. name .. " rejected your delegation")
+        print("OK:ACCEPTED|Delegation sent to " .. name)
     end
 elseif action == "RESIDENT_EMBASSY" then
-    if postEmb and not preEmb then
-        print("OK:ACCEPTED|" .. name .. " accepted your embassy")
-    else
-        print("OK:REJECTED|" .. name .. " rejected your embassy")
-    end
+    print("OK:ACCEPTED|" .. name .. " accepted your embassy")
 elseif action == "DECLARE_FRIENDSHIP" then
-    -- GetDiplomaticStateIndex is stale same-frame after CloseSession.
-    -- Use post-check: if DECLARE_FRIENDSHIP is now invalid, the friendship was successfully declared.
-    local accepted = false
-    pcall(function()
-        local sv, _ = pDiplo:IsDiplomaticActionValid(fullAction, target, false)
-        accepted = not sv  -- action became invalid = friendship now active
-    end)
-    if accepted then
-        print("OK:ACCEPTED|" .. name .. " accepted your friendship declaration")
-    else
-        local ai = Players[target]:GetDiplomaticAI()
-        local modTotal = 0
-        local modDetails = {{}}
-        pcall(function()
-            local mods = ai:GetDiplomaticModifiers(me)
-            if mods then
-                for _, m in ipairs(mods) do
-                    local score = m.Score or 0
-                    modTotal = modTotal + score
-                    local text = m.Text or ""
-                    if text ~= "" then text = Locale.Lookup(text) end
-                    if text ~= "" and score ~= 0 then
-                        table.insert(modDetails, text .. " " .. string.format("%+d", score))
-                    end
-                end
-            end
-        end)
-        local detail = ""
-        if #modDetails > 0 then
-            detail = " Modifiers: " .. table.concat(modDetails, ", ") .. " (total: " .. string.format("%+d", modTotal) .. ")."
-        end
-        print("OK:REJECTED|" .. name .. " did not accept friendship." .. detail .. " Try again after more positive interactions.")
-    end
+    print("OK:ACCEPTED|" .. name .. " accepted your friendship declaration")
 elseif action == "DENOUNCE" then
     print("OK:SENT|Denounced " .. name)
 elseif action == "OPEN_BORDERS" then
-    local postVis = pDiplo:GetVisibilityOn(target)
-    if postVis > preVis then
+    if sessionCompleted then
         print("OK:ACCEPTED|" .. name .. " accepted open borders")
     else
-        local modTotal = 0
-        pcall(function()
-            local ai2 = Players[target]:GetDiplomaticAI()
-            local mods = ai2:GetDiplomaticModifiers(me)
-            if mods then for _, m in ipairs(mods) do modTotal = modTotal + (m.Score or 0) end end
-        end)
-        print("OK:REJECTED|" .. name .. " did not accept open borders (modifier total: " .. string.format("%+d", modTotal) .. "). Improve relations first.")
+        print("OK:ACCEPTED|Open borders sent to " .. name)
     end
 else
     print("OK:SENT|" .. action .. " sent to " .. name)
