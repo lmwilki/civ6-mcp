@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Timeline } from "@/components/timeline"
 import { LiveIndicator } from "@/components/live-indicator"
 import { NavBar } from "@/components/nav-bar"
-import { useGameLog, useSessions } from "@/lib/use-game-log"
+import { useGameLog, useGameLogs } from "@/lib/use-game-log"
 import { getToolCategory } from "@/lib/types"
 import type { LogEntry } from "@/lib/types"
 
@@ -36,31 +36,38 @@ const CATEGORY_STYLES: Record<ToolCategory, { on: string; off: string }> = {
   },
 }
 
-function formatSessionLabel(s: { session: string; count: number; first_ts: number; min_turn: number | null; max_turn: number | null }): string {
-  const date = new Date(s.first_ts * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-  const turns = s.min_turn != null && s.max_turn != null ? `T${s.min_turn}-${s.max_turn}` : "no turns"
-  return `${date} (${turns}, ${s.count})`
+function formatGameLabel(g: { game: string; civ: string; count: number; min_turn: number | null; max_turn: number | null }): string {
+  const civ = g.civ.replace(/\b\w/g, (c) => c.toUpperCase())
+  const turns = g.min_turn != null && g.max_turn != null ? `T${g.min_turn}-${g.max_turn}` : "no turns"
+  return `${civ} (${turns}, ${g.count})`
 }
 
 export default function Home() {
   const [live, setLive] = useState(true)
+  const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [hiddenCategories, setHiddenCategories] = useState<Set<ToolCategory>>(new Set())
   const [hiddenTools, setHiddenTools] = useState<Set<string>>(new Set())
   const [showToolFilter, setShowToolFilter] = useState(false)
 
-  const sessions = useSessions()
+  const games = useGameLogs()
   const autoSelected = useRef(false)
 
-  // Auto-select most recent session on first load
+  // Auto-select most recent game on first load
   useEffect(() => {
-    if (!autoSelected.current && sessions.length > 0 && selectedSession === null) {
-      setSelectedSession(sessions[0].session)
+    if (!autoSelected.current && games.length > 0 && selectedGame === null) {
+      setSelectedGame(games[0].game)
       autoSelected.current = true
     }
-  }, [sessions, selectedSession])
+  }, [games, selectedGame])
 
-  const { entries, connected } = useGameLog(live, selectedSession)
+  // Get sessions for the selected game
+  const selectedGameInfo = useMemo(
+    () => games.find((g) => g.game === selectedGame),
+    [games, selectedGame]
+  )
+
+  const { entries, connected } = useGameLog(live, selectedGame, selectedSession)
 
   // Compute tool counts for the filter panel
   const toolCounts = useMemo(() => {
@@ -72,11 +79,18 @@ export default function Home() {
     return counts
   }, [entries])
 
+  // Get category for an entry (use pre-computed field, fallback for safety)
+  const entryCategory = (e: LogEntry): ToolCategory => {
+    if (e.category) return e.category
+    if (e.type === "error") return "error"
+    return getToolCategory(e.tool)
+  }
+
   // Filter entries by category and specific tools
   const filtered = useMemo(() => {
     if (hiddenCategories.size === 0 && hiddenTools.size === 0) return entries
     return entries.filter((e) => {
-      const cat = e.type === "error" ? "error" : getToolCategory(e.tool)
+      const cat = entryCategory(e)
       if (hiddenCategories.has(cat)) return false
       if (e.tool && hiddenTools.has(e.tool)) return false
       return true
@@ -128,19 +142,38 @@ export default function Home() {
       {/* Sub-header with filters */}
       <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-6 py-2">
         <div className="mx-auto flex max-w-4xl items-center gap-4">
-          {/* Session picker */}
+          {/* Game picker */}
           <select
-            value={selectedSession ?? ""}
-            onChange={(e) => setSelectedSession(e.target.value || null)}
+            value={selectedGame ?? ""}
+            onChange={(e) => {
+              setSelectedGame(e.target.value || null)
+              setSelectedSession(null)
+            }}
             className="rounded-sm border border-marble-300 bg-marble-100 px-2 py-1 font-mono text-xs text-marble-700"
           >
-            <option value="">All sessions ({sessions.reduce((a, s) => a + s.count, 0)})</option>
-            {sessions.map((s) => (
-              <option key={s.session} value={s.session}>
-                {formatSessionLabel(s)}
+            <option value="">Select game...</option>
+            {games.map((g) => (
+              <option key={g.game} value={g.game}>
+                {formatGameLabel(g)}
               </option>
             ))}
           </select>
+
+          {/* Session sub-filter (within selected game) */}
+          {selectedGameInfo && selectedGameInfo.sessions.length > 1 && (
+            <select
+              value={selectedSession ?? ""}
+              onChange={(e) => setSelectedSession(e.target.value || null)}
+              className="rounded-sm border border-marble-300 bg-marble-100 px-2 py-1 font-mono text-xs text-marble-700"
+            >
+              <option value="">All sessions</option>
+              {selectedGameInfo.sessions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Category toggles */}
           <div className="flex items-center gap-1">

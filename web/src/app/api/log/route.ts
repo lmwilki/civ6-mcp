@@ -1,23 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { readFileSync, existsSync } from "fs"
-import { join } from "path"
-import { getLogDir, getLogPath } from "./shared"
+import { getLogFilePath } from "./shared"
 
 export async function GET(req: NextRequest) {
   const after = parseInt(req.nextUrl.searchParams.get("after") || "0", 10)
   const limit = parseInt(req.nextUrl.searchParams.get("limit") || "2000", 10)
+  const game = req.nextUrl.searchParams.get("game")
   const session = req.nextUrl.searchParams.get("session")
 
-  // If a session is specified, read its dedicated file directly (no filtering needed)
-  // Otherwise fall back to the central log
-  let logPath: string
-  if (session) {
-    const sessionFile = join(getLogDir(), `game_log_${session}.jsonl`)
-    logPath = existsSync(sessionFile) ? sessionFile : getLogPath()
-  } else {
-    logPath = getLogPath()
+  if (!game) {
+    return NextResponse.json([])
   }
 
+  const logPath = getLogFilePath(game)
   if (!existsSync(logPath)) {
     return NextResponse.json([])
   }
@@ -30,7 +25,6 @@ export async function GET(req: NextRequest) {
     for (let i = after; i < lines.length && entries.length < limit; i++) {
       try {
         const entry = JSON.parse(lines[i])
-        // When reading central log without a session file, still filter
         if (session && entry.session !== session) continue
         entry.line = i + 1
         entries.push(entry)

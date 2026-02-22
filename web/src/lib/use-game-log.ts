@@ -1,19 +1,19 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { LogEntry, SessionInfo } from "./types"
+import type { LogEntry, GameLogInfo } from "./types"
 
 const POLL_INTERVAL = 2000
 
-export function useSessions() {
-  const [sessions, setSessions] = useState<SessionInfo[]>([])
+export function useGameLogs() {
+  const [games, setGames] = useState<GameLogInfo[]>([])
 
   useEffect(() => {
     let mounted = true
     async function load() {
       try {
         const res = await fetch("/api/log/sessions")
-        if (res.ok && mounted) setSessions(await res.json())
+        if (res.ok && mounted) setGames(await res.json())
       } catch { /* ignore */ }
     }
     load()
@@ -21,27 +21,33 @@ export function useSessions() {
     return () => { mounted = false; clearInterval(id) }
   }, [])
 
-  return sessions
+  return games
 }
 
-export function useGameLog(live: boolean, session: string | null) {
+export function useGameLog(live: boolean, game: string | null, session?: string | null) {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [connected, setConnected] = useState(false)
   const lastLine = useRef(0)
+  const gameRef = useRef(game)
   const sessionRef = useRef(session)
 
-  // Reset when session changes
+  // Reset when game or session changes
   useEffect(() => {
-    if (session !== sessionRef.current) {
+    if (game !== gameRef.current || session !== sessionRef.current) {
+      gameRef.current = game
       sessionRef.current = session
       setEntries([])
       lastLine.current = 0
     }
-  }, [session])
+  }, [game, session])
 
   const fetchEntries = useCallback(async () => {
+    if (!gameRef.current) return
     try {
-      const params = new URLSearchParams({ after: String(lastLine.current) })
+      const params = new URLSearchParams({
+        after: String(lastLine.current),
+        game: gameRef.current,
+      })
       if (sessionRef.current) params.set("session", sessionRef.current)
       const res = await fetch(`/api/log?${params}`)
       if (!res.ok) return
@@ -56,10 +62,10 @@ export function useGameLog(live: boolean, session: string | null) {
     }
   }, [])
 
-  // Initial fetch + refetch on session change
+  // Initial fetch + refetch on game/session change
   useEffect(() => {
     fetchEntries()
-  }, [fetchEntries, session])
+  }, [fetchEntries, game, session])
 
   // Polling when live
   useEffect(() => {

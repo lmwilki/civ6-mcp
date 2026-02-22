@@ -29,6 +29,7 @@ from civ_mcp.diary import (
     cities_diary_path as _cities_diary_path,
     diary_path as _diary_path,
     format_diary_entry as _format_diary_entry,
+    merge_agent_reflections as _merge_agent_reflections,
     read_diary_entries as _read_diary_entries,
     write_diary_entry as _write_diary_entry,
 )
@@ -53,7 +54,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     conn = GameConnection()
     logger = GameLogger()
     gs = GameState(conn)
-    log.info("Game log: %s", logger.path)
+    log.info("Game logger session: %s", logger.session_id)
 
     # Spectator-mode background services (camera tracking + popup auto-dismiss)
     camera = CameraController(conn)
@@ -138,7 +139,13 @@ async def get_game_overview(ctx: Context) -> str:
 
     async def _run():
         ov = await gs.get_game_overview()
-        _get_logger(ctx).set_turn(ov.turn)
+        logger = _get_logger(ctx)
+        logger.set_turn(ov.turn)
+        try:
+            civ, seed = await gs.get_game_identity()
+            logger.bind_game(civ, seed)
+        except Exception:
+            pass
         text = nr.narrate_overview(ov)
         # Check for game-over state
         gameover = await gs.check_game_over()
@@ -1314,15 +1321,22 @@ async def end_turn(
             "tactical, strategic, tooling, planning, hypothesis."
         )
 
+    if agent_model:
+        _get_logger(ctx).set_agent_model(agent_model)
+
     # Capture diary state and write BEFORE advancing the turn.
     # This ensures the entry is saved even if the session is interrupted
-    # during AI turn processing. The guard prevents double-writes if
-    # end_turn is called again after resolving a blocker (e.g. diplomacy).
+    # during AI turn processing.
+    #
+    # If the last end_turn hit a blocker (diplomacy, WC), the turn may have
+    # advanced during processing. On retry, we merge reflections into the
+    # previous entry rather than writing a duplicate with terse reflections.
     _diary_turn = 0
     _diary_player_id = -1
     _diary_civ_type = None
     _diary_seed = None
     _diary_snapshot = None
+    _is_retry = getattr(gs, "_end_turn_blocked", False)
     try:
         ov = await gs.get_game_overview()
         _diary_player_id = ov.player_id
@@ -1333,69 +1347,87 @@ async def end_turn(
         _diary_civ_type, _diary_seed = await gs.get_game_identity()
     except Exception:
         log.warning("Diary: failed to get game identity", exc_info=True)
-    try:
-        _diary_snapshot = await gs.get_diary_snapshot()
-    except Exception:
-        log.warning("Diary: failed to capture snapshot", exc_info=True)
-    if (
+
+    if _is_retry and _diary_civ_type is not None:
+        # Merge reflections into the most recent agent row (from the
+        # previous end_turn call that wrote before hitting a blocker).
+        # Merges into whichever turn that row belongs to — handles both
+        # same-turn retries and turn-advanced-during-blocker cases.
+        try:
+            path = _diary_path(_diary_civ_type, _diary_seed)
+            merged = _merge_agent_reflections(
+                path, gs._diary_written_turn, reflections
+            )
+            if merged:
+                log.info(
+                    "Diary: merged retry reflections into turn %s",
+                    gs._diary_written_turn,
+                )
+        except Exception:
+            log.warning("Diary: failed to merge reflections", exc_info=True)
+    elif (
         _diary_civ_type is not None
         and _diary_turn > 0
         and gs._diary_written_turn != _diary_turn
-        and _diary_snapshot
     ):
-        game_id = f"{_diary_civ_type}_{_diary_seed}"
-        ts = datetime.now(timezone.utc).isoformat()
-        # MCP client metadata (from handshake)
-        agent_client = ""
-        agent_client_ver = ""
         try:
-            ci = ctx.session.client_params.clientInfo
-            agent_client = ci.name or ""
-            agent_client_ver = ci.version or ""
+            _diary_snapshot = await gs.get_diary_snapshot()
         except Exception:
-            pass
-        try:
-            path = _diary_path(_diary_civ_type, _diary_seed)
-            cities_path = _cities_diary_path(_diary_civ_type, _diary_seed)
-            # Write one row per player
-            for pr in _diary_snapshot.players:
-                row = asdict(pr)
-                row["v"] = 1
-                row["turn"] = _diary_turn
-                row["game"] = game_id
-                row["timestamp"] = ts
-                if pr.pid == _diary_player_id:
-                    row["is_agent"] = True
-                    # Merge agent extras
-                    ag = _diary_snapshot.agent
-                    row["exploration_pct"] = ag.exploration_pct
-                    row["diplo_states"] = ag.diplo_states
-                    row["suzerainties"] = ag.suzerainties
-                    row["envoys_available"] = ag.envoys_available
-                    row["envoys_sent"] = ag.envoys_sent
-                    row["gp_points"] = ag.gp_points
-                    row["governors"] = ag.governors
-                    row["trade_routes"] = {
-                        "capacity": ag.trade_capacity,
-                        "active": ag.trade_active,
-                        "domestic": ag.trade_domestic,
-                        "international": ag.trade_international,
-                    }
-                    row["reflections"] = reflections
-                    row["agent_client"] = agent_client
-                    row["agent_client_ver"] = agent_client_ver
-                    row["agent_model"] = agent_model
-                _write_diary_entry(path, row)
-            # Write one row per city
-            for cr in _diary_snapshot.cities:
-                row = asdict(cr)
-                row["v"] = 1
-                row["turn"] = _diary_turn
-                row["game"] = game_id
-                _write_diary_entry(cities_path, row)
-            gs._diary_written_turn = _diary_turn
-        except Exception:
-            log.warning("Diary: failed to write entry", exc_info=True)
+            log.warning("Diary: failed to capture snapshot", exc_info=True)
+        if _diary_snapshot:
+            game_id = f"{_diary_civ_type}_{_diary_seed}"
+            ts = datetime.now(timezone.utc).isoformat()
+            # MCP client metadata (from handshake)
+            agent_client = ""
+            agent_client_ver = ""
+            try:
+                ci = ctx.session.client_params.clientInfo
+                agent_client = ci.name or ""
+                agent_client_ver = ci.version or ""
+            except Exception:
+                pass
+            try:
+                path = _diary_path(_diary_civ_type, _diary_seed)
+                cities_path = _cities_diary_path(_diary_civ_type, _diary_seed)
+                # Write one row per player
+                for pr in _diary_snapshot.players:
+                    row = asdict(pr)
+                    row["v"] = 1
+                    row["turn"] = _diary_turn
+                    row["game"] = game_id
+                    row["timestamp"] = ts
+                    if pr.pid == _diary_player_id:
+                        row["is_agent"] = True
+                        # Merge agent extras
+                        ag = _diary_snapshot.agent
+                        row["exploration_pct"] = ag.exploration_pct
+                        row["diplo_states"] = ag.diplo_states
+                        row["suzerainties"] = ag.suzerainties
+                        row["envoys_available"] = ag.envoys_available
+                        row["envoys_sent"] = ag.envoys_sent
+                        row["gp_points"] = ag.gp_points
+                        row["governors"] = ag.governors
+                        row["trade_routes"] = {
+                            "capacity": ag.trade_capacity,
+                            "active": ag.trade_active,
+                            "domestic": ag.trade_domestic,
+                            "international": ag.trade_international,
+                        }
+                        row["reflections"] = reflections
+                        row["agent_client"] = agent_client
+                        row["agent_client_ver"] = agent_client_ver
+                        row["agent_model"] = agent_model
+                    _write_diary_entry(path, row)
+                # Write one row per city
+                for cr in _diary_snapshot.cities:
+                    row = asdict(cr)
+                    row["v"] = 1
+                    row["turn"] = _diary_turn
+                    row["game"] = game_id
+                    _write_diary_entry(cities_path, row)
+                gs._diary_written_turn = _diary_turn
+            except Exception:
+                log.warning("Diary: failed to write entry", exc_info=True)
 
     # Advance the turn
     result = await _logged(ctx, "end_turn", {}, gs.end_turn)
@@ -1406,6 +1438,9 @@ async def end_turn(
     )
     if turn_advanced:
         _get_camera(ctx).clear()
+        gs._end_turn_blocked = False
+    elif "Turn paused" in result or "World Congress fires" in result:
+        gs._end_turn_blocked = True
 
     return result
 

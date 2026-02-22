@@ -28,6 +28,43 @@ def write_diary_entry(path: Path, entry: dict) -> None:
         f.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
 
+def merge_agent_reflections(path: Path, turn: int, new_reflections: dict) -> bool:
+    """Merge new reflections into the most recent agent row for this turn.
+
+    Finds the last is_agent=True row matching the given turn, appends each
+    non-empty reflection field with ' | ' separator, and rewrites the file.
+    Returns True if a row was found and merged, False otherwise.
+    """
+    if not path.exists():
+        return False
+    lines = path.read_text().strip().splitlines()
+    target_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        try:
+            row = json.loads(lines[i])
+            if row.get("is_agent") and row.get("turn") == turn:
+                target_idx = i
+                break
+        except json.JSONDecodeError:
+            continue
+    if target_idx is None:
+        return False
+
+    row = json.loads(lines[target_idx])
+    existing = row.get("reflections") or {}
+    for field in _REFLECTION_FIELDS:
+        new_val = new_reflections.get(field, "").strip()
+        old_val = existing.get(field, "").strip()
+        if new_val and new_val != old_val:
+            existing[field] = f"{old_val} | {new_val}" if old_val else new_val
+    row["reflections"] = existing
+    lines[target_idx] = json.dumps(row, separators=(",", ":"))
+
+    with open(path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    return True
+
+
 def read_diary_entries(path: Path) -> list[dict]:
     if not path.exists():
         return []

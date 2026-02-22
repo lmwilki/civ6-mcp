@@ -27,6 +27,7 @@ class GameState:
         self._last_snapshot: lq.TurnSnapshot | None = None
         self._game_identity: tuple[str, int] | None = None  # (civ_type, seed)
         self._diary_written_turn: int | None = None  # guard against double-write per turn
+        self._end_turn_blocked: bool = False  # last end_turn hit a blocker (diplo/WC)
 
     async def get_game_identity(self) -> tuple[str, int]:
         """Return (civ_type_lower, random_seed) for the current game.

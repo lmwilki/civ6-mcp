@@ -45,7 +45,7 @@ interface LogEntryProps {
 
 export function LogEntry({ entry }: LogEntryProps) {
   const [open, setOpen] = useState(false)
-  const cat = entry.type === "error" ? "error" : getToolCategory(entry.tool)
+  const cat = entry.category ?? (entry.type === "error" ? "error" : getToolCategory(entry.tool))
 
   const hasDetails =
     entry.result ||
@@ -72,7 +72,7 @@ export function LogEntry({ entry }: LogEntryProps) {
 
           {/* Result summary */}
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-marble-700">
-            {entry.result ? truncate(entry.result, 120) : ""}
+            {entry.result_summary ?? (entry.result ? truncate(entry.result, 120) : "")}
           </span>
 
           {/* Duration */}

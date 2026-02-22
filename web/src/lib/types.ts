@@ -1,24 +1,35 @@
 export interface LogEntry {
-  ts: number
+  game: string
+  civ: string
+  seed: number
   session: string
+  ts: number
   turn: number | null
+  seq: number
   type: "tool_call" | "turn_report" | "error"
-  tool?: string
-  params?: Record<string, unknown>
-  result?: string
-  duration_ms?: number
+  tool: string
+  category: "query" | "action" | "turn" | "error"
+  params: Record<string, unknown> | null
+  result_summary: string | null
+  result: string | null
+  duration_ms: number | null
+  success: boolean
   events?: TurnEvent[]
+  agent_model?: string | null
   /** Line number in the JSONL file (set by API) */
   line: number
 }
 
-export interface SessionInfo {
-  session: string
+export interface GameLogInfo {
+  game: string
+  civ: string
+  seed: string
   count: number
   first_ts: number
   last_ts: number
   min_turn: number | null
   max_turn: number | null
+  sessions: string[]
 }
 
 /** Classify tools into visual categories */
