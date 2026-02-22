@@ -1,44 +1,46 @@
 "use client"
 
-import type { DiaryEntry } from "@/lib/diary-types"
+import { useMemo } from "react"
+import type { TurnData, NumericPlayerField } from "@/lib/diary-types"
 import { AnimatedNumber } from "./animated-number"
 
 interface ScoreSparklineProps {
-  entries: DiaryEntry[]
+  turns: TurnData[]
   currentIndex: number
-  field: keyof DiaryEntry["score"]
+  field: NumericPlayerField
   label: string
   color: string
   height?: number
 }
 
 export function ScoreSparkline({
-  entries,
+  turns,
   currentIndex,
   field,
   label,
   color,
   height = 40,
 }: ScoreSparklineProps) {
-  if (entries.length < 2) return null
-
-  const values = entries.map((e) => (e.score[field] as number) ?? 0)
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = max - min || 1
-
   const w = 300
   const padding = 2
 
-  const points = values
-    .map((v, i) => {
-      const x = padding + (i / (values.length - 1)) * (w - 2 * padding)
-      const y = height - padding - ((v - min) / range) * (height - 2 * padding)
-      return `${x},${y}`
-    })
-    .join(" ")
+  const { values, points, min, range } = useMemo(() => {
+    const vals = turns.map((t) => (t.agent[field] as number) ?? 0)
+    const mn = Math.min(...vals)
+    const mx = Math.max(...vals)
+    const rng = mx - mn || 1
+    const pts = vals
+      .map((v, i) => {
+        const x = padding + (i / (vals.length - 1)) * (w - 2 * padding)
+        const y = height - padding - ((v - mn) / rng) * (height - 2 * padding)
+        return `${x},${y}`
+      })
+      .join(" ")
+    return { values: vals, points: pts, min: mn, range: rng }
+  }, [turns, field, height])
 
-  // Current position marker
+  if (turns.length < 2) return null
+
   const cx = padding + (currentIndex / (values.length - 1)) * (w - 2 * padding)
   const cy =
     height -

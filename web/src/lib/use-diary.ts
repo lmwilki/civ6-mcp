@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { DiaryEntry, DiaryFile } from "./diary-types"
+import type { PlayerRow, CityRow, TurnData, DiaryFile } from "./diary-types"
 
 const POLL_INTERVAL = 3000
 
@@ -23,23 +23,61 @@ export function useDiaryList() {
   return diaries
 }
 
+/** Group raw player + city rows into per-turn snapshots */
+function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
+  const turnMap = new Map<number, { players: PlayerRow[]; cities: CityRow[] }>()
+
+  for (const p of players) {
+    if (!turnMap.has(p.turn)) turnMap.set(p.turn, { players: [], cities: [] })
+    turnMap.get(p.turn)!.players.push(p)
+  }
+  for (const c of cities) {
+    if (!turnMap.has(c.turn)) turnMap.set(c.turn, { players: [], cities: [] })
+    turnMap.get(c.turn)!.cities.push(c)
+  }
+
+  const result: TurnData[] = []
+  for (const [turn, data] of [...turnMap.entries()].sort(([a], [b]) => a - b)) {
+    const agent = data.players.find((p) => p.is_agent)
+    if (!agent) continue // skip turns with no agent row
+    const rivals = data.players
+      .filter((p) => !p.is_agent)
+      .sort((a, b) => b.score - a.score)
+    const agentCities = data.cities.filter((c) => c.pid === agent.pid)
+    result.push({
+      turn,
+      timestamp: agent.timestamp,
+      agent,
+      rivals,
+      agentCities,
+      allCities: data.cities,
+    })
+  }
+  return result
+}
+
 export function useDiary(filename: string | null, live: boolean = true) {
-  const [entries, setEntries] = useState<DiaryEntry[]>([])
+  const [turns, setTurns] = useState<TurnData[]>([])
   const [loading, setLoading] = useState(false)
   const prevCount = useRef(0)
 
   const load = useCallback(async () => {
     if (!filename) return
-    // Only show loading spinner on first fetch
     if (prevCount.current === 0) setLoading(true)
     try {
-      const res = await fetch(`/api/diary?file=${encodeURIComponent(filename)}`)
-      const data = await res.json()
-      const newEntries: DiaryEntry[] = data.entries || []
-      prevCount.current = newEntries.length
-      setEntries(newEntries)
+      const [playersRes, citiesRes] = await Promise.all([
+        fetch(`/api/diary?file=${encodeURIComponent(filename)}`),
+        fetch(`/api/diary?file=${encodeURIComponent(filename)}&cities=1`),
+      ])
+      const playersData = await playersRes.json()
+      const citiesData = await citiesRes.json()
+      const players: PlayerRow[] = playersData.entries || []
+      const cities: CityRow[] = citiesData.entries || []
+      const grouped = groupByTurn(players, cities)
+      prevCount.current = grouped.length
+      setTurns(grouped)
     } catch {
-      setEntries([])
+      setTurns([])
     } finally {
       setLoading(false)
     }
@@ -58,5 +96,5 @@ export function useDiary(filename: string | null, live: boolean = true) {
     return () => clearInterval(id)
   }, [live, load])
 
-  return { entries, loading, reload: load }
+  return { turns, loading, reload: load }
 }

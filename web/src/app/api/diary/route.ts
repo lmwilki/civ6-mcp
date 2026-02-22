@@ -7,10 +7,12 @@ function getDiaryDir(): string {
   return process.env.CIV6_DIARY_DIR || join(homedir(), ".civ6-mcp")
 }
 
-/** List available diary files */
-function listDiaries(dir: string): { filename: string; label: string; count: number }[] {
+/** List available diary files (excludes _cities companion files) */
+function listDiaries(dir: string) {
   if (!existsSync(dir)) return []
-  const files = readdirSync(dir).filter((f) => f.startsWith("diary_") && f.endsWith(".jsonl"))
+  const files = readdirSync(dir).filter(
+    (f) => f.startsWith("diary_") && f.endsWith(".jsonl") && !f.includes("_cities")
+  )
   return files
     .map((f) => {
       const match = f.match(/^diary_(.+?)_/)
@@ -24,13 +26,15 @@ function listDiaries(dir: string): { filename: string; label: string; count: num
       } catch {
         // ignore
       }
-      return { filename: f, label, count, mtime }
+      const citiesFile = f.replace(".jsonl", "_cities.jsonl")
+      const hasCities = existsSync(join(dir, citiesFile))
+      return { filename: f, label, count, mtime, hasCities }
     })
     .sort((a, b) => b.mtime - a.mtime)
     .map(({ mtime: _, ...rest }) => rest)
 }
 
-/** Read entries from a specific diary file */
+/** Read entries from a specific JSONL file */
 function readDiary(dir: string, filename: string) {
   const path = join(dir, filename)
   if (!existsSync(path)) return []
@@ -52,7 +56,6 @@ export async function GET(req: NextRequest) {
   const file = req.nextUrl.searchParams.get("file")
 
   if (!file) {
-    // List available diaries
     const diaries = listDiaries(dir)
     return NextResponse.json({ diaries })
   }
@@ -60,6 +63,14 @@ export async function GET(req: NextRequest) {
   // Sanitize filename
   if (file.includes("..") || file.includes("/")) {
     return NextResponse.json({ error: "Invalid filename" }, { status: 400 })
+  }
+
+  // Serve cities companion file if requested
+  const wantCities = req.nextUrl.searchParams.get("cities") === "1"
+  if (wantCities) {
+    const citiesFile = file.replace(".jsonl", "_cities.jsonl")
+    const entries = readDiary(dir, citiesFile)
+    return NextResponse.json({ entries })
   }
 
   const entries = readDiary(dir, file)

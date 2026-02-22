@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { NavBar } from "@/components/nav-bar"
-import { DiaryCard } from "@/components/diary-card"
+import { AgentOverview } from "@/components/agent-overview"
+import { LeaderboardTable } from "@/components/leaderboard-table"
+import { CitiesPanel } from "@/components/cities-panel"
+import { MilitaryPanel } from "@/components/military-panel"
+import { DiplomacyPanel } from "@/components/diplomacy-panel"
+import { ProgressPanel } from "@/components/progress-panel"
+import { ReflectionsPanel } from "@/components/reflections-panel"
 import { ScoreSparkline } from "@/components/score-sparkline"
-import { RivalChart } from "@/components/rival-chart"
+import { MultiCivChart } from "@/components/multi-civ-chart"
 import { useDiaryList, useDiary } from "@/lib/use-diary"
 import {
   ChevronLeft,
@@ -16,9 +22,9 @@ import {
 export default function DiaryPage() {
   const diaries = useDiaryList()
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const { entries, loading } = useDiary(selectedFile)
+  const { turns, loading } = useDiary(selectedFile)
   const [index, setIndex] = useState(0)
-  const followingRef = useRef(true) // true = auto-scroll to latest entry
+  const followingRef = useRef(true)
 
   // Auto-select first diary
   useEffect(() => {
@@ -27,28 +33,26 @@ export default function DiaryPage() {
     }
   }, [diaries, selectedFile])
 
-  // Auto-follow: jump to latest entry only if user is on the last entry
+  // Auto-follow: jump to latest turn
   useEffect(() => {
-    if (entries.length > 0) {
-      if (followingRef.current) {
-        setIndex(entries.length - 1)
-      }
+    if (turns.length > 0 && followingRef.current) {
+      setIndex(turns.length - 1)
     }
-  }, [entries.length])
+  }, [turns.length])
 
-  // Track whether user is "following" (viewing last entry)
+  // Track whether user is "following"
   useEffect(() => {
-    followingRef.current = index >= entries.length - 1
-  }, [index, entries.length])
+    followingRef.current = index >= turns.length - 1
+  }, [index, turns.length])
 
-  // Keyboard navigation
+  // Navigation
   const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
   const goNext = useCallback(
-    () => setIndex((i) => Math.min(entries.length - 1, i + 1)),
-    [entries.length]
+    () => setIndex((i) => Math.min(turns.length - 1, i + 1)),
+    [turns.length]
   )
   const goFirst = useCallback(() => setIndex(0), [])
-  const goLast = useCallback(() => setIndex(entries.length - 1), [entries.length])
+  const goLast = useCallback(() => setIndex(turns.length - 1), [turns.length])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -70,18 +74,17 @@ export default function DiaryPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [goPrev, goNext, goFirst, goLast])
 
-  const currentEntry = entries[index]
-  const prevEntry = index > 0 ? entries[index - 1] : undefined
-  const currentTurn = currentEntry?.turn ?? null
+  const currentTurn = turns[index]
+  const prevTurn = index > 0 ? turns[index - 1] : undefined
+  const turnNumber = currentTurn?.turn ?? null
 
   return (
     <div className="flex h-screen flex-col">
-      <NavBar active="diary" turn={currentTurn} />
+      <NavBar active="diary" turn={turnNumber} />
 
       {/* Diary selector + controls */}
       <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-6 py-2">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
-          {/* Diary file picker */}
           <div className="flex items-center gap-3">
             <select
               value={selectedFile || ""}
@@ -96,7 +99,6 @@ export default function DiaryPage() {
             </select>
           </div>
 
-          {/* Navigation */}
           <div className="flex items-center gap-1">
             <button
               onClick={goFirst}
@@ -115,12 +117,11 @@ export default function DiaryPage() {
               <ChevronLeft className="h-4 w-4" />
             </button>
 
-            {/* Turn scrubber */}
-            {entries.length > 1 && (
+            {turns.length > 1 && (
               <input
                 type="range"
                 min={0}
-                max={entries.length - 1}
+                max={turns.length - 1}
                 value={index}
                 onChange={(e) => setIndex(parseInt(e.target.value, 10))}
                 className="mx-2 w-48 accent-gold"
@@ -129,7 +130,7 @@ export default function DiaryPage() {
 
             <button
               onClick={goNext}
-              disabled={index >= entries.length - 1}
+              disabled={index >= turns.length - 1}
               className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
               title="Next entry (Right arrow)"
             >
@@ -137,7 +138,7 @@ export default function DiaryPage() {
             </button>
             <button
               onClick={goLast}
-              disabled={index >= entries.length - 1}
+              disabled={index >= turns.length - 1}
               className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
               title="Last entry (End)"
             >
@@ -149,7 +150,7 @@ export default function DiaryPage() {
 
       {/* Main content */}
       <div className="flex min-h-0 flex-1">
-        {/* Diary card */}
+        {/* Panels */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {loading && (
             <div className="flex h-full items-center justify-center">
@@ -159,7 +160,7 @@ export default function DiaryPage() {
             </div>
           )}
 
-          {!loading && entries.length === 0 && (
+          {!loading && turns.length === 0 && (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <p className="font-display text-sm tracking-[0.12em] uppercase text-marble-500">
@@ -172,39 +173,53 @@ export default function DiaryPage() {
             </div>
           )}
 
-          {!loading && currentEntry && (
-            <DiaryCard
-              entry={currentEntry}
-              prev={prevEntry}
-              index={index}
-              total={entries.length}
-            />
+          {!loading && currentTurn && (
+            <>
+              <AgentOverview
+                turnData={currentTurn}
+                prevTurnData={prevTurn}
+                index={index}
+                total={turns.length}
+              />
+              <LeaderboardTable
+                turnData={currentTurn}
+                prevTurnData={prevTurn}
+              />
+              <CitiesPanel cities={currentTurn.agentCities} />
+              <MilitaryPanel
+                agent={currentTurn.agent}
+                prevAgent={prevTurn?.agent}
+              />
+              <DiplomacyPanel agent={currentTurn.agent} />
+              <ProgressPanel
+                agent={currentTurn.agent}
+                prevAgent={prevTurn?.agent}
+              />
+              <ReflectionsPanel reflections={currentTurn.agent.reflections} />
+            </>
           )}
         </div>
 
         {/* Sparkline sidebar */}
-        {entries.length > 1 && (
+        {turns.length > 1 && (
           <div className="w-96 shrink-0 overflow-y-auto border-l border-marble-300 bg-marble-50 p-4">
             <h3 className="mb-3 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
               Trends
             </h3>
             <div className="space-y-2">
-              <ScoreSparkline entries={entries} currentIndex={index} field="total" label="Score" color="#D4A853" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="science" label="Science" color="#2563eb" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="culture" label="Culture" color="#9333ea" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="gold" label="Gold" color="#8C6E2C" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="faith" label="Faith" color="#C4785C" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="cities" label="Cities" color="#5C5549" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="population" label="Pop" color="#7A7269" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="exploration_pct" label="Explore" color="#7A9B8A" />
-              <ScoreSparkline entries={entries} currentIndex={index} field="era_score" label="Era" color="#D4A853" height={30} />
-              <ScoreSparkline entries={entries} currentIndex={index} field="leader_score" label="Leader" color="#C4785C" height={30} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="score" label="Score" color="#D4A853" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="science" label="Science" color="#2563eb" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="culture" label="Culture" color="#9333ea" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="gold" label="Gold" color="#8C6E2C" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color="#5C5549" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color="#C4785C" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color="#7A9B8A" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color="#7A7269" />
             </div>
 
-            {/* Rival score comparison */}
-            {entries.some((e) => e.rivals && e.rivals.length > 0) && (
+            {turns.some((t) => t.rivals.length > 0) && (
               <div className="mt-4 border-t border-marble-300/50 pt-4">
-                <RivalChart entries={entries} currentIndex={index} />
+                <MultiCivChart turns={turns} currentIndex={index} />
               </div>
             )}
           </div>
