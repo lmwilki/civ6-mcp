@@ -13,7 +13,7 @@ import sys
 import tempfile
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
@@ -26,15 +26,10 @@ from civ_mcp import game_launcher
 from civ_mcp import narrate as nr
 from civ_mcp.connection import GameConnection, LuaError
 from civ_mcp.diary import (
+    cities_diary_path as _cities_diary_path,
     diary_path as _diary_path,
-)
-from civ_mcp.diary import (
     format_diary_entry as _format_diary_entry,
-)
-from civ_mcp.diary import (
     read_diary_entries as _read_diary_entries,
-)
-from civ_mcp.diary import (
     write_diary_entry as _write_diary_entry,
 )
 from civ_mcp.game_state import GameState
@@ -1281,6 +1276,7 @@ async def end_turn(
     tooling: str = "",
     planning: str = "",
     hypothesis: str = "",
+    agent_model: str = "",
 ) -> str:
     """End the current turn.
 
@@ -1323,87 +1319,80 @@ async def end_turn(
     # during AI turn processing. The guard prevents double-writes if
     # end_turn is called again after resolving a blocker (e.g. diplomacy).
     _diary_turn = 0
-    _diary_civ = "unknown"
+    _diary_player_id = -1
     _diary_civ_type = None
     _diary_seed = None
-    _diary_score = None
-    _diary_rivals = None
+    _diary_snapshot = None
     try:
         ov = await gs.get_game_overview()
-        _diary_civ = ov.civ_name
-        _diary_turn = ov.turn  # current turn being ended — no -1 needed
-        leader_score = max((r.score for r in (ov.rankings or [])), default=0)
-        _diary_score = {
-            "total": ov.score,
-            "cities": ov.num_cities,
-            "population": ov.total_population,
-            "science": round(ov.science_yield, 1),
-            "culture": round(ov.culture_yield, 1),
-            "gold": round(ov.gold),
-            "gold_per_turn": round(ov.gold_per_turn),
-            "faith": round(ov.faith),
-            "favor": ov.diplomatic_favor,
-            "exploration_pct": round(ov.explored_land * 100 / max(ov.total_land, 1)),
-            "era": ov.era_name,
-            "era_score": ov.era_score,
-            "leader_score": leader_score,
-        }
-        if gs._last_snapshot and gs._last_snapshot.stockpiles:
-            _diary_score["stockpiles"] = {
-                s.name: {
-                    "amount": s.amount,
-                    "per_turn": s.per_turn,
-                    "demand": s.demand,
-                }
-                for s in gs._last_snapshot.stockpiles
-                if s.amount > 0 or s.per_turn > 0 or s.demand > 0
-            }
+        _diary_player_id = ov.player_id
+        _diary_turn = ov.turn
     except Exception:
         log.warning("Diary: failed to capture overview", exc_info=True)
-    try:
-        rival_snaps = await gs.get_rival_snapshot()
-        _diary_rivals = [
-            {
-                "id": r.id,
-                "name": r.name,
-                "score": r.score,
-                "cities": r.cities,
-                "pop": r.pop,
-                "sci": r.sci,
-                "cul": r.cul,
-                "gold": r.gold,
-                "mil": r.mil,
-                "techs": r.techs,
-                "civics": r.civics,
-                "faith": r.faith,
-                "sci_vp": r.sci_vp,
-                "diplo_vp": r.diplo_vp,
-                "stockpiles": r.stockpiles,
-            }
-            for r in rival_snaps
-        ]
-    except Exception:
-        log.warning("Diary: failed to capture rival snapshot", exc_info=True)
     try:
         _diary_civ_type, _diary_seed = await gs.get_game_identity()
     except Exception:
         log.warning("Diary: failed to get game identity", exc_info=True)
+    try:
+        _diary_snapshot = await gs.get_diary_snapshot()
+    except Exception:
+        log.warning("Diary: failed to capture snapshot", exc_info=True)
     if (
         _diary_civ_type is not None
         and _diary_turn > 0
         and gs._diary_written_turn != _diary_turn
+        and _diary_snapshot
     ):
-        entry = {
-            "turn": _diary_turn,
-            "civ": _diary_civ,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "score": _diary_score,
-            "rivals": _diary_rivals,
-            "reflections": reflections,
-        }
+        game_id = f"{_diary_civ_type}_{_diary_seed}"
+        ts = datetime.now(timezone.utc).isoformat()
+        # MCP client metadata (from handshake)
+        agent_client = ""
+        agent_client_ver = ""
+        try:
+            ci = ctx.session.client_params.clientInfo
+            agent_client = ci.name or ""
+            agent_client_ver = ci.version or ""
+        except Exception:
+            pass
         try:
             path = _diary_path(_diary_civ_type, _diary_seed)
-            _write_diary_entry(path, entry)
+            cities_path = _cities_diary_path(_diary_civ_type, _diary_seed)
+            # Write one row per player
+            for pr in _diary_snapshot.players:
+                row = asdict(pr)
+                row["v"] = 1
+                row["turn"] = _diary_turn
+                row["game"] = game_id
+                row["timestamp"] = ts
+                if pr.pid == _diary_player_id:
+                    row["is_agent"] = True
+                    # Merge agent extras
+                    ag = _diary_snapshot.agent
+                    row["exploration_pct"] = ag.exploration_pct
+                    row["diplo_states"] = ag.diplo_states
+                    row["suzerainties"] = ag.suzerainties
+                    row["envoys_available"] = ag.envoys_available
+                    row["envoys_sent"] = ag.envoys_sent
+                    row["gp_points"] = ag.gp_points
+                    row["governors"] = ag.governors
+                    row["trade_routes"] = {
+                        "capacity": ag.trade_capacity,
+                        "active": ag.trade_active,
+                        "domestic": ag.trade_domestic,
+                        "international": ag.trade_international,
+                    }
+                    row["reflections"] = reflections
+                    row["agent_client"] = agent_client
+                    row["agent_client_ver"] = agent_client_ver
+                    row["agent_model"] = agent_model
+                _write_diary_entry(path, row)
+            # Write one row per city
+            for cr in _diary_snapshot.cities:
+                row = asdict(cr)
+                row["v"] = 1
+                row["turn"] = _diary_turn
+                row["game"] = game_id
+                _write_diary_entry(cities_path, row)
             gs._diary_written_turn = _diary_turn
         except Exception:
             log.warning("Diary: failed to write entry", exc_info=True)
@@ -1462,6 +1451,10 @@ async def get_diary(
     entries = _read_diary_entries(path)
     if not entries:
         return f"No diary entries yet for this game ({civ_type}, seed {seed})."
+
+    # New format (v2) has N rows per turn — filter to agent rows only.
+    # Old format entries (no "v" key) pass through unchanged.
+    entries = [e for e in entries if "v" not in e or e.get("is_agent")]
 
     # Filter by query mode
     if turn is not None:

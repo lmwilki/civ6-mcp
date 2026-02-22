@@ -34,6 +34,115 @@ class RivalSnapshot:
 
 
 @dataclass
+class PlayerRow:
+    """One row per player per turn for diary JSONL (long format)."""
+
+    pid: int
+    civ: str
+    leader: str
+    is_agent: bool
+    # Score & yields
+    score: int
+    cities: int
+    pop: int
+    science: float
+    culture: float
+    gold: float
+    gold_per_turn: float
+    faith: float
+    faith_per_turn: float
+    favor: int
+    favor_per_turn: int
+    # Military
+    military: int = 0
+    units_total: int = 0
+    units_military: int = 0
+    units_civilian: int = 0
+    units_support: int = 0
+    unit_composition: dict[str, int] = field(default_factory=dict)
+    # Progress
+    techs_completed: int = 0
+    civics_completed: int = 0
+    techs: list[str] = field(default_factory=list)
+    civics: list[str] = field(default_factory=list)
+    current_research: str = "NONE"
+    current_civic: str = "NONE"
+    # Infrastructure
+    districts: int = 0
+    wonders: int = 0
+    great_works: int = 0
+    territory: int = 0
+    improvements: int = 0
+    # Governance
+    era: str = ""
+    era_score: int = 0
+    age: str = "NORMAL"
+    government: str = "NONE"
+    policies: list[str] = field(default_factory=list)
+    pantheon: str = "NONE"
+    religion: str = "NONE"
+    religion_beliefs: list[str] = field(default_factory=list)
+    # Victory
+    sci_vp: int = 0
+    diplo_vp: int = 0
+    tourism: int = 0
+    staycationers: int = 0
+    # Resources
+    stockpiles: dict[str, int] = field(default_factory=dict)
+    luxuries: dict[str, int] = field(default_factory=dict)
+    religion_cities: int = 0
+
+
+@dataclass
+class CityRow:
+    """One row per city per turn for diary JSONL."""
+
+    pid: int
+    city_id: int
+    city: str
+    pop: int
+    food: float
+    production: float
+    gold: float
+    science: float
+    culture: float
+    faith: float
+    housing: float
+    amenities: int
+    amenities_needed: int
+    districts: str  # comma-separated short names
+    producing: str
+    loyalty: float
+    loyalty_per_turn: float
+
+
+@dataclass
+class AgentExtras:
+    """Agent-only data not recorded for AI players."""
+
+    exploration_pct: int = 0
+    diplo_states: dict[str, dict] = field(default_factory=dict)
+    suzerainties: int = 0
+    envoys_available: int = 0
+    envoys_sent: dict[str, int] = field(default_factory=dict)
+    gp_points: dict[str, int] = field(default_factory=dict)
+    governors: list[dict] = field(default_factory=list)
+    trade_capacity: int = 0
+    trade_active: int = 0
+    trade_domestic: int = 0
+    trade_international: int = 0
+
+
+@dataclass
+class DiarySnapshot:
+    """Complete per-turn diary snapshot — players, cities, agent extras."""
+
+    players: list[PlayerRow] = field(default_factory=list)
+    cities: list[CityRow] = field(default_factory=list)
+    agent: AgentExtras = field(default_factory=AgentExtras)
+
+
+@dataclass
 class ReligionInfo:
     """Religion founded by a civilization."""
 
@@ -467,6 +576,7 @@ class ThreatInfo:
     owner_id: int = 63
     owner_name: str = "Barbarian"
     is_city_state: bool = False
+    unit_id: int = 0
 
 
 @dataclass

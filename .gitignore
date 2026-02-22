@@ -22,6 +22,14 @@ wheels/
 web/node_modules/
 web/.next/
 
+# LaTeX build artifacts
+docs/paper/build/
+*.aux
+*.bbl
+*.blg
+*.out
+*.synctex.gz
+
 # CivBench eval artifacts
 evals/saves/*.Civ6Save
 eval-logs/

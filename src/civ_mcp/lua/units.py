@@ -234,6 +234,11 @@ else
     -- Map.GetPlotDistance can misreport distance on offset hex grids, so we
     -- do not use it as a gate here — only as a diagnostic in the error message.
     local myCS = unitInfo and unitInfo.Combat or 0
+    -- ZOC check: if unit entered enemy ZOC this turn, it cannot attack until next turn.
+    -- CanStartOperation returns true but RequestOperation silently queues for next turn.
+    if unit:HasMovedIntoZOC() then
+        {_bail_lua('"ERR:ZOC|Unit entered Zone of Control this turn — cannot attack until next turn. End turn and attack from current position next turn."')}
+    end
     params[UnitOperationTypes.PARAM_MODIFIERS] = UnitOperationMoveModifiers.ATTACK
     if not UnitManager.CanStartOperation(unit, UnitOperationTypes.MOVE_TO, nil, params) then
         {_bail_lua('"ERR:ATTACK_BLOCKED|Cannot attack " .. enemyName .. " at ({target_x},{target_y}) (map dist=" .. dist .. "). Unit not adjacent or blocked by popup/diplomacy."')}
@@ -436,7 +441,7 @@ for pid = 0, 63 do
                         local hp = bu:GetMaxDamage() - bu:GetDamage()
                         local brs = entry and entry.RangedCombat or 0
                         local isCS = Players[pid]:IsMajor() and "0" or "1"
-                        print("THREAT|" .. pid .. "|" .. ownerName:gsub("|","/") .. "|" .. name .. "|" .. bx .. "," .. by .. "|" .. hp .. "/" .. bu:GetMaxDamage() .. "|CS:" .. bcs .. "|RS:" .. brs .. "|dist:" .. minDist .. "|cs:" .. isCS)
+                        print("THREAT|" .. pid .. "|" .. ownerName:gsub("|","/") .. "|" .. name .. "|" .. bx .. "," .. by .. "|" .. hp .. "/" .. bu:GetMaxDamage() .. "|CS:" .. bcs .. "|RS:" .. brs .. "|dist:" .. minDist .. "|cs:" .. isCS .. "|uid:" .. bu:GetID())
                         found = true
                     end
                 end
@@ -722,7 +727,7 @@ def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
         if not line.startswith("THREAT|"):
             continue
         parts = line.split("|")
-        # New format: THREAT|owner_id|owner_name|unit_type|x,y|hp/max|CS:n|RS:n|dist:n
+        # Format: THREAT|owner_id|owner_name|unit_type|x,y|hp/max|CS:n|RS:n|dist:n|cs:0/1|uid:N
         if len(parts) >= 9:
             x_str, y_str = parts[4].split(",")
             hp_str, max_str = parts[5].split("/")
@@ -733,6 +738,9 @@ def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
                 if parts[8].startswith("dist:")
                 else 0
             )
+            uid = 0
+            if len(parts) > 10 and parts[10].startswith("uid:"):
+                uid = int(parts[10][4:])
             threats.append(
                 ThreatInfo(
                     unit_type=parts[3],
@@ -748,6 +756,7 @@ def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
                     is_city_state=len(parts) > 9
                     and parts[9].startswith("cs:")
                     and parts[9][3:] == "1",
+                    unit_id=uid,
                 )
             )
         elif len(parts) >= 7:
@@ -774,3 +783,81 @@ def parse_threat_scan_response(lines: list[str]) -> list[ThreatInfo]:
                 )
             )
     return threats
+
+
+def build_fog_neighbor_query(positions: list[tuple[int, int]]) -> str:
+    """GameCore: for each position, report which adjacent tiles are in fog."""
+    checks = "\n".join(f"check({x},{y})" for x, y in positions)
+    return f"""
+local me = Game.GetLocalPlayer()
+local pVis = PlayersVisibility[me]
+local dirNames = {{"NE","E","SE","SW","W","NW"}}
+function check(cx, cy)
+    local plot = Map.GetPlot(cx, cy)
+    if not plot then return end
+    local fog = {{}}
+    for i = 0, 5 do
+        local adj = Map.GetAdjacentPlot(cx, cy, i)
+        if adj and not pVis:IsVisible(adj:GetX(), adj:GetY()) then
+            table.insert(fog, dirNames[i+1])
+        end
+    end
+    if #fog > 0 then
+        print("FOG|" .. cx .. "," .. cy .. "|" .. table.concat(fog, ","))
+    end
+end
+{checks}
+print("{SENTINEL}")
+"""
+
+
+def parse_fog_neighbor_response(
+    lines: list[str],
+) -> dict[tuple[int, int], list[str]]:
+    """Parse FOG|x,y|dir1,dir2,... lines into {(x,y): [directions]}."""
+    result: dict[tuple[int, int], list[str]] = {}
+    for line in lines:
+        if not line.startswith("FOG|"):
+            continue
+        parts = line.split("|")
+        x_str, y_str = parts[1].split(",")
+        result[(int(x_str), int(y_str))] = parts[2].split(",")
+    return result
+
+
+def diff_threats(
+    before: list[ThreatInfo], after: list[ThreatInfo]
+) -> tuple[list[ThreatInfo], list[ThreatInfo], list[ThreatInfo]]:
+    """Compare threat snapshots: (disappeared, new, moved).
+
+    Match by unit_id when available, otherwise by (owner_id, unit_type, x, y).
+    """
+    after_by_uid: dict[int, ThreatInfo] = {}
+    after_by_key: dict[tuple, ThreatInfo] = {}
+    after_matched: set[int] = set()
+
+    for i, t in enumerate(after):
+        if t.unit_id:
+            after_by_uid[t.unit_id] = t
+        after_by_key[(t.owner_id, t.unit_type, t.x, t.y)] = t
+
+    disappeared: list[ThreatInfo] = []
+    moved: list[ThreatInfo] = []
+
+    for bt in before:
+        at = None
+        if bt.unit_id and bt.unit_id in after_by_uid:
+            at = after_by_uid[bt.unit_id]
+        elif (bt.owner_id, bt.unit_type, bt.x, bt.y) in after_by_key:
+            at = after_by_key[(bt.owner_id, bt.unit_type, bt.x, bt.y)]
+
+        if at is None:
+            disappeared.append(bt)
+        else:
+            idx = after.index(at)
+            after_matched.add(idx)
+            if at.x != bt.x or at.y != bt.y:
+                moved.append(at)
+
+    new_threats = [t for i, t in enumerate(after) if i not in after_matched]
+    return disappeared, new_threats, moved

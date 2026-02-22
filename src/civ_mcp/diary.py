@@ -17,6 +17,11 @@ def diary_path(civ: str, seed: int) -> Path:
     return DIARY_DIR / f"diary_{civ}_{seed}.jsonl"
 
 
+def cities_diary_path(civ: str, seed: int) -> Path:
+    """Per-game cities diary file: diary_{civ}_{seed}_cities.jsonl"""
+    return DIARY_DIR / f"diary_{civ}_{seed}_cities.jsonl"
+
+
 def write_diary_entry(path: Path, entry: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a") as f:
@@ -36,6 +41,38 @@ def read_diary_entries(path: Path) -> list[dict]:
 
 
 def format_diary_entry(e: dict) -> str:
+    # New flat format (v2) — detected by "v" key
+    if "v" in e:
+        return _format_flat_entry(e)
+    # Legacy nested format
+    return _format_legacy_entry(e)
+
+
+def _format_flat_entry(e: dict) -> str:
+    """Format a v2 flat-key diary entry (one row per player, is_agent=True)."""
+    t = e.get("turn", "?")
+    r = e.get("reflections") or {}
+    header = f"=== Turn {t} ==="
+    score_line = (
+        f"  Score: {e.get('score', '?')} | Cities: {e.get('cities', '?')} | "
+        f"Pop: {e.get('pop', '?')} | "
+        f"Sci: {e.get('science', '?')} | Cul: {e.get('culture', '?')} | "
+        f"Gold: {e.get('gold', '?')} ({e.get('gold_per_turn', '?')}/t) | "
+        f"Faith: {e.get('faith', '?')} | Favor: {e.get('favor', '?')} | "
+        f"Explored: {e.get('exploration_pct', '?')}% | "
+        f"Era: {e.get('era', '?')} ({e.get('era_score', '?')})"
+    )
+    stk = e.get("stockpiles")
+    stk_line = ""
+    if stk:
+        parts = [f"{k}: {v}" for k, v in stk.items()]
+        stk_line = "\n  Resources: " + ", ".join(parts)
+    ref_lines = "\n".join(f"  {k}: {v}" for k, v in r.items())
+    return f"{header}\n{score_line}{stk_line}\n{ref_lines}"
+
+
+def _format_legacy_entry(e: dict) -> str:
+    """Format a legacy nested-format diary entry."""
     t = e.get("turn", "?")
     s = e.get("score") or {}
     r = e.get("reflections") or {}
@@ -57,7 +94,5 @@ def format_diary_entry(e: dict) -> str:
             net = v.get("per_turn", 0) - v.get("demand", 0)
             parts.append(f"{name}: {v['amount']} ({net:+d}/t)")
         stk_line = "\n  Resources: " + ", ".join(parts)
-    # NOTE: "rivals" key exists in JSONL for research/analysis but is
-    # intentionally NOT displayed here — the agent shouldn't see hidden AI stats.
     ref_lines = "\n".join(f"  {k}: {v}" for k, v in r.items())
     return f"{header}\n{score_line}{stk_line}\n{ref_lines}"

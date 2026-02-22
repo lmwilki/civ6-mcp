@@ -29,9 +29,11 @@ class GameState:
         self._diary_written_turn: int | None = None  # guard against double-write per turn
 
     async def get_game_identity(self) -> tuple[str, int]:
-        """Return (civ_type_lower, random_seed) for the current game. Cached."""
-        if self._game_identity is not None:
-            return self._game_identity
+        """Return (civ_type_lower, random_seed) for the current game.
+
+        Always queries the game so we detect new-game loads.  When the
+        identity changes, all per-game cached state is reset.
+        """
         code = (
             "local me = Game.GetLocalPlayer() "
             "local cfg = PlayerConfigurations[me] "
@@ -45,7 +47,12 @@ class GameState:
                 parts = line.split("|")
                 civ = parts[1].replace("CIVILIZATION_", "").lower()
                 seed = int(parts[2])
-                self._game_identity = (civ, seed)
+                new_id = (civ, seed)
+                if self._game_identity is not None and new_id != self._game_identity:
+                    log.info("Game changed: %s → %s", self._game_identity, new_id)
+                    self._last_snapshot = None
+                    self._diary_written_turn = None
+                self._game_identity = new_id
                 return self._game_identity
         return ("unknown", 0)
 
@@ -64,6 +71,11 @@ class GameState:
             except Exception:
                 log.debug("Failed to bootstrap snapshot", exc_info=True)
         return ov
+
+    async def get_diary_snapshot(self) -> lq.DiarySnapshot:
+        """Full per-turn snapshot for diary JSONL. InGame context."""
+        lines = await self.conn.execute_write(lq.build_diary_full_query())
+        return lq.parse_diary_full_response(lines)
 
     async def get_rival_snapshot(self) -> list[lq.RivalSnapshot]:
         """Lightweight per-rival stats for diary entries."""

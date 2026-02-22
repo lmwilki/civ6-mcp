@@ -127,6 +127,9 @@ from civ_mcp.lua.map import (  # noqa: F401
 # Re-export all models
 from civ_mcp.lua.models import (  # noqa: F401
     AppointedGovernor,
+    AgentExtras,
+    CityRow,
+    DiarySnapshot,
     BeliefInfo,
     CityInfo,
     CityReligionInfo,
@@ -162,6 +165,7 @@ from civ_mcp.lua.models import (  # noqa: F401
     OwnedResource,
     PantheonStatus,
     PendingDeal,
+    PlayerRow,
     PolicyInfo,
     PolicySlot,
     ProductionOption,
@@ -209,9 +213,11 @@ from civ_mcp.lua.notifications import (  # noqa: F401
 
 # --- Domain module re-exports ---
 from civ_mcp.lua.overview import (  # noqa: F401
+    build_diary_full_query,
     build_gameover_check,
     build_overview_query,
     build_rival_snapshot_query,
+    parse_diary_full_response,
     parse_gameover_response,
     parse_overview_response,
     parse_rival_snapshot_response,
@@ -250,10 +256,13 @@ from civ_mcp.lua.units import (  # noqa: F401
     build_skip_remaining_units,
     build_skip_unit,
     build_sleep_unit,
+    build_fog_neighbor_query,
     build_threat_scan_query,
     build_unit_position_query,
     build_units_query,
+    diff_threats,
     parse_combat_estimate,
+    parse_fog_neighbor_response,
     parse_threat_scan_response,
     parse_units_response,
 )

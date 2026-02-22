@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL
 from civ_mcp.lua.models import (
+    AgentExtras,
+    CityRow,
+    DiarySnapshot,
     GameOverStatus,
     GameOverview,
+    PlayerRow,
     ReligionInfo,
     RivalSnapshot,
     ScoreEntry,
@@ -414,3 +418,732 @@ def parse_rival_snapshot_response(lines: list[str]) -> list[RivalSnapshot]:
             )
         )
     return rivals
+
+
+# ------------------------------------------------------------------
+# Diary full snapshot — one row per player per turn + city detail
+# ------------------------------------------------------------------
+
+
+def build_diary_full_query() -> str:
+    """Single InGame round-trip: full per-turn snapshot for diary JSONL.
+
+    Emits per-player lines (all alive major civs, omniscient):
+        PLAYER|pid|civ|leader|score|cities|pop|sci|cul|gold|goldPT|
+              faith|faithPT|favor|favorPT|mil|techsN|civicsN|
+              districts|wonders|greatWorks|territory|improvements|
+              gov|tourism|stay|relCities|sciVP|diploVP|
+              era|eraScore|age|curResearch|curCivic|pantheon|religion
+        PTECHS|pid|TECH1,TECH2,...
+        PCIVICS|pid|CIVIC1,CIVIC2,...
+        PPOLICIES|pid|POLICY1,POLICY2,...
+        PBELIEFS|pid|BELIEF1,BELIEF2,...
+        PLUXURIES|pid|TYPE:N,TYPE:N,...
+        PSTOCKPILES|pid|TYPE:N,TYPE:N,...
+        PUNITS|pid|total|mil|civ|sup|TYPE:N,TYPE:N,...
+        PCITY|pid|cityId|name|pop|food|prod|gold|sci|cul|faith|
+              housing|am|amNeed|districts|producing|loyalty|loyaltyPT
+
+    Agent-only (local player):
+        AEXPLORE|pct
+        ADIPLO|rivalName|stateIdx|allianceType|allianceLevel|grievances
+        ACS|suzerainties|envoysAvail|name:N,name:N,...
+        AGOV|govType|city|established|promo1,promo2,...
+        ATRADE|capacity|active|domestic|international
+        AGPPTS|className:points,...
+        ---END---
+    """
+    return (
+        # --- Setup ---
+        "local me = Game.GetLocalPlayer() "
+        "local eraManager = Game.GetEras() "
+        "local eraIdx = eraManager:GetCurrentEra() "
+        "local eraEntry = GameInfo.Eras[eraIdx] "
+        'local eraType = eraEntry and eraEntry.EraType or "UNKNOWN" '
+        # Pre-compute territory + improvement counts per player (single map scan)
+        "local ownerTerritory = {} "
+        "local ownerImprove = {} "
+        "for idx = 0, Map.GetPlotCount() - 1 do "
+        "  local plot = Map.GetPlotByIndex(idx) "
+        "  local owner = plot:GetOwner() "
+        "  if owner >= 0 and owner < 63 then "
+        "    ownerTerritory[owner] = (ownerTerritory[owner] or 0) + 1 "
+        "    if plot:GetImprovementType() >= 0 then "
+        "      ownerImprove[owner] = (ownerImprove[owner] or 0) + 1 "
+        "    end "
+        "  end "
+        "end "
+        # Hash name lookup for production
+        "local hashName = {} "
+        "for u in GameInfo.Units() do hashName[u.Hash] = u.UnitType end "
+        "for b in GameInfo.Buildings() do hashName[b.Hash] = b.BuildingType end "
+        "for d in GameInfo.Districts() do hashName[d.Hash] = d.DistrictType end "
+        "for pr in GameInfo.Projects() do hashName[pr.Hash] = pr.ProjectType end "
+        # === Player loop (omniscient — all alive major civs) ===
+        "for i = 0, 62 do "
+        "if Players[i] and Players[i]:IsMajor() and Players[i]:IsAlive() then "
+        "  local p = Players[i] "
+        "  local cfg = PlayerConfigurations[i] "
+        "  local civName = Locale.Lookup(cfg:GetCivilizationShortDescription()) "
+        "  local leaderName = Locale.Lookup(cfg:GetLeaderName()) "
+        # Basic stats
+        "  local sScore = p:GetScore() "
+        "  local nCities, totalPop = 0, 0 "
+        "  for _, c in p:GetCities():Members() do "
+        "    nCities = nCities + 1; totalPop = totalPop + c:GetPopulation() "
+        "  end "
+        "  local sci = p:GetTechs():GetScienceYield() "
+        "  local cul = p:GetCulture():GetCultureYield() "
+        "  local tr = p:GetTreasury() "
+        "  local goldBal = tr:GetGoldBalance() "
+        "  local goldPT = tr:GetGoldYield() - tr:GetTotalMaintenance() "
+        "  local faithBal = 0 "
+        "  pcall(function() faithBal = p:GetReligion():GetFaithBalance() end) "
+        "  local faithPT = 0 "
+        "  pcall(function() faithPT = p:GetReligion():GetFaithYield() end) "
+        "  local favor = 0 "
+        "  pcall(function() favor = p:GetFavor() end) "
+        "  local favorPT = 0 "
+        # Military & victory stats
+        "  local st = p:GetStats() "
+        "  local mil = st:GetMilitaryStrength() "
+        "  local techsN = st:GetNumTechsResearched() "
+        "  local civicsN = st:GetNumCivicsCompleted() "
+        "  local sciVP = st:GetScienceVictoryPoints() "
+        "  local diploVP = st:GetDiplomaticVictoryPoints() "
+        "  local tourism = st:GetTourism() "
+        "  local relCities = st:GetNumCitiesFollowingReligion() "
+        "  local stay = 0 "
+        "  pcall(function() stay = p:GetCulture():GetStaycationers() end) "
+        # Government
+        "  local cu = p:GetCulture() "
+        '  local govType = "NONE" '
+        "  local govIdx = cu:GetCurrentGovernment() "
+        "  if govIdx >= 0 then "
+        "    local govRow = GameInfo.Governments[govIdx] "
+        '    if govRow then govType = govRow.GovernmentType or "NONE" end '
+        "  end "
+        # Age (per player)
+        '  local age = "NORMAL" '
+        "  pcall(function() "
+        '    if eraManager:HasHeroicAge(i) then age = "HEROIC" '
+        '    elseif eraManager:HasGoldenAge(i) then age = "GOLDEN" '
+        '    elseif eraManager:HasDarkAge(i) then age = "DARK" end '
+        "  end) "
+        # Era score (per player)
+        "  local eraScore = 0 "
+        "  pcall(function() eraScore = eraManager:GetPlayerCurrentScore(i) end) "
+        # Current research/civic (type keys)
+        '  local curResearch = "NONE" '
+        "  local techIdx = p:GetTechs():GetResearchingTech() "
+        "  if techIdx >= 0 then "
+        "    local tRow = GameInfo.Technologies[techIdx] "
+        "    if tRow then curResearch = tRow.TechnologyType end "
+        "  end "
+        '  local curCivic = "NONE" '
+        "  local civicIdx = cu:GetProgressingCivic() "
+        "  if civicIdx >= 0 then "
+        "    local cRow = GameInfo.Civics[civicIdx] "
+        "    if cRow then curCivic = cRow.CivicType end "
+        "  end "
+        # Pantheon / Religion (type keys)
+        '  local pantheon = "NONE" '
+        "  local panIdx = p:GetReligion():GetPantheon() "
+        "  if panIdx >= 0 then "
+        "    local bRow = GameInfo.Beliefs[panIdx] "
+        "    if bRow then pantheon = bRow.BeliefType end "
+        "  end "
+        '  local religion = "NONE" '
+        "  local relType = p:GetReligion():GetReligionTypeCreated() "
+        "  if relType >= 0 then "
+        "    local rRow = GameInfo.Religions[relType] "
+        "    if rRow then religion = rRow.ReligionType end "
+        "  end "
+        # Infrastructure (iterate cities)
+        "  local districtCount, wonderCount, greatWorkCount = 0, 0, 0 "
+        "  for _, c in p:GetCities():Members() do "
+        "    for _, d in c:GetDistricts():Members() do "
+        "      local dInfo = GameInfo.Districts[d:GetType()] "
+        '      if dInfo and dInfo.DistrictType ~= "DISTRICT_CITY_CENTER" then '
+        "        districtCount = districtCount + 1 "
+        "      end "
+        "    end "
+        "    local blds = c:GetBuildings() "
+        "    for bldg in GameInfo.Buildings() do "
+        "      if blds:HasBuilding(bldg.Index) then "
+        "        if bldg.IsWonder then wonderCount = wonderCount + 1 end "
+        "        local nSlots = blds:GetNumGreatWorkSlots(bldg.Index) "
+        "        if nSlots and nSlots > 0 then "
+        "          for s = 0, nSlots - 1 do "
+        "            if blds:GetGreatWorkInSlot(bldg.Index, s) >= 0 then "
+        "              greatWorkCount = greatWorkCount + 1 "
+        "            end "
+        "          end "
+        "        end "
+        "      end "
+        "    end "
+        "  end "
+        # Territory + improvements from pre-computed map scan
+        "  local territory = ownerTerritory[i] or 0 "
+        "  local improvementCount = ownerImprove[i] or 0 "
+        # Favor per turn (agent only — complex computation)
+        "  if i == me then "
+        "    local pDiplo = p:GetDiplomacy() "
+        "    if govIdx >= 0 then "
+        "      local govRow = GameInfo.Governments[govIdx] "
+        "      if govRow then "
+        "        local ok, tier = pcall(function() return govRow.Tier end) "
+        "        if ok and tier then favorPT = favorPT + (tonumber(tier) or 0) end "
+        "      end "
+        "    end "
+        "    for j = 0, 62 do "
+        "      if j ~= i and Players[j] and Players[j]:IsAlive() "
+        "        and Players[j]:IsMajor() and pDiplo:HasMet(j) then "
+        "        local ok, ai = pcall(function() "
+        "          return Players[j]:GetDiplomaticAI() end) "
+        "        if ok and ai then "
+        "          local ok2, si = pcall(function() "
+        "            return ai:GetDiplomaticStateIndex(i) end) "
+        "          if ok2 and si then "
+        "            si = tonumber(si) or -1 "
+        "            if si == 1 then favorPT = favorPT + 1 end "
+        "            if si == 0 then "
+        "              local ok3, aLvl = pcall(function() "
+        "                return pDiplo:GetAllianceLevel(j) end) "
+        "              favorPT = favorPT + (tonumber(ok3 and aLvl) or 1) "
+        "            end "
+        "          end "
+        "        end "
+        "      end "
+        "    end "
+        "    for j = 0, 62 do "
+        "      if Players[j] and Players[j]:IsAlive() then "
+        "        local ok, canRecv = pcall(function() "
+        "          return Players[j]:GetInfluence():CanReceiveInfluence() end) "
+        "        if ok and canRecv then "
+        "          local suzID = Players[j]:GetInfluence():GetSuzerain() "
+        "          if suzID == i then favorPT = favorPT + 2 end "
+        "        end "
+        "      end "
+        "    end "
+        "  end "
+        # --- PLAYER line ---
+        '  print("PLAYER|" .. i '
+        '    .. "|" .. civName .. "|" .. leaderName '
+        '    .. "|" .. sScore .. "|" .. nCities .. "|" .. totalPop '
+        '    .. "|" .. string.format("%.1f", sci) '
+        '    .. "|" .. string.format("%.1f", cul) '
+        '    .. "|" .. string.format("%.1f", goldBal) '
+        '    .. "|" .. string.format("%.1f", goldPT) '
+        '    .. "|" .. string.format("%.1f", faithBal) '
+        '    .. "|" .. string.format("%.1f", faithPT) '
+        '    .. "|" .. favor .. "|" .. favorPT '
+        '    .. "|" .. mil .. "|" .. techsN .. "|" .. civicsN '
+        '    .. "|" .. districtCount .. "|" .. wonderCount '
+        '    .. "|" .. greatWorkCount '
+        '    .. "|" .. territory .. "|" .. improvementCount '
+        '    .. "|" .. govType .. "|" .. tourism '
+        '    .. "|" .. stay .. "|" .. relCities '
+        '    .. "|" .. sciVP .. "|" .. diploVP '
+        '    .. "|" .. eraType .. "|" .. eraScore .. "|" .. age '
+        '    .. "|" .. curResearch .. "|" .. curCivic '
+        '    .. "|" .. pantheon .. "|" .. religion) '
+        # --- PTECHS ---
+        '  local techStr = "" '
+        "  for row in GameInfo.Technologies() do "
+        "    if p:GetTechs():HasTech(row.Index) then "
+        '      techStr = techStr .. (techStr ~= "" and "," or "") '
+        "        .. row.TechnologyType "
+        "    end "
+        "  end "
+        '  print("PTECHS|" .. i .. "|" .. techStr) '
+        # --- PCIVICS ---
+        '  local civicStr = "" '
+        "  for row in GameInfo.Civics() do "
+        "    if cu:HasCivic(row.Index) then "
+        '      civicStr = civicStr .. (civicStr ~= "" and "," or "") '
+        "        .. row.CivicType "
+        "    end "
+        "  end "
+        '  print("PCIVICS|" .. i .. "|" .. civicStr) '
+        # --- PPOLICIES ---
+        '  local polStr = "" '
+        "  local nPSlots = cu:GetNumPolicySlots() "
+        "  if nPSlots and nPSlots > 0 then "
+        "    for s = 0, nPSlots - 1 do "
+        "      local pIdx = cu:GetSlotPolicy(s) "
+        "      if pIdx >= 0 then "
+        "        local pRow = GameInfo.Policies[pIdx] "
+        "        if pRow then "
+        '          polStr = polStr .. (polStr ~= "" and "," or "") '
+        "            .. pRow.PolicyType "
+        "        end "
+        "      end "
+        "    end "
+        "  end "
+        '  print("PPOLICIES|" .. i .. "|" .. polStr) '
+        # --- PBELIEFS ---
+        '  local beliefStr = "" '
+        "  if relType >= 0 then "
+        "    for b = 0, 20 do "
+        "      local bIdx = -1 "
+        "      pcall(function() bIdx = p:GetReligion():GetBelief(b) end) "
+        "      if bIdx and bIdx >= 0 then "
+        "        local bRow = GameInfo.Beliefs[bIdx] "
+        "        if bRow then "
+        '          beliefStr = beliefStr .. (beliefStr ~= "" and "," or "") '
+        "            .. bRow.BeliefType "
+        "        end "
+        "      end "
+        "    end "
+        "  end "
+        '  print("PBELIEFS|" .. i .. "|" .. beliefStr) '
+        # --- PLUXURIES ---
+        '  local luxStr = "" '
+        "  local pRes = p:GetResources() "
+        "  for row in GameInfo.Resources() do "
+        '    if row.ResourceClassType == "RESOURCECLASS_LUXURY" then '
+        "      local amt = 0 "
+        "      pcall(function() amt = pRes:GetResourceAmount(row.Index) end) "
+        "      if amt and amt > 0 then "
+        '        local rShort = string.gsub(row.ResourceType, "RESOURCE_", "") '
+        '        luxStr = luxStr .. (luxStr ~= "" and "," or "") '
+        "          .. rShort .. \":\" .. amt "
+        "      end "
+        "    end "
+        "  end "
+        '  print("PLUXURIES|" .. i .. "|" .. luxStr) '
+        # --- PSTOCKPILES ---
+        '  local stockStr = "" '
+        "  for row in GameInfo.Resources() do "
+        '    if row.ResourceClassType == "RESOURCECLASS_STRATEGIC" then '
+        "      local amt = 0 "
+        "      pcall(function() amt = pRes:GetResourceAmount(row.Index) end) "
+        "      if amt and amt > 0 then "
+        '        local rShort = string.gsub(row.ResourceType, "RESOURCE_", "") '
+        '        stockStr = stockStr .. (stockStr ~= "" and "," or "") '
+        "          .. rShort .. \":\" .. amt "
+        "      end "
+        "    end "
+        "  end "
+        '  print("PSTOCKPILES|" .. i .. "|" .. stockStr) '
+        # --- PUNITS ---
+        "  local nTotal, nMil, nCiv, nSup = 0, 0, 0, 0 "
+        "  local comp = {} "
+        "  for _, u in p:GetUnits():Members() do "
+        "    if u:GetX() ~= -9999 then "
+        "      local entry = GameInfo.Units[u:GetType()] "
+        "      if entry then "
+        '        local ut = string.gsub(entry.UnitType or "UNKNOWN", "UNIT_", "") '
+        "        comp[ut] = (comp[ut] or 0) + 1 "
+        "        nTotal = nTotal + 1 "
+        '        local fc = entry.FormationClass or "" '
+        '        if fc == "FORMATION_CLASS_LAND_COMBAT" '
+        '          or fc == "FORMATION_CLASS_NAVAL" then '
+        "          nMil = nMil + 1 "
+        '        elseif fc == "FORMATION_CLASS_CIVILIAN" then '
+        "          nCiv = nCiv + 1 "
+        '        elseif fc == "FORMATION_CLASS_SUPPORT" then '
+        "          nSup = nSup + 1 "
+        "        else nMil = nMil + 1 end "
+        "      end "
+        "    end "
+        "  end "
+        '  local compStr = "" '
+        "  for k, v in pairs(comp) do "
+        '    compStr = compStr .. (compStr ~= "" and "," or "") '
+        "      .. k .. \":\" .. v "
+        "  end "
+        '  print("PUNITS|" .. i .. "|" .. nTotal .. "|" .. nMil '
+        '    .. "|" .. nCiv .. "|" .. nSup .. "|" .. compStr) '
+        # --- PCITY per city ---
+        "  for _, c in p:GetCities():Members() do "
+        "    local cID = c:GetID() "
+        "    local cName = Locale.Lookup(c:GetName()) "
+        "    local cPop = c:GetPopulation() "
+        "    local g = c:GetGrowth() "
+        # Production
+        '    local producing = "NONE" '
+        "    pcall(function() "
+        "      local bq = c:GetBuildQueue() "
+        "      if bq:GetSize() > 0 then "
+        "        local h = bq:GetCurrentProductionTypeHash() "
+        '        producing = hashName[h] or "UNKNOWN" '
+        "      end "
+        "    end) "
+        # Districts in this city
+        '    local dStr = "" '
+        "    for _, d in c:GetDistricts():Members() do "
+        "      local dInfo = GameInfo.Districts[d:GetType()] "
+        "      if dInfo then "
+        '        local short = string.gsub(dInfo.DistrictType, "DISTRICT_", "") '
+        '        dStr = dStr .. (dStr ~= "" and "," or "") .. short '
+        "      end "
+        "    end "
+        # Loyalty
+        "    local loyalty, loyaltyPT = 100.0, 0.0 "
+        "    pcall(function() "
+        "      local ci = c:GetCulturalIdentity() "
+        "      loyalty = ci:GetLoyalty() "
+        "      loyaltyPT = ci:GetLoyaltyPerTurn() "
+        "    end) "
+        # Amenities needed
+        "    local amNeed = 0 "
+        "    pcall(function() amNeed = g:GetAmenitiesNeeded() end) "
+        # Print PCITY
+        '    print("PCITY|" .. i .. "|" .. cID '
+        '      .. "|" .. cName .. "|" .. cPop '
+        '      .. "|" .. string.format("%.1f", c:GetYield(0)) '
+        '      .. "|" .. string.format("%.1f", c:GetYield(1)) '
+        '      .. "|" .. string.format("%.1f", c:GetYield(2)) '
+        '      .. "|" .. string.format("%.1f", c:GetYield(3)) '
+        '      .. "|" .. string.format("%.1f", c:GetYield(4)) '
+        '      .. "|" .. string.format("%.1f", c:GetYield(5)) '
+        '      .. "|" .. string.format("%.1f", g:GetHousing()) '
+        '      .. "|" .. g:GetAmenities() .. "|" .. amNeed '
+        '      .. "|" .. dStr .. "|" .. producing '
+        '      .. "|" .. string.format("%.1f", loyalty) '
+        '      .. "|" .. string.format("%.1f", loyaltyPT)) '
+        "  end "
+        "end "
+        "end "
+        # === Agent-only section ===
+        # Exploration %
+        "local pVis = PlayersVisibility[me] "
+        "local totalPlots = Map.GetPlotCount() "
+        "local revLand, totalLand = 0, 0 "
+        "for idx = 0, totalPlots - 1 do "
+        "  local plot = Map.GetPlotByIndex(idx) "
+        "  if not plot:IsWater() then "
+        "    totalLand = totalLand + 1 "
+        "    if pVis:IsRevealed(plot:GetX(), plot:GetY()) then "
+        "      revLand = revLand + 1 "
+        "    end "
+        "  end "
+        "end "
+        "local explorePct = totalLand > 0 "
+        "  and math.floor(100 * revLand / totalLand) or 0 "
+        'print("AEXPLORE|" .. explorePct) '
+        # Diplomacy per rival (met majors only)
+        "local pDiplo = Players[me]:GetDiplomacy() "
+        "for i = 0, 62 do "
+        "  if i ~= me and Players[i] and Players[i]:IsAlive() "
+        "    and Players[i]:IsMajor() and pDiplo:HasMet(i) then "
+        "    local cfg = PlayerConfigurations[i] "
+        "    local name = Locale.Lookup(cfg:GetCivilizationShortDescription()) "
+        "    local stateIdx = -1 "
+        "    pcall(function() "
+        "      stateIdx = Players[i]:GetDiplomaticAI():GetDiplomaticStateIndex(me) "
+        "    end) "
+        "    local grievances = 0 "
+        "    pcall(function() grievances = pDiplo:GetGrievancesAgainst(i) end) "
+        '    local allianceType = "none" '
+        "    local allianceLevel = 0 "
+        "    if stateIdx == 0 then "
+        "      pcall(function() allianceLevel = pDiplo:GetAllianceLevel(i) end) "
+        "      pcall(function() "
+        "        local aType = pDiplo:GetAllianceType(i) "
+        "        if aType and aType >= 0 then "
+        "          local aRow = GameInfo.Alliances[aType] "
+        "          if aRow then allianceType = aRow.AllianceType end "
+        "        end "
+        "      end) "
+        "    end "
+        '    print("ADIPLO|" .. name .. "|" .. stateIdx '
+        '      .. "|" .. allianceType .. "|" .. allianceLevel '
+        '      .. "|" .. grievances) '
+        "  end "
+        "end "
+        # City-state envoys
+        "local suzCount = 0 "
+        "local envoysAvail = 0 "
+        "pcall(function() "
+        "  envoysAvail = Players[me]:GetInfluence():GetTokensToGive() "
+        "end) "
+        'local envoyStr = "" '
+        "for i = 0, 62 do "
+        "  if i ~= me and Players[i] and Players[i]:IsAlive() "
+        "    and not Players[i]:IsMajor() and not Players[i]:IsBarbarian() then "
+        "    local csInf = Players[i]:GetInfluence() "
+        "    local envoys = 0 "
+        "    pcall(function() envoys = csInf:GetTokensReceived(me) end) "
+        "    if envoys > 0 then "
+        "      local csName = Locale.Lookup("
+        "        PlayerConfigurations[i]:GetCivilizationShortDescription()) "
+        '      envoyStr = envoyStr .. (envoyStr ~= "" and "," or "") '
+        "        .. csName .. \":\" .. envoys "
+        "    end "
+        "    local suzID = -1 "
+        "    pcall(function() suzID = csInf:GetSuzerain() end) "
+        "    if suzID == me then suzCount = suzCount + 1 end "
+        "  end "
+        "end "
+        'print("ACS|" .. suzCount .. "|" .. envoysAvail .. "|" .. envoyStr) '
+        # Governors
+        "local pGovs = Players[me]:GetGovernors() "
+        "if pGovs then "
+        "  for gRow in GameInfo.Governors() do "
+        "    local ok, hasGov = pcall(function() "
+        "      return pGovs:HasGovernor(gRow.Hash) end) "
+        "    if ok and hasGov then "
+        "      local gov = pGovs:GetGovernor(gRow.Hash) "
+        '      local gType = string.gsub(gRow.GovernorType, "GOVERNOR_", "") '
+        '      local cityName = "NONE" '
+        "      local established = false "
+        "      pcall(function() "
+        "        local cObj = gov:GetAssignedCity() "
+        "        if cObj then "
+        "          cityName = Locale.Lookup(cObj:GetName()) "
+        "          established = gov:IsEstablished() "
+        "        end "
+        "      end) "
+        '      local promoStr = "" '
+        "      for pRow in GameInfo.GovernorPromotions() do "
+        "        pcall(function() "
+        "          if gov:HasPromotion(pRow.Hash) then "
+        "            local short = string.gsub("
+        '              pRow.GovernorPromotionType, "GOVERNOR_PROMOTION_", "") '
+        '            promoStr = promoStr .. (promoStr ~= "" and "," or "") '
+        "              .. short "
+        "          end "
+        "        end) "
+        "      end "
+        '      print("AGOV|" .. gType .. "|" .. cityName '
+        '        .. "|" .. tostring(established) .. "|" .. promoStr) '
+        "    end "
+        "  end "
+        "end "
+        # Trade routes
+        "local trCap, trActive, trDom, trIntl = 0, 0, 0, 0 "
+        "pcall(function() "
+        "  local pTrade = Players[me]:GetTrade() "
+        "  trCap = pTrade:GetOutgoingRouteCapacity() or 0 "
+        "  local routes = pTrade:GetOutgoingRoutes() "
+        "  if routes then "
+        "    trActive = #routes "
+        "    for _, r in ipairs(routes) do "
+        "      if r.DestinationCityPlayer == me then "
+        "        trDom = trDom + 1 "
+        "      else trIntl = trIntl + 1 end "
+        "    end "
+        "  end "
+        "end) "
+        'print("ATRADE|" .. trCap .. "|" .. trActive '
+        '  .. "|" .. trDom .. "|" .. trIntl) '
+        # Great people points
+        'local gpStr = "" '
+        "local pGP = Players[me]:GetGreatPeoplePoints() "
+        "if pGP then "
+        "  for cls in GameInfo.GreatPersonClasses() do "
+        "    local pts = 0 "
+        "    pcall(function() pts = pGP:GetPointsTotal(cls.Index) end) "
+        "    if pts and pts > 0 then "
+        "      local cName = Locale.Lookup(cls.Name) "
+        '      gpStr = gpStr .. (gpStr ~= "" and "," or "") '
+        "        .. cName .. \":\" .. pts "
+        "    end "
+        "  end "
+        "end "
+        'print("AGPPTS|" .. gpStr) '
+        f'print("{SENTINEL}")'
+    )
+
+
+def _parse_kv_pairs(s: str) -> dict[str, int]:
+    """Parse 'KEY:N,KEY:N,...' into {KEY: N, ...}."""
+    result: dict[str, int] = {}
+    if not s:
+        return result
+    for pair in s.split(","):
+        if ":" in pair:
+            k, v = pair.split(":", 1)
+            try:
+                result[k] = int(float(v))
+            except ValueError:
+                pass
+    return result
+
+
+def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
+    """Parse tagged lines from build_diary_full_query into a DiarySnapshot."""
+    players: list[PlayerRow] = []
+    cities: list[CityRow] = []
+    agent = AgentExtras()
+    player_map: dict[int, PlayerRow] = {}
+
+    for line in lines:
+        if line.startswith("PLAYER|"):
+            p = line.split("|")
+            if len(p) < 36:
+                continue
+            pid = int(p[1])
+            row = PlayerRow(
+                pid=pid,
+                civ=p[2],
+                leader=p[3],
+                is_agent=False,  # set by server.py based on local player
+                score=int(float(p[4])),
+                cities=int(float(p[5])),
+                pop=int(float(p[6])),
+                science=round(float(p[7]), 1),
+                culture=round(float(p[8]), 1),
+                gold=round(float(p[9]), 1),
+                gold_per_turn=round(float(p[10]), 1),
+                faith=round(float(p[11]), 1),
+                faith_per_turn=round(float(p[12]), 1),
+                favor=int(float(p[13])),
+                favor_per_turn=int(float(p[14])),
+                military=int(float(p[15])),
+                techs_completed=int(float(p[16])),
+                civics_completed=int(float(p[17])),
+                districts=int(float(p[18])),
+                wonders=int(float(p[19])),
+                great_works=int(float(p[20])),
+                territory=int(float(p[21])),
+                improvements=int(float(p[22])),
+                government=p[23],
+                tourism=int(float(p[24])),
+                staycationers=int(float(p[25])),
+                religion_cities=int(float(p[26])),
+                sci_vp=int(float(p[27])),
+                diplo_vp=int(float(p[28])),
+                era=p[29],
+                era_score=int(float(p[30])),
+                age=p[31],
+                current_research=p[32],
+                current_civic=p[33],
+                pantheon=p[34],
+                religion=p[35],
+            )
+            players.append(row)
+            player_map[pid] = row
+
+        elif line.startswith("PTECHS|"):
+            p = line.split("|", 3)
+            if len(p) >= 3:
+                pid = int(p[1])
+                if pid in player_map:
+                    techs = [t for t in p[2].split(",") if t]
+                    player_map[pid].techs = techs
+                    player_map[pid].techs_completed = len(techs)
+
+        elif line.startswith("PCIVICS|"):
+            p = line.split("|", 3)
+            if len(p) >= 3:
+                pid = int(p[1])
+                if pid in player_map:
+                    civics = [c for c in p[2].split(",") if c]
+                    player_map[pid].civics = civics
+                    player_map[pid].civics_completed = len(civics)
+
+        elif line.startswith("PPOLICIES|"):
+            p = line.split("|", 3)
+            if len(p) >= 3:
+                pid = int(p[1])
+                if pid in player_map:
+                    player_map[pid].policies = [
+                        pol for pol in p[2].split(",") if pol
+                    ]
+
+        elif line.startswith("PBELIEFS|"):
+            p = line.split("|", 3)
+            if len(p) >= 3:
+                pid = int(p[1])
+                if pid in player_map:
+                    player_map[pid].religion_beliefs = [
+                        b for b in p[2].split(",") if b
+                    ]
+
+        elif line.startswith("PLUXURIES|"):
+            p = line.split("|", 3)
+            if len(p) >= 3:
+                pid = int(p[1])
+                if pid in player_map:
+                    player_map[pid].luxuries = _parse_kv_pairs(p[2])
+
+        elif line.startswith("PSTOCKPILES|"):
+            p = line.split("|", 3)
+            if len(p) >= 3:
+                pid = int(p[1])
+                if pid in player_map:
+                    player_map[pid].stockpiles = _parse_kv_pairs(p[2])
+
+        elif line.startswith("PUNITS|"):
+            p = line.split("|")
+            if len(p) >= 7:
+                pid = int(p[1])
+                if pid in player_map:
+                    player_map[pid].units_total = int(float(p[2]))
+                    player_map[pid].units_military = int(float(p[3]))
+                    player_map[pid].units_civilian = int(float(p[4]))
+                    player_map[pid].units_support = int(float(p[5]))
+                    player_map[pid].unit_composition = _parse_kv_pairs(p[6])
+
+        elif line.startswith("PCITY|"):
+            p = line.split("|")
+            if len(p) >= 18:
+                cities.append(CityRow(
+                    pid=int(p[1]),
+                    city_id=int(p[2]),
+                    city=p[3],
+                    pop=int(float(p[4])),
+                    food=round(float(p[5]), 1),
+                    production=round(float(p[6]), 1),
+                    gold=round(float(p[7]), 1),
+                    science=round(float(p[8]), 1),
+                    culture=round(float(p[9]), 1),
+                    faith=round(float(p[10]), 1),
+                    housing=round(float(p[11]), 1),
+                    amenities=int(float(p[12])),
+                    amenities_needed=int(float(p[13])),
+                    districts=p[14],
+                    producing=p[15],
+                    loyalty=round(float(p[16]), 1),
+                    loyalty_per_turn=round(float(p[17]), 1),
+                ))
+
+        # --- Agent-only lines ---
+        elif line.startswith("AEXPLORE|"):
+            p = line.split("|")
+            if len(p) >= 2:
+                agent.exploration_pct = int(float(p[1]))
+
+        elif line.startswith("ADIPLO|"):
+            p = line.split("|")
+            if len(p) >= 6:
+                agent.diplo_states[p[1]] = {
+                    "state": int(float(p[2])),
+                    "alliance": p[3] if p[3] != "none" else None,
+                    "alliance_level": int(float(p[4])),
+                    "grievances": int(float(p[5])),
+                }
+
+        elif line.startswith("ACS|"):
+            p = line.split("|")
+            if len(p) >= 4:
+                agent.suzerainties = int(float(p[1]))
+                agent.envoys_available = int(float(p[2]))
+                agent.envoys_sent = _parse_kv_pairs(p[3])
+
+        elif line.startswith("AGOV|"):
+            p = line.split("|")
+            if len(p) >= 5:
+                agent.governors.append({
+                    "type": p[1],
+                    "city": p[2],
+                    "established": p[3] == "true",
+                    "promotions": [pr for pr in p[4].split(",") if pr],
+                })
+
+        elif line.startswith("ATRADE|"):
+            p = line.split("|")
+            if len(p) >= 5:
+                agent.trade_capacity = int(float(p[1]))
+                agent.trade_active = int(float(p[2]))
+                agent.trade_domestic = int(float(p[3]))
+                agent.trade_international = int(float(p[4]))
+
+        elif line.startswith("AGPPTS|"):
+            agent.gp_points = _parse_kv_pairs(line[7:])
+
+    return DiarySnapshot(players=players, cities=cities, agent=agent)

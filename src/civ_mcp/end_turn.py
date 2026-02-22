@@ -632,6 +632,16 @@ async def execute_end_turn(gs: GameState) -> str:
         log.debug("Pre-turn snapshot failed", exc_info=True)
         snap_before = gs._last_snapshot
 
+    # Pre-turn threat scan (for fog-of-war direction tracking)
+    threats_before: list[lq.ThreatInfo] = []
+    try:
+        pre_threat_lines = await gs.conn.execute_read(
+            lq.build_threat_scan_query()
+        )
+        threats_before = lq.parse_threat_scan_response(pre_threat_lines)
+    except Exception:
+        log.debug("Pre-turn threat scan failed", exc_info=True)
+
     turn_before = snap_before.turn if snap_before else await _get_turn_number(gs)
 
     # Request end turn
@@ -849,9 +859,41 @@ async def execute_end_turn(gs: GameState) -> str:
                     message=f"THREAT: {t.unit_type} CS:{t.combat_strength}{rs_str} HP:{t.hp}/{t.max_hp} spotted {t.distance} tiles away at ({t.x},{t.y})",
                 )
             )
-        events.sort(key=lambda e: e.priority)
     except Exception:
         log.debug("Threat scan failed", exc_info=True)
+
+    # Fog-of-war direction tracking — diff pre/post threats
+    if threats_before:
+        try:
+            disappeared, _, _ = lq.diff_threats(threats_before, threats)
+            if disappeared:
+                positions = [(t.x, t.y) for t in disappeared]
+                fog_lines = await gs.conn.execute_read(
+                    lq.build_fog_neighbor_query(positions)
+                )
+                fog_dirs = lq.parse_fog_neighbor_response(fog_lines)
+                for t in disappeared:
+                    dirs = fog_dirs.get((t.x, t.y), [])
+                    if dirs:
+                        dir_str = "/".join(dirs)
+                        msg = (
+                            f"LOST CONTACT: {t.owner_name} {t.unit_type} "
+                            f"HP:{t.hp}/{t.max_hp} last seen at ({t.x},{t.y}) "
+                            f"— likely moved {dir_str} into fog"
+                        )
+                    else:
+                        msg = (
+                            f"VANISHED: {t.owner_name} {t.unit_type} "
+                            f"HP:{t.hp}/{t.max_hp} last at ({t.x},{t.y}) "
+                            f"— no adjacent fog (killed or garrisoned?)"
+                        )
+                    events.append(
+                        lq.TurnEvent(priority=1, category="unit", message=msg)
+                    )
+        except Exception:
+            log.debug("Fog direction tracking failed", exc_info=True)
+
+    events.sort(key=lambda e: e.priority)
 
     # Victory proximity check (every turn — lightweight)
     try:
