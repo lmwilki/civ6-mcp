@@ -35,7 +35,7 @@ function ScoreDelta({ current, prev, suffix }: { current: number; prev?: number;
   const delta = current - prev
   if (delta === 0) return null
   return (
-    <span className={`ml-1 text-xs font-medium ${delta > 0 ? "text-patina" : "text-terracotta"}`}>
+    <span className={`text-[9px] font-medium ${delta > 0 ? "text-patina" : "text-terracotta"}`}>
       {delta > 0 ? "+" : ""}{Math.round(delta * 10) / 10}{suffix}
     </span>
   )
@@ -58,9 +58,8 @@ function YieldPill({
     <div className="flex items-center gap-1.5 rounded-sm bg-marble-100 px-2 py-1">
       {icon}
       <div className="flex flex-col">
-        <span className="font-mono text-sm tabular-nums text-marble-800">
-          <AnimatedNumber value={value} />
-          {suffix}
+        <span className="flex items-baseline gap-0.5 font-mono text-sm tabular-nums text-marble-800">
+          <span><AnimatedNumber value={value} />{suffix}</span>
           <ScoreDelta current={value} prev={prev} suffix={suffix} />
         </span>
         <span className="text-[10px] uppercase tracking-wider text-marble-600">{label}</span>

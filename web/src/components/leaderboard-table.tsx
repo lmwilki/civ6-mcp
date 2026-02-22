@@ -15,6 +15,20 @@ interface LeaderboardTableProps {
 export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTableProps) {
   const allPlayers = [turnData.agent, ...turnData.rivals].sort((a, b) => b.score - a.score)
 
+  const best = {
+    score: Math.max(...allPlayers.map(p => p.score)),
+    cities: Math.max(...allPlayers.map(p => p.cities)),
+    pop: Math.max(...allPlayers.map(p => p.pop)),
+    science: Math.max(...allPlayers.map(p => p.science)),
+    culture: Math.max(...allPlayers.map(p => p.culture)),
+    gold: Math.max(...allPlayers.map(p => p.gold)),
+    military: Math.max(...allPlayers.map(p => p.military)),
+    techs: Math.max(...allPlayers.map(p => p.techs_completed)),
+  }
+
+  const b = (val: number, bestVal: number) =>
+    val >= bestVal ? "font-extrabold text-marble-900" : "text-marble-600"
+
   function findPrev(pid: number): PlayerRow | undefined {
     if (!prevTurnData) return undefined
     if (prevTurnData.agent.pid === pid) return prevTurnData.agent
@@ -33,14 +47,14 @@ export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTablePro
             <tr className="text-[10px] uppercase tracking-wider text-marble-500">
               <th className="py-1 pr-1 text-right">#</th>
               <th className="py-1 px-1 text-left">Civ</th>
-              <th className="py-1 px-1 text-right">Score</th>
-              <th className="py-1 px-1 text-right">Cities</th>
-              <th className="py-1 px-1 text-right">Pop</th>
-              <th className="py-1 px-1 text-right">Sci</th>
-              <th className="py-1 px-1 text-right">Cul</th>
-              <th className="py-1 px-1 text-right">Gold</th>
-              <th className="py-1 px-1 text-right">Mil</th>
-              <th className="py-1 px-1 text-right">Techs</th>
+              <th className="py-1 px-1 text-left">Score</th>
+              <th className="py-1 px-1 text-left">Cities</th>
+              <th className="py-1 px-1 text-left">Pop</th>
+              <th className="py-1 px-1 text-left">Sci</th>
+              <th className="py-1 px-1 text-left">Cul</th>
+              <th className="py-1 px-1 text-left">Gold</th>
+              <th className="py-1 px-1 text-left">Mil</th>
+              <th className="py-1 px-1 text-left">Techs</th>
             </tr>
           </thead>
           <tbody>
@@ -58,28 +72,28 @@ export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTablePro
                   <td className={`py-1 px-1 ${isAgent ? "font-semibold text-gold-dark" : "font-medium text-marble-700"}`}>
                     {p.civ}
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {p.score}<ScoreDelta current={p.score} prev={prev?.score} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.score, best.score)}`}>
+                    {p.score} <ScoreDelta current={p.score} prev={prev?.score} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {p.cities}<ScoreDelta current={p.cities} prev={prev?.cities} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.cities, best.cities)}`}>
+                    {p.cities} <ScoreDelta current={p.cities} prev={prev?.cities} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {p.pop}<ScoreDelta current={p.pop} prev={prev?.pop} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.pop, best.pop)}`}>
+                    {p.pop} <ScoreDelta current={p.pop} prev={prev?.pop} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {Math.round(p.science)}<ScoreDelta current={p.science} prev={prev?.science} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.science, best.science)}`}>
+                    {Math.round(p.science)} <ScoreDelta current={p.science} prev={prev?.science} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {Math.round(p.culture)}<ScoreDelta current={p.culture} prev={prev?.culture} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.culture, best.culture)}`}>
+                    {Math.round(p.culture)} <ScoreDelta current={p.culture} prev={prev?.culture} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {Math.round(p.gold)}<ScoreDelta current={p.gold} prev={prev?.gold} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.gold, best.gold)}`}>
+                    {Math.round(p.gold)} <ScoreDelta current={p.gold} prev={prev?.gold} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
-                    {p.military}<ScoreDelta current={p.military} prev={prev?.military} />
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.military, best.military)}`}>
+                    {p.military} <ScoreDelta current={p.military} prev={prev?.military} />
                   </td>
-                  <td className="py-1 px-1 text-right font-mono tabular-nums text-marble-700">
+                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.techs_completed, best.techs)}`}>
                     {p.techs_completed}
                   </td>
                 </tr>
