@@ -123,8 +123,8 @@ export interface PlayerRow {
   // Resources
   stockpiles: Record<string, number>
   luxuries: Record<string, number>
+  exploration_pct: number
   // Agent-only (present when is_agent=true)
-  exploration_pct?: number
   diplo_states?: Record<string, DiploState>
   suzerainties?: number
   envoys_available?: number

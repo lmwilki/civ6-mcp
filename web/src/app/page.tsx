@@ -214,6 +214,7 @@ export default function DiaryPage() {
               <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color="#5C5549" />
               <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color="#C4785C" />
               <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color="#7A9B8A" />
+              <ScoreSparkline turns={turns} currentIndex={index} field="exploration_pct" label="Explored" color="#4A90A4" />
               <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color="#7A7269" />
             </div>
 

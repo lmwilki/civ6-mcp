@@ -18,6 +18,7 @@ const METRIC_OPTIONS: { value: NumericPlayerField; label: string }[] = [
   { value: "cities", label: "Cities" },
   { value: "pop", label: "Population" },
   { value: "faith", label: "Faith" },
+  { value: "exploration_pct", label: "Explored %" },
   { value: "tourism", label: "Tourism" },
 ]
 
