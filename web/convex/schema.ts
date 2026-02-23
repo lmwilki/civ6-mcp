@@ -1,0 +1,150 @@
+import { defineSchema, defineTable } from "convex/server"
+import { v } from "convex/values"
+
+export default defineSchema({
+  // One doc per game session — used for listing and lifecycle
+  games: defineTable({
+    gameId: v.string(),
+    civ: v.string(),
+    leader: v.string(),
+    seed: v.string(),
+    status: v.union(v.literal("live"), v.literal("completed")),
+    lastTurn: v.number(),
+    lastUpdated: v.number(),
+    turnCount: v.number(),
+    hasCities: v.boolean(),
+    hasLogs: v.boolean(),
+  })
+    .index("by_gameId", ["gameId"])
+    .index("by_status", ["status", "lastUpdated"]),
+
+  // One doc per player per turn — mirrors PlayerRow from diary JSONL
+  playerRows: defineTable({
+    gameId: v.string(),
+    // Identity
+    turn: v.number(),
+    pid: v.number(),
+    civ: v.string(),
+    leader: v.string(),
+    is_agent: v.boolean(),
+    timestamp: v.string(),
+    game: v.string(),
+    v: v.number(),
+    // Score & yields
+    score: v.number(),
+    cities: v.number(),
+    pop: v.number(),
+    science: v.number(),
+    culture: v.number(),
+    gold: v.number(),
+    gold_per_turn: v.number(),
+    faith: v.number(),
+    faith_per_turn: v.number(),
+    favor: v.number(),
+    favor_per_turn: v.number(),
+    // Military
+    military: v.number(),
+    units_total: v.number(),
+    units_military: v.number(),
+    units_civilian: v.number(),
+    units_support: v.number(),
+    unit_composition: v.any(),
+    // Progress
+    techs_completed: v.number(),
+    civics_completed: v.number(),
+    techs: v.array(v.string()),
+    civics: v.array(v.string()),
+    current_research: v.string(),
+    current_civic: v.string(),
+    // Infrastructure
+    districts: v.number(),
+    wonders: v.number(),
+    great_works: v.number(),
+    territory: v.number(),
+    improvements: v.number(),
+    exploration_pct: v.number(),
+    // Governance
+    era: v.string(),
+    era_score: v.number(),
+    age: v.string(),
+    government: v.string(),
+    policies: v.array(v.string()),
+    pantheon: v.string(),
+    religion: v.string(),
+    religion_beliefs: v.array(v.string()),
+    // Victory
+    sci_vp: v.number(),
+    diplo_vp: v.number(),
+    tourism: v.number(),
+    staycationers: v.number(),
+    religion_cities: v.number(),
+    // Resources
+    stockpiles: v.any(),
+    luxuries: v.any(),
+    // Agent-only fields (optional)
+    diplo_states: v.optional(v.any()),
+    suzerainties: v.optional(v.number()),
+    envoys_available: v.optional(v.number()),
+    envoys_sent: v.optional(v.any()),
+    gp_points: v.optional(v.any()),
+    governors: v.optional(v.any()),
+    trade_routes: v.optional(v.any()),
+    reflections: v.optional(v.any()),
+    agent_client: v.optional(v.string()),
+    agent_client_ver: v.optional(v.string()),
+    agent_model: v.optional(v.string()),
+  })
+    .index("by_game_turn", ["gameId", "turn"])
+    .index("by_game_turn_pid", ["gameId", "turn", "pid"]),
+
+  // One doc per city per turn — mirrors CityRow from diary JSONL
+  cityRows: defineTable({
+    gameId: v.string(),
+    turn: v.number(),
+    game: v.string(),
+    v: v.number(),
+    pid: v.number(),
+    city_id: v.number(),
+    city: v.string(),
+    pop: v.number(),
+    food: v.number(),
+    production: v.number(),
+    gold: v.number(),
+    science: v.number(),
+    culture: v.number(),
+    faith: v.number(),
+    housing: v.number(),
+    amenities: v.number(),
+    amenities_needed: v.number(),
+    districts: v.string(),
+    producing: v.string(),
+    loyalty: v.number(),
+    loyalty_per_turn: v.number(),
+  })
+    .index("by_game_turn", ["gameId", "turn"]),
+
+  // One doc per tool call log line
+  logEntries: defineTable({
+    gameId: v.string(),
+    line: v.number(),
+    game: v.string(),
+    civ: v.string(),
+    seed: v.number(),
+    session: v.string(),
+    ts: v.number(),
+    turn: v.optional(v.union(v.number(), v.null())),
+    seq: v.number(),
+    type: v.string(),
+    tool: v.string(),
+    category: v.string(),
+    params: v.optional(v.any()),
+    result_summary: v.optional(v.union(v.string(), v.null())),
+    result: v.optional(v.union(v.string(), v.null())),
+    duration_ms: v.optional(v.union(v.number(), v.null())),
+    success: v.boolean(),
+    events: v.optional(v.any()),
+    agent_model: v.optional(v.union(v.string(), v.null())),
+  })
+    .index("by_game_line", ["gameId", "line"])
+    .index("by_game_session", ["gameId", "session"]),
+})

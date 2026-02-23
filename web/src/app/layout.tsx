@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Cinzel, Cormorant_Garamond, JetBrains_Mono } from "next/font/google"
 import { ThemeProvider } from "next-themes"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { ConvexClientProvider } from "@/components/convex-provider"
 import "./globals.css"
 
 const cinzel = Cinzel({
@@ -23,8 +24,8 @@ const jetbrains = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Civ 6 Game Log",
-  description: "Real-time game log viewer for civ6-mcp",
+  title: "civ6-mcp",
+  description: "An MCP server that lets LLM agents play full games of Civilization VI",
 }
 
 export default function RootLayout({
@@ -37,9 +38,11 @@ export default function RootLayout({
       <body
         className={`${cinzel.variable} ${cormorant.variable} ${jetbrains.variable} antialiased`}
       >
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-          <TooltipProvider>{children}</TooltipProvider>
-        </ThemeProvider>
+        <ConvexClientProvider>
+          <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+            <TooltipProvider>{children}</TooltipProvider>
+          </ThemeProvider>
+        </ConvexClientProvider>
       </body>
     </html>
   )

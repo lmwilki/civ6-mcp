@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ThemeToggle } from "./theme-toggle"
 
 interface NavBarProps {
-  active: "diary" | "timeline"
+  active: "home" | "diary" | "timeline"
   connected?: boolean
   turn?: number | null
 }
@@ -14,12 +14,16 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
     <header className="shrink-0 border-b border-marble-300 bg-marble-50 px-6 py-3">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
         <div className="flex items-baseline gap-6">
-          <h1 className="font-display text-sm font-bold tracking-[0.15em] uppercase text-marble-800">
-            Civ VI
-          </h1>
+          <Link href="/">
+            <h1 className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
+              active === "home" ? "text-gold-dark" : "text-marble-800"
+            }`}>
+              civ6-mcp
+            </h1>
+          </Link>
           <nav className="flex gap-4">
             <Link
-              href="/"
+              href="/diary"
               className={`text-sm transition-colors ${
                 active === "diary"
                   ? "font-semibold text-gold-dark"

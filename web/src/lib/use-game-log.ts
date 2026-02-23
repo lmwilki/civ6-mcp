@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { LogEntry, GameLogInfo } from "./types"
+import { CONVEX_MODE } from "@/components/convex-provider"
+import { useGameLogsConvex, useGameLogConvex } from "./use-game-log-convex"
 
 const POLL_INTERVAL = 2000
 
-export function useGameLogs() {
+export function useGameLogs(): GameLogInfo[] {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  if (CONVEX_MODE) return useGameLogsConvex()
   const [games, setGames] = useState<GameLogInfo[]>([])
 
   useEffect(() => {
@@ -24,7 +28,9 @@ export function useGameLogs() {
   return games
 }
 
-export function useGameLog(live: boolean, game: string | null, session?: string | null) {
+export function useGameLog(live: boolean, game: string | null, session?: string | null): { entries: LogEntry[]; connected: boolean } {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  if (CONVEX_MODE) return useGameLogConvex(live, game, session)
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [connected, setConnected] = useState(false)
   const lastLine = useRef(0)
