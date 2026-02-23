@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import type { TurnData, NumericPlayerField, PlayerRow } from "@/lib/diary-types"
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors"
 import { CivIcon } from "./civ-icon"
-import { BarChart3 } from "lucide-react"
+import { BarChart3, Play, Pause } from "lucide-react"
 
 const METRIC_OPTIONS: { value: NumericPlayerField; label: string }[] = [
   { value: "score", label: "Score" },
@@ -31,6 +31,22 @@ interface MultiCivChartProps {
 
 export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
   const [metric, setMetric] = useState<NumericPlayerField>("score")
+  const [rotating, setRotating] = useState(false)
+  const rotatingRef = useRef(rotating)
+  rotatingRef.current = rotating
+
+  const advanceMetric = useCallback(() => {
+    setMetric((prev) => {
+      const idx = METRIC_OPTIONS.findIndex((o) => o.value === prev)
+      return METRIC_OPTIONS[(idx + 1) % METRIC_OPTIONS.length].value
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!rotating) return
+    const id = setInterval(advanceMetric, 10_000)
+    return () => clearInterval(id)
+  }, [rotating, advanceMetric])
 
   const getValue = (p: PlayerRow): number | null => {
     const v = p[metric]
@@ -108,6 +124,9 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
 
   const cx = PAD + (currentIndex / Math.max(turns.length - 1, 1)) * (W - 2 * PAD)
   const currentTurn = turns[currentIndex]
+  const agentColor = currentTurn
+    ? getCivColors(currentTurn.agent.civ, currentTurn.agent.leader).primary
+    : CIV6_COLORS.goldMetal
 
   return (
     <div>
@@ -116,15 +135,27 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
           <CivIcon icon={BarChart3} color={CIV6_COLORS.marine} size="sm" />
           Comparison
         </h3>
-        <select
-          value={metric}
-          onChange={(e) => setMetric(e.target.value as NumericPlayerField)}
-          className="rounded-sm border border-marble-300 bg-marble-100 px-1.5 py-0.5 font-mono text-[10px] text-marble-700"
-        >
-          {METRIC_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1">
+          <select
+            value={metric}
+            onChange={(e) => {
+              setMetric(e.target.value as NumericPlayerField)
+              setRotating(false)
+            }}
+            className="rounded-sm border border-marble-300 bg-marble-100 px-1.5 py-0.5 font-mono text-[10px] text-marble-700"
+          >
+            {METRIC_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setRotating((r) => !r)}
+            className={`rounded-sm p-0.5 transition-colors ${rotating ? "text-patina" : "text-marble-400 hover:text-marble-600"}`}
+            title={rotating ? "Stop auto-rotate" : "Auto-rotate metrics"}
+          >
+            {rotating ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+          </button>
+        </div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: 100 }}>
         {rivalLines.map(({ pid, points }) => (
@@ -141,7 +172,7 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
         <polyline
           points={agentPoints}
           fill="none"
-          stroke={CIV6_COLORS.goldMetal}
+          stroke={agentColor}
           strokeWidth="2.5"
           strokeLinejoin="round"
           opacity="0.9"
@@ -152,28 +183,28 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
           style={{ transition: "x1 400ms ease-out, x2 400ms ease-out" }}
         />
       </svg>
-      {/* Legend */}
+      {/* Legend — sorted by selected metric */}
       <div className="mt-1.5 space-y-0.5">
-        <div className="flex items-center gap-1.5">
-          <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CIV6_COLORS.goldMetal }} />
-          <span className="flex-1 text-[10px] font-medium text-marble-700">{currentTurn?.agent.civ ?? "You"}</span>
-          <span className="font-mono text-[10px] tabular-nums text-marble-700">
-            {agentValues[currentIndex]}
-          </span>
-        </div>
-        {Array.from(civMap.entries()).map(([pid, { name, color }]) => {
-          const rival = currentTurn?.rivals.find((r) => r.pid === pid)
-          const rivalVal = rival ? getValue(rival) : null
-          return (
-            <div key={pid} className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-              <span className="flex-1 text-[10px] text-marble-600">{name}</span>
+        {(() => {
+          const agentVal = agentValues[currentIndex] ?? 0
+          const entries: { key: string; name: string; color: string; value: number | null; isAgent: boolean }[] = [
+            { key: "agent", name: currentTurn?.agent.civ ?? "You", color: agentColor, value: agentVal, isAgent: true },
+            ...Array.from(civMap.entries()).map(([pid, { name, color }]) => {
+              const rival = currentTurn?.rivals.find((r) => r.pid === pid)
+              return { key: String(pid), name, color, value: rival ? getValue(rival) : null, isAgent: false }
+            }),
+          ]
+          entries.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
+          return entries.map((e) => (
+            <div key={e.key} className="flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: e.color }} />
+              <span className={`flex-1 text-[10px] ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}>{e.name}</span>
               <span className="font-mono text-[10px] tabular-nums text-marble-700">
-                {rivalVal ?? "—"}
+                {e.value ?? "—"}
               </span>
             </div>
-          )
-        })}
+          ))
+        })()}
       </div>
     </div>
   )
