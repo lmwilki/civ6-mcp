@@ -14,6 +14,14 @@ export default defineSchema({
     turnCount: v.number(),
     hasCities: v.boolean(),
     hasLogs: v.boolean(),
+    outcome: v.optional(v.object({
+      result: v.union(v.literal("victory"), v.literal("defeat")),
+      winnerCiv: v.string(),
+      winnerLeader: v.string(),
+      victoryType: v.string(),
+      turn: v.number(),
+      playerAlive: v.boolean(),
+    })),
   })
     .index("by_gameId", ["gameId"])
     .index("by_status", ["status", "lastUpdated"]),
