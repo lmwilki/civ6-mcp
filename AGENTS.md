@@ -54,6 +54,7 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 
 ### Around every 10 turns:
 - `get_empire_resources` — unimproved luxuries and nearby strategics
+- Surplus luxuries: duplicates beyond 1 copy provide zero amenity benefit. Trade them via `propose_trade` for GPT, strategic resources, or luxury types you don't own (each new type = +1 amenity to 4 cities). Even 5 GPT per surplus luxury adds up over 30 turns.
 - Gold balance: if gold is accumulating above ~500 with no specific plan, deploying it (builder, tile, building, unit) is usually better than holding it
 - Faith balance: high faith is most valuable when spent — Great Person patronage, faith purchases, religious units
 - City count vs benchmarks (see below) — if expansion is behind, a settler tends to be the highest-leverage production choice
@@ -71,6 +72,7 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 ### Around every 30 turns:
 - `get_strategic_map` — fog per city + unclaimed resources
 - `get_global_settle_advisor` — best remaining settle sites
+- Wonder scan: `get_city_production` in your best city — wonders that align with your victory path are worth considering
 - Victory path check: is your chosen path still viable? Is any rival close to winning something you haven't been tracking?
 - Civ kit check: are you building/using your unique units, buildings, or improvements? If not, you're playing a generic civ and giving up your structural advantage. The unique unit often requires a specific tech — if that tech isn't on your current research path, that's a problem.
 
@@ -79,8 +81,13 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 ### Moving Civilians
 Before moving a builder, settler, or trader to a new tile, `get_map_area` (radius 2) around the destination is worth the query. Civilians have zero combat strength — a single barbarian scout captures them. The cost of losing a builder (5-7 turns of production + charges) is almost always worse than taking one extra turn to check or escort.
 
+Hills cost 2 movement, forests/jungles cost 2, and they stack (forest-hills = 3+). A settler or builder with 2 base moves arriving on forest-hills uses all movement and can't act until next turn. Route through flat terrain when possible, or plan to arrive one turn early.
+
 ### Gold
 Gold sitting above 500 with no specific plan is usually better deployed. A builder, a luxury tile, a building that skips 5+ turns of production — these compound. Saving for a specific purchase is fine, but it helps to name the item and the turn.
+
+### Faith
+Faith above 500 is usually better spent: Great Person patronage, Monumentality settlers/builders (Golden Age), Grand Master's Chapel military units (wartime), or Naturalists (late-game tourism). If it's accumulating past 500, consider what it could buy this turn.
 
 ### Expansion
 Each city multiplies your districts, yields, and Great Person generation. The gap between a 3-city and 5-city empire at T100 is hard to recover from. By the mid-game benchmarks:
@@ -117,10 +124,14 @@ Trade routes spread the origin city's religion to the destination — worth fact
 
 ### Victory Path Viability
 Some paths close. It's worth checking periodically:
-- **Science**: realistically needs 4+ cities with Campuses and Universities generating 80+ science by ~T150
-- **Culture**: Theater Squares in most cities, Great Works, Wonders — zero Theater Squares at T100 puts this path very far behind
-- **Religious**: requires a founded religion; if T80 arrives with no religion, this path is closed
-- **Diplomatic**: viable at most empire sizes; favor income from alliances/friendships/suzerainties, spent at World Congress
+
+- **Science**: 4+ cities with Campuses and Universities generating 80+ science by ~T150. Late game: Spaceport district (1 per city is enough), then 4 space projects in sequence. Research Agreements (from Research Alliances) and Great Scientists accelerate. If behind on techs at T200, this path is very difficult.
+
+- **Culture**: Tourism ≠ culture. Culture generates domestic tourists (your defense); tourism generates visiting tourists against other civs (your offense). Win when your visiting tourists from each civ exceed their domestic tourists. Key infrastructure: Theater Squares with Museums, Great Works with theming bonuses, Wonders. Key multipliers (per civ): Open Borders +25%, Trade Route +25% — pursue these with every civ. Late-game accelerants: National Parks (Naturalists cost faith), Seaside Resorts, Rock Bands (send to tiles with Wonders for large bursts), Heritage Tourism civic (+100% from Art/Artifacts), Online Communities civic (+50% to all). Zero Theater Squares at T100 puts this path very far behind.
+
+- **Religious**: Requires a founded religion — the Great Prophet pool fills early (roughly half the major civs), so Holy Site infrastructure in the first 30 turns matters. Pipeline: Holy Site → Shrine (enables Missionaries, 3 spread charges each) → Temple (enables Apostles, which fight in theological combat). Theological combat is the primary conversion tool at scale: killing an enemy religious unit applies 250 pressure in a 10-tile radius. Key apostle promotions: Proselytizer (removes 75% foreign pressure on spread). Theocracy government gives +5 theological combat strength and -15% faith purchase cost. Inquisitors defend your cities (+35 RS in own territory). If T80 arrives with no religion, this path is closed. If pursuing: buy religious units only from cities where your religion is majority.
+
+- **Diplomatic**: 20 DVP to win. Sources: World Congress resolutions (+2 from DVP-specific resolution, +1 for winning any resolution's outcome), scored competitions (Aid Requests, World Games), wonders (Statue of Liberty +4, Mahabodhi Temple +2, Potala Palace +1). Favor income stacks: government tier (higher = more), each alliance (+1/t per alliance level), each suzerainty (+1/t). Defensive technique: if a DVP-stripping resolution targets you, voting Option B targeting yourself costs only -1 DVP (vs -2 from Option A), and winning that outcome gives +1 back = net 0. Viable at most empire sizes; the main requirement is diplomatic relationships and favor accumulation.
 
 ## Combat Quick Reference
 
@@ -150,12 +161,15 @@ Some paths close. It's worth checking periodically:
 | `delete` | Disband unit | Removes maintenance |
 | `found_city` | Settle | Settlers only |
 | `improve` | Build improvement | Builders only; see improvements below |
+| `remove_feature` | Chop/harvest feature | Builders only; removes forest, jungle, or marsh from tile |
 | `trade_route` | Start route | Traders; target_x/y of destination city |
 | `teleport` | Move idle trader | Traders only; target_x/y of city |
 | `activate` | Use Great Person | Must be on completed matching district |
 | `spread_religion` | Spread religion | Missionaries/Apostles |
 
 Common improvements: `IMPROVEMENT_FARM`, `IMPROVEMENT_MINE`, `IMPROVEMENT_QUARRY`, `IMPROVEMENT_PLANTATION`, `IMPROVEMENT_PASTURE`, `IMPROVEMENT_CAMP`, `IMPROVEMENT_FISHING_BOATS`
+
+Feature removal: Forest, jungle, and marsh tiles block most improvements (e.g. Farm). Use `remove_feature` to chop/harvest the feature first, then `improve` to build. Lumber Mill and Camp work on forest/jungle without removal. Check `valid_improvements` in `get_units` output — if FARM isn't listed on a tile you expect it, the tile likely has a blocking feature.
 
 Builders repair tile improvements. Pillaged **district buildings** (Workshop, Arena, etc.) are repaired via `set_city_production`.
 
@@ -205,6 +219,8 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 6. Buildings — Library, Market within completed districts
 7. Infrastructure — Granary, Water Mill, Monument
 
+Wonders — high-production cities can slot these between infrastructure. Use `get_wonder_advisor(city_id, wonder_name)` for placement, then `set_city_production` with target_x/y. Science: Great Library, Oxford University, Kilwa Kisiwani. Culture: Chichen Itza, Forbidden City. General: Ancestral Hall, Pyramids.
+
 **Research:** `get_tech_civics` sorts by turns ascending; items ≤ 2 turns are flagged `!! GRAB THIS` — cheap boosted techs are easy to miss and can unblock entire production chains.
 
 ## District Placement
@@ -250,6 +266,7 @@ WC fires synchronously inside `end_turn()` — register votes **before** calling
 - 1 free vote per resolution (costs nothing — worth casting)
 - Extra votes cost 6/18/36/60/90/126... cumulative favor
 - Keeping 50-100 favor in reserve between sessions provides flexibility for the next session
+- DVP resolutions: read what each option actually awards before voting. Concentrate favor on the single most impactful resolution rather than spreading thin. Verify your vote blocks the rival, not accidentally helps them
 
 ## Victory Conditions
 
@@ -261,6 +278,8 @@ WC fires synchronously inside `end_turn()` — register votes **before** calling
 | Religious | Your religion majority in ALL civs | `get_religion_spread` every 20t |
 | Diplomatic | 20 diplomatic victory points | World Congress votes |
 | Score | Highest score at T500 | fallback |
+
+All victories trigger immediately when the condition is met — they do not wait for a turn boundary or WC session. A rival reaching 20 DVP wins before your next turn. The only counter is stripping DVP at a World Congress *before* they reach 20.
 
 `end_turn` runs a victory proximity scan every turn and a full snapshot every 10 turns. These warnings are the primary signal for invisible victories — worth paying attention to.
 

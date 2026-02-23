@@ -30,6 +30,19 @@ for i, u in Players[id]:GetUnits():Members() do
         if gp then
             local ok_gp, gp_charges = pcall(function() return gp:GetActionCharges() end)
             if ok_gp and gp_charges and gp_charges > 0 then charges = gp_charges end
+            if charges == 0 then
+                -- Cultural GPs (Writers/Artists/Musicians) return 0 from
+                -- GetActionCharges(). Fall back to the individual definition.
+                pcall(function()
+                    local indIdx = gp:GetIndividual()
+                    for ind in GameInfo.GreatPersonIndividuals() do
+                        if ind.Index == indIdx then
+                            charges = ind.ActionCharges or 0
+                            break
+                        end
+                    end
+                end)
+            end
         end
         if charges == 0 then
             local ok_sp, sp = pcall(function() return u:GetSpreadCharges() end)
@@ -629,7 +642,31 @@ def build_improve_tile(unit_index: int, improvement_name: str) -> str:
     return f"""
 {_lua_get_unit(unit_index)}
 local imp = GameInfo.Improvements["{improvement_name}"]
-if imp == nil then {_bail(f"ERR:IMPROVEMENT_NOT_FOUND|{improvement_name}")} end
+if imp == nil then
+    -- Feature removals (IMPROVEMENT_REMOVE_*) may not be in Improvements table.
+    -- Try scanning by ImprovementType name in case indexed lookup fails.
+    for row in GameInfo.Improvements() do
+        if row.ImprovementType == "{improvement_name}" then imp = row; break end
+    end
+    if imp == nil then
+        -- List all available improvements so the agent can find the correct name
+        local available = {{}}
+        local params0 = {{}}
+        params0[UnitOperationTypes.PARAM_X] = unit:GetX()
+        params0[UnitOperationTypes.PARAM_Y] = unit:GetY()
+        for row in GameInfo.Improvements() do
+            if row.Buildable then
+                params0[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = row.Hash
+                local ok2, canBuild2 = pcall(function()
+                    return UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, params0)
+                end)
+                if ok2 and canBuild2 then table.insert(available, row.ImprovementType) end
+            end
+        end
+        local hint = #available > 0 and ". Available here: " .. table.concat(available, ", ") or ""
+        {_bail_lua(f'"ERR:IMPROVEMENT_NOT_FOUND|{improvement_name} not in game database" .. hint')}
+    end
+end
 local plot = Map.GetPlot(unit:GetX(), unit:GetY())
 if plot:GetOwner() ~= me then {_bail_lua('"ERR:NOT_YOUR_TERRITORY|Tile at " .. unit:GetX() .. "," .. unit:GetY() .. " is not in your territory"')} end
 local params = {{}}
@@ -642,9 +679,22 @@ if plot:IsImprovementPillaged() then
         local rParams = {{}}
         rParams[UnitOperationTypes.PARAM_X] = unit:GetX()
         rParams[UnitOperationTypes.PARAM_Y] = unit:GetY()
-        if UnitManager.CanStartOperation(unit, repairHash, nil, rParams) then
+        -- Include improvement type — REPAIR may need to know WHICH improvement to restore
+        local impType = plot:GetImprovementType()
+        if impType >= 0 then
+            local impRow = GameInfo.Improvements[impType]
+            if impRow then rParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = impRow.Hash end
+        end
+        local canRepair = UnitManager.CanStartOperation(unit, repairHash, nil, rParams)
+        if canRepair then
             UnitManager.RequestOperation(unit, repairHash, rParams)
             print("OK:REPAIRING|{improvement_name}|" .. unit:GetX() .. "," .. unit:GetY())
+            print("{SENTINEL}"); return
+        else
+            -- CanStartOperation is unreliable (stale InGame state) — attempt anyway
+            pcall(function() UnitManager.RequestOperation(unit, repairHash, rParams) end)
+            -- Check if it worked by re-reading pillage state next frame
+            print("WARN:REPAIR_ATTEMPTED|CanStartOperation=false but RequestOperation sent. Verify next turn.")
             print("{SENTINEL}"); return
         end
     end
@@ -662,11 +712,71 @@ if not canBuild then
         end
     end
     local reasonStr = #reasons > 0 and table.concat(reasons, "; ") or "unknown reason"
-    print("ERR:CANNOT_IMPROVE|" .. reasonStr)
+    -- Detect blocking feature and suggest alternatives
+    local featureHint = ""
+    local fType = plot:GetFeatureType()
+    if fType >= 0 then
+        local fInfo = GameInfo.Features[fType]
+        local fName = fInfo and fInfo.FeatureType or "UNKNOWN"
+        -- List what CAN be built here (including feature removal)
+        local alts = {{}}
+        for altImp in GameInfo.Improvements() do
+            if altImp.Buildable and not altImp.TraitType then
+                local aParams = {{}}
+                aParams[UnitOperationTypes.PARAM_X] = unit:GetX()
+                aParams[UnitOperationTypes.PARAM_Y] = unit:GetY()
+                aParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = altImp.Hash
+                local ok3, canAlt = pcall(function()
+                    return UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, aParams)
+                end)
+                if ok3 and canAlt then table.insert(alts, altImp.ImprovementType) end
+            end
+        end
+        featureHint = " Tile has " .. fName .. ". Use remove_feature action first."
+        if #alts > 0 then
+            featureHint = featureHint .. " Or build directly: " .. table.concat(alts, ", ") .. "."
+        end
+    end
+    print("ERR:CANNOT_IMPROVE|" .. reasonStr .. featureHint)
     print("{SENTINEL}"); return
 end
 UnitManager.RequestOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, params)
 print("OK:IMPROVING|{improvement_name}|" .. unit:GetX() .. "," .. unit:GetY())
+print("{SENTINEL}")
+"""
+
+
+def build_remove_feature(unit_index: int) -> str:
+    """Remove (chop/harvest) a feature from the tile the builder is standing on.
+
+    Uses UNITOPERATION_REMOVE_FEATURE — works on forest, jungle, marsh.
+    The game auto-detects which feature is present; no feature param needed.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+if unit:GetMovesRemaining() <= 0 then
+    {_bail("ERR:NO_MOVES|Builder has no moves remaining this turn")}
+end
+local plot = Map.GetPlot(unit:GetX(), unit:GetY())
+local fType = plot:GetFeatureType()
+if fType < 0 then
+    {_bail_lua('"ERR:NO_FEATURE|No feature on tile (" .. unit:GetX() .. "," .. unit:GetY() .. ") to remove"')}
+end
+local fInfo = GameInfo.Features[fType]
+local fName = fInfo and fInfo.FeatureType or "UNKNOWN"
+local opRow = GameInfo.UnitOperations["UNITOPERATION_REMOVE_FEATURE"]
+if not opRow then
+    {_bail("ERR:OP_NOT_FOUND|UNITOPERATION_REMOVE_FEATURE not available")}
+end
+local params = {{}}
+params[UnitOperationTypes.PARAM_X] = unit:GetX()
+params[UnitOperationTypes.PARAM_Y] = unit:GetY()
+local canStart = UnitManager.CanStartOperation(unit, opRow.Hash, nil, params, true)
+if not canStart then
+    {_bail_lua('"ERR:CANNOT_REMOVE|Cannot remove " .. fName .. " at (" .. unit:GetX() .. "," .. unit:GetY() .. ")"')}
+end
+UnitManager.RequestOperation(unit, opRow.Hash, params)
+print("OK:REMOVING_FEATURE|" .. fName .. " at " .. unit:GetX() .. "," .. unit:GetY())
 print("{SENTINEL}")
 """
 

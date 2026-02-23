@@ -245,11 +245,15 @@ local pGovs = Players[me]:GetGovernors()
 local gov = GameInfo.Governors["{governor_type}"]
 if gov == nil then {_bail(f"ERR:GOVERNOR_NOT_FOUND|{governor_type}")} end
 if not pGovs:HasGovernor(gov.Hash) then {_bail(f"ERR:NOT_APPOINTED|{governor_type} not appointed")} end
-if not pGovs:CanPromoteGovernor(gov.Hash) then {_bail("ERR:CANNOT_PROMOTE|No governor points or no promotions available")} end
 local promo = GameInfo.GovernorPromotions["{promotion_type}"]
 if promo == nil then {_bail(f"ERR:PROMOTION_NOT_FOUND|{promotion_type}")} end
 local g = pGovs:GetGovernor(gov.Hash)
+-- Check HasPromotion BEFORE CanPromoteGovernor so the agent gets
+-- a specific "already earned" error instead of a generic "can't promote"
 if g:HasPromotion(promo.Index) then {_bail(f"ERR:ALREADY_PROMOTED|{promotion_type} already earned")} end
+local pts = pGovs:GetGovernorPoints() - pGovs:GetGovernorPointsSpent()
+if pts <= 0 then {_bail("ERR:CANNOT_PROMOTE|No governor points available (0 remaining)")} end
+if not pGovs:CanPromoteGovernor(gov.Hash) then {_bail("ERR:CANNOT_PROMOTE|Governor has no available promotions")} end
 local params = {{}}
 params[PlayerOperations.PARAM_GOVERNOR_TYPE] = gov.Index
 params[PlayerOperations.PARAM_GOVERNOR_PROMOTION_TYPE] = promo.Index

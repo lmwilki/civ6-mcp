@@ -146,6 +146,7 @@ local winTeam = -1
 pcall(function() winTeam = Game.GetWinningTeam() end)
 local winnerId = -1
 local winnerName = "Unknown"
+local winnerLeader = "Unknown"
 local victoryType = "Unknown"
 if winTeam >= 0 then
     for i = 0, 62 do
@@ -154,6 +155,7 @@ if winTeam >= 0 then
             winnerId = i
             local cfg = PlayerConfigurations[i]
             winnerName = Locale.Lookup(cfg:GetCivilizationShortDescription())
+            winnerLeader = Locale.Lookup(cfg:GetLeaderName())
             break
         end
     end
@@ -208,7 +210,7 @@ if winnerId >= 0 then
 end
 local isDefeat = winTeam >= 0 and Players[me]:GetTeam() ~= winTeam
 local result = isDefeat and "DEFEAT" or "VICTORY"
-print("GAME_OVER|" .. result .. "|" .. winnerName .. "|" .. victoryType .. "|" .. (meAlive and "alive" or "dead"))
+print("GAME_OVER|" .. result .. "|" .. winnerName .. "|" .. victoryType .. "|" .. (meAlive and "alive" or "dead") .. "|" .. winnerLeader)
 print("{SENTINEL}")
 """
 
@@ -224,6 +226,7 @@ def parse_gameover_response(lines: list[str]) -> GameOverStatus | None:
                 is_game_over=True,
                 is_defeat=parts[1] == "DEFEAT",
                 winner_name=parts[2] if len(parts) > 2 else "Unknown",
+                winner_leader=parts[5] if len(parts) > 5 else "Unknown",
                 victory_type=parts[3] if len(parts) > 3 else "Unknown",
                 player_alive=parts[4] == "alive" if len(parts) > 4 else True,
             )
@@ -875,15 +878,16 @@ def build_diary_full_query() -> str:
         "    local csInf = Players[i]:GetInfluence() "
         "    local envoys = 0 "
         "    pcall(function() envoys = csInf:GetTokensReceived(me) end) "
-        "    if envoys > 0 then "
-        "      local csName = Locale.Lookup("
-        "        PlayerConfigurations[i]:GetCivilizationShortDescription()) "
-        '      envoyStr = envoyStr .. (envoyStr ~= "" and "," or "") '
-        "        .. csName .. \":\" .. envoys "
-        "    end "
         "    local suzID = -1 "
         "    pcall(function() suzID = csInf:GetSuzerain() end) "
         "    if suzID == me then suzCount = suzCount + 1 end "
+        "    if envoys > 0 then "
+        "      local csName = Locale.Lookup("
+        "        PlayerConfigurations[i]:GetCivilizationShortDescription()) "
+        "      local suffix = (suzID == me) and '*' or '' "
+        '      envoyStr = envoyStr .. (envoyStr ~= "" and "," or "") '
+        "        .. csName .. suffix .. \":\" .. envoys "
+        "    end "
         "  end "
         "end "
         'print("ACS|" .. suzCount .. "|" .. envoysAvail .. "|" .. envoyStr) '
@@ -921,21 +925,30 @@ def build_diary_full_query() -> str:
         "    end "
         "  end "
         "end "
-        # Trade routes
+        # Trade routes — must iterate cities, player-level GetOutgoingRoutes() is nil
         "local trCap, trActive, trDom, trIntl = 0, 0, 0, 0 "
         "pcall(function() "
-        "  local pTrade = Players[me]:GetTrade() "
-        "  trCap = pTrade:GetOutgoingRouteCapacity() or 0 "
-        "  local routes = pTrade:GetOutgoingRoutes() "
-        "  if routes then "
-        "    trActive = #routes "
-        "    for _, r in ipairs(routes) do "
-        "      if r.DestinationCityPlayer == me then "
-        "        trDom = trDom + 1 "
-        "      else trIntl = trIntl + 1 end "
-        "    end "
-        "  end "
+        "  trCap = Players[me]:GetTrade():GetOutgoingRouteCapacity() or 0 "
         "end) "
+        "local trSeen = {} "
+        "for _, city in Players[me]:GetCities():Members() do "
+        "  pcall(function() "
+        "    local routes = city:GetTrade():GetOutgoingRoutes() "
+        "    if not routes then return end "
+        "    for _, r in ipairs(routes) do "
+        "      local key = r.TraderUnitID "
+        "        .. '_' .. r.DestinationCityPlayer "
+        "        .. '_' .. r.DestinationCityID "
+        "      if not trSeen[key] then "
+        "        trSeen[key] = true "
+        "        trActive = trActive + 1 "
+        "        if r.DestinationCityPlayer == me then "
+        "          trDom = trDom + 1 "
+        "        else trIntl = trIntl + 1 end "
+        "      end "
+        "    end "
+        "  end) "
+        "end "
         'print("ATRADE|" .. trCap .. "|" .. trActive '
         '  .. "|" .. trDom .. "|" .. trIntl) '
         # Great people points

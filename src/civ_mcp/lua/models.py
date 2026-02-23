@@ -406,6 +406,7 @@ class DiplomacySession:
         ""  # semicolon-separated visible button labels; "GOODBYE" if goodbye phase
     )
     deal_summary: str = ""  # human-readable deal content when AI proposes a deal (e.g. "They offer: Research Alliance (25 turns)")
+    is_at_war: bool = False  # True if this player declared war (session is war declaration)
 
 
 @dataclass
@@ -1023,6 +1024,7 @@ class GameOverStatus:
     is_game_over: bool
     is_defeat: bool  # True = we lost, False = we won
     winner_name: str
+    winner_leader: str
     victory_type: str  # e.g. "VICTORY_RELIGIOUS", "VICTORY_SCIENCE"
     player_alive: bool
 

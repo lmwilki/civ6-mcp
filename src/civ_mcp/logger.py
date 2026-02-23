@@ -56,6 +56,7 @@ class GameLogger:
         self._path: Path | None = None
         self._buffer: list[dict[str, Any]] = []
         self._agent_model: str | None = None
+        self._game_over_logged: bool = False
 
     @property
     def bound(self) -> bool:
@@ -174,4 +175,35 @@ class GameLogger:
             result=error,
             success=False,
         )
+        await self._write(entry)
+
+    async def log_game_over(
+        self,
+        *,
+        is_defeat: bool,
+        winner_civ: str,
+        winner_leader: str,
+        victory_type: str,
+        player_alive: bool,
+    ) -> None:
+        if self._game_over_logged:
+            return
+        self._game_over_logged = True
+        result_str = (
+            f"{'Defeat' if is_defeat else 'Victory'}"
+            f" — {winner_leader} of {winner_civ} ({victory_type})"
+        )
+        entry = self._build_entry(
+            "game_over",
+            tool="end_turn",
+            result=result_str,
+            success=True,
+        )
+        entry["outcome"] = {
+            "is_defeat": is_defeat,
+            "winner_civ": winner_civ,
+            "winner_leader": winner_leader,
+            "victory_type": victory_type,
+            "player_alive": player_alive,
+        }
         await self._write(entry)
