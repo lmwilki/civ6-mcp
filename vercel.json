@@ -1,6 +1,0 @@
-{
-  "buildCommand": "cd web && bunx convex deploy --cmd 'bun run build'",
-  "outputDirectory": "web/.next",
-  "installCommand": "cd web && bun install",
-  "framework": "nextjs"
-}
