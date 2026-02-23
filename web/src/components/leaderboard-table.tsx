@@ -4,7 +4,7 @@ import type { TurnData, PlayerRow } from "@/lib/diary-types"
 import { ScoreDelta } from "./agent-overview"
 import { CollapsiblePanel } from "./collapsible-panel"
 import { CivIcon } from "./civ-icon"
-import { CIV6_COLORS } from "@/lib/civ-colors"
+import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors"
 import { Medal } from "lucide-react"
 
 interface LeaderboardTableProps {
@@ -70,7 +70,13 @@ export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTablePro
                     {rank + 1}
                   </td>
                   <td className={`py-1 px-1 ${isAgent ? "font-semibold text-gold-dark" : "font-medium text-marble-700"}`}>
-                    {p.civ}
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: getCivColors(p.civ, p.leader).primary }}
+                      />
+                      {p.civ}
+                    </span>
                   </td>
                   <td className={`py-1 px-1 font-mono tabular-nums ${b(p.score, best.score)}`}>
                     {p.score} <ScoreDelta current={p.score} prev={prev?.score} />

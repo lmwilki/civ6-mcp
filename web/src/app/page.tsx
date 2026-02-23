@@ -13,11 +13,22 @@ import { ScoreSparkline } from "@/components/score-sparkline"
 import { MultiCivChart } from "@/components/multi-civ-chart"
 import { useDiaryList, useDiary } from "@/lib/use-diary"
 import { CIV6_COLORS } from "@/lib/civ-colors"
+import { CivIcon } from "@/components/civ-icon"
 import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  TrendingUp,
+  Trophy,
+  FlaskConical,
+  BookOpen,
+  Coins,
+  Shield,
+  Flame,
+  MapPin,
+  Compass,
+  Users,
 } from "lucide-react"
 
 export default function DiaryPage() {
@@ -204,19 +215,20 @@ export default function DiaryPage() {
         {/* Sparkline sidebar */}
         {turns.length > 1 && (
           <div className="w-96 shrink-0 overflow-y-auto border-l border-marble-300 bg-marble-50 p-4">
-            <h3 className="mb-3 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+              <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
               Trends
             </h3>
             <div className="space-y-2">
-              <ScoreSparkline turns={turns} currentIndex={index} field="score" label="Score" color={CIV6_COLORS.goldMetal} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="science" label="Science" color={CIV6_COLORS.science} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="culture" label="Culture" color={CIV6_COLORS.culture} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="gold" label="Gold" color={CIV6_COLORS.goldDark} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color={CIV6_COLORS.military} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color={CIV6_COLORS.faith} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color={CIV6_COLORS.marine} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="exploration_pct" label="Explored" color={CIV6_COLORS.favor} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color={CIV6_COLORS.growth} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="score" label="Score" color={CIV6_COLORS.goldMetal} icon={Trophy} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="science" label="Science" color={CIV6_COLORS.science} icon={FlaskConical} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="culture" label="Culture" color={CIV6_COLORS.culture} icon={BookOpen} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="gold" label="Gold" color={CIV6_COLORS.goldDark} icon={Coins} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color={CIV6_COLORS.military} icon={Shield} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color={CIV6_COLORS.faith} icon={Flame} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color={CIV6_COLORS.marine} icon={MapPin} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="exploration_pct" label="Explored" color={CIV6_COLORS.favor} icon={Compass} />
+              <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color={CIV6_COLORS.growth} icon={Users} />
             </div>
 
             {turns.some((t) => t.rivals.length > 0) && (

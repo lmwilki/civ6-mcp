@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import type { TurnData, NumericPlayerField } from "@/lib/diary-types"
 import { AnimatedNumber } from "./animated-number"
+import { CivIcon } from "./civ-icon"
 
 interface ScoreSparklineProps {
   turns: TurnData[]
@@ -10,6 +11,7 @@ interface ScoreSparklineProps {
   field: NumericPlayerField
   label: string
   color: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   height?: number
 }
 
@@ -19,6 +21,7 @@ export function ScoreSparkline({
   field,
   label,
   color,
+  icon,
   height = 40,
 }: ScoreSparklineProps) {
   const w = 300
@@ -49,9 +52,12 @@ export function ScoreSparkline({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="w-14 text-right text-xs font-medium uppercase tracking-wider text-marble-600">
-        {label}
-      </span>
+      <div className="flex w-20 shrink-0 items-center justify-end gap-1">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-marble-600">
+          {label}
+        </span>
+        <CivIcon icon={icon} color={color} size="sm" />
+      </div>
       <svg
         viewBox={`0 0 ${w} ${height}`}
         className="h-10 flex-1"

@@ -2,12 +2,9 @@
 
 import { useState, useMemo } from "react"
 import type { TurnData, NumericPlayerField, PlayerRow } from "@/lib/diary-types"
-import { CIV6_COLORS } from "@/lib/civ-colors"
-
-const RIVAL_COLORS = [
-  "#E63946", "#457B9D", "#2A9D8F", "#E9C46A",
-  "#F4A261", "#264653", "#9B5DE5", "#F15BB5",
-]
+import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors"
+import { CivIcon } from "./civ-icon"
+import { BarChart3 } from "lucide-react"
 
 const METRIC_OPTIONS: { value: NumericPlayerField; label: string }[] = [
   { value: "score", label: "Score" },
@@ -44,15 +41,13 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
   const { civMap, agentValues, agentPoints, rivalLines } = useMemo(() => {
     // Collect all rival civs, assign stable colors
     const cMap = new Map<number, { name: string; color: string }>()
-    let colorIdx = 0
     for (const t of turns) {
       for (const r of t.rivals) {
         if (!cMap.has(r.pid)) {
           cMap.set(r.pid, {
             name: r.civ,
-            color: RIVAL_COLORS[colorIdx % RIVAL_COLORS.length],
+            color: getCivColors(r.civ, r.leader).primary,
           })
-          colorIdx++
         }
       }
     }
@@ -117,7 +112,8 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+        <h3 className="flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+          <CivIcon icon={BarChart3} color={CIV6_COLORS.marine} size="sm" />
           Comparison
         </h3>
         <select
@@ -159,8 +155,8 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
       {/* Legend */}
       <div className="mt-1.5 space-y-0.5">
         <div className="flex items-center gap-1.5">
-          <div className="h-2 w-3 rounded-sm" style={{ backgroundColor: CIV6_COLORS.goldMetal }} />
-          <span className="flex-1 text-[10px] text-marble-600">{currentTurn?.agent.civ ?? "You"}</span>
+          <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CIV6_COLORS.goldMetal }} />
+          <span className="flex-1 text-[10px] font-medium text-marble-700">{currentTurn?.agent.civ ?? "You"}</span>
           <span className="font-mono text-[10px] tabular-nums text-marble-700">
             {agentValues[currentIndex]}
           </span>
@@ -170,7 +166,7 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
           const rivalVal = rival ? getValue(rival) : null
           return (
             <div key={pid} className="flex items-center gap-1.5">
-              <div className="h-2 w-3 rounded-sm" style={{ backgroundColor: color }} />
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
               <span className="flex-1 text-[10px] text-marble-600">{name}</span>
               <span className="font-mono text-[10px] tabular-nums text-marble-700">
                 {rivalVal ?? "—"}

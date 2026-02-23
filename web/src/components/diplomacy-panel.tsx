@@ -4,7 +4,7 @@ import type { PlayerRow } from "@/lib/diary-types"
 import { DIPLO_STATE_NAMES, DIPLO_STATE_COLORS } from "@/lib/diary-types"
 import { CollapsiblePanel } from "./collapsible-panel"
 import { CivIcon } from "./civ-icon"
-import { CIV6_COLORS } from "@/lib/civ-colors"
+import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors"
 import { Crown, Handshake } from "lucide-react"
 
 interface DiplomacyPanelProps {
@@ -46,7 +46,15 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
               <tbody>
                 {Object.entries(diplo).map(([civ, ds]) => (
                   <tr key={civ} className="border-t border-marble-200/50">
-                    <td className="py-1 px-1 font-medium text-marble-700">{civ}</td>
+                    <td className="py-1 px-1 font-medium text-marble-700">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: getCivColors(civ).primary }}
+                        />
+                        {civ}
+                      </span>
+                    </td>
                     <td className={`py-1 px-1 ${DIPLO_STATE_COLORS[ds.state] ?? "text-marble-600"}`}>
                       {DIPLO_STATE_NAMES[ds.state] ?? `State ${ds.state}`}
                     </td>
