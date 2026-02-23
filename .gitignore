@@ -23,9 +23,6 @@ web/node_modules/
 web/.next/
 web/.env.local
 
-# Convex generated files (regenerated during build)
-web/convex/_generated/
-
 # LaTeX build artifacts
 docs/paper/build/
 *.aux
