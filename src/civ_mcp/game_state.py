@@ -28,6 +28,8 @@ class GameState:
         self._game_identity: tuple[str, int] | None = None  # (civ_type, seed)
         self._diary_written_turn: int | None = None  # guard against double-write per turn
         self._end_turn_blocked: bool = False  # last end_turn hit a blocker (diplo/WC)
+        self._pending_end_turn: bool = False  # ACTION_ENDTURN already in flight
+        self._pending_end_turn_from: int | None = None  # turn number when ACTION_ENDTURN was sent
 
     async def get_game_identity(self) -> tuple[str, int]:
         """Return (civ_type_lower, random_seed) for the current game.
@@ -234,7 +236,10 @@ class GameState:
                 post_hp = _extract_post_hp(followup)
                 damage_info = ""
                 if pre_hp is not None and post_hp is not None:
-                    damage_info = f"|damage dealt:{pre_hp - post_hp}"
+                    dmg = pre_hp - post_hp
+                    if dmg > 0:
+                        damage_info = f"|damage dealt:{dmg}"
+                    # dmg <= 0: attacker moved onto tile after kill; post_hp is our unit
                 elif pre_hp is not None and followup_str == "Target eliminated":
                     damage_info = f"|damage dealt:{pre_hp}"
 
@@ -273,7 +278,9 @@ class GameState:
                 post_hp = _extract_post_hp(followup)
                 damage_info = ""
                 if pre_hp is not None and post_hp is not None:
-                    damage_info = f"|damage dealt:{pre_hp - post_hp}"
+                    dmg = pre_hp - post_hp
+                    if dmg > 0:
+                        damage_info = f"|damage dealt:{dmg}"
                 elif pre_hp is not None and followup_str == "Target eliminated":
                     damage_info = f"|damage dealt:{pre_hp}"
 
@@ -424,6 +431,11 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
+    async def remove_feature(self, unit_index: int) -> str:
+        lua = lq.build_remove_feature(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
     async def set_city_production(
         self,
         city_id: int,
@@ -481,16 +493,21 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
         if "OK:RESEARCHING" in result:
-            # Verify InGame actually accepted it (desync check)
+            # Verify InGame actually accepted it by comparing tech INDEX.
+            # RequestPlayerOperation is fire-and-forget — it can silently no-op
+            # while GetResearchingTech() still returns the OLD tech's index (!= -1).
             verify = await self.conn.execute_read(
                 f"local me = Game.GetLocalPlayer(); "
-                f"print(Players[me]:GetTechs():GetResearchingTech()); "
+                f"local idx = nil; "
+                f'for row in GameInfo.Technologies() do '
+                f'if row.TechnologyType == "{tech_name}" then idx = row.Index; break end '
+                f"end; "
+                f"local cur = Players[me]:GetTechs():GetResearchingTech(); "
+                f"print(cur == idx and 'MATCH' or 'MISMATCH:'..tostring(cur)..'~='..tostring(idx)); "
                 f'print("{lq.SENTINEL}")'
             )
-            gc_tech = (
-                int(verify[0]) if verify and verify[0].lstrip("-").isdigit() else -1
-            )
-            if gc_tech == -1:
+            matched = verify and verify[0] == "MATCH"
+            if not matched:
                 # InGame silently failed — fall back to GameCore
                 gc_lua = lq.build_set_research_gamecore(tech_name)
                 gc_lines = await self.conn.execute_read(gc_lua)
@@ -502,16 +519,19 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
         if "OK:PROGRESSING" in result:
-            # Verify InGame actually accepted it (desync check)
+            # Verify InGame actually accepted it by comparing civic INDEX.
             verify = await self.conn.execute_read(
                 f"local me = Game.GetLocalPlayer(); "
-                f"print(Players[me]:GetCulture():GetProgressingCivic()); "
+                f"local idx = nil; "
+                f'for row in GameInfo.Civics() do '
+                f'if row.CivicType == "{civic_name}" then idx = row.Index; break end '
+                f"end; "
+                f"local cur = Players[me]:GetCulture():GetProgressingCivic(); "
+                f"print(cur == idx and 'MATCH' or 'MISMATCH:'..tostring(cur)..'~='..tostring(idx)); "
                 f'print("{lq.SENTINEL}")'
             )
-            gc_civic = (
-                int(verify[0]) if verify and verify[0].lstrip("-").isdigit() else -1
-            )
-            if gc_civic == -1:
+            matched = verify and verify[0] == "MATCH"
+            if not matched:
                 # InGame silently failed — fall back to GameCore
                 lua_gc = lq.build_set_civic_gamecore(civic_name)
                 gc_lines = await self.conn.execute_read(lua_gc)

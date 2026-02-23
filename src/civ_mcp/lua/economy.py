@@ -740,10 +740,34 @@ if not can then
     end
     local reqStr = #requirements > 0 and " Requirements: " .. table.concat(requirements, "; ") or ""
     local tilesStr = #validTiles > 0 and " Valid tiles: " .. table.concat(validTiles, "; ") or " No valid activation tiles found."
-    {_bail_lua('"ERR:CANNOT_ACTIVATE|" .. Locale.Lookup(unit:GetName()) .. " at (" .. ux .. "," .. uy .. ") charges=" .. charges .. "." .. reqStr .. tilesStr')}
+    local classStr = ""
+    pcall(function()
+        local gpClass = uInfo and uInfo.GreatPersonClass or nil
+        if gpClass then classStr = " class=" .. gpClass end
+    end)
+    {_bail_lua('"ERR:CANNOT_ACTIVATE|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ")" .. classStr .. " at (" .. ux .. "," .. uy .. ") charges=" .. charges .. "." .. reqStr .. tilesStr')}
 end
 UnitManager.RequestCommand(unit, cmdHash, {{}})
-print("OK:GP_ACTIVATED|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ") at " .. ux .. "," .. uy)
+-- Report remaining charges so agent knows whether to activate again
+local remCharges = -1
+pcall(function()
+    local gp2 = unit:GetGreatPerson()
+    if gp2 then
+        remCharges = gp2:GetActionCharges() or 0
+        if remCharges == 0 then
+            local indIdx = gp2:GetIndividual()
+            for ind in GameInfo.GreatPersonIndividuals() do
+                if ind.Index == indIdx then
+                    remCharges = (ind.ActionCharges or 1) - 1
+                    break
+                end
+            end
+        end
+    end
+end)
+local chargeStr = ""
+if remCharges > 0 then chargeStr = " charges_remaining=" .. remCharges .. " — activate again to use next charge" end
+print("OK:GP_ACTIVATED|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ") at " .. ux .. "," .. uy .. chargeStr)
 print("{SENTINEL}")
 """
 

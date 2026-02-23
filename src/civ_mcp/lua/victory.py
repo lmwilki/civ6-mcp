@@ -40,7 +40,7 @@ for i = 0, 62 do
         end
         if i ~= me and pDiplo:HasMet(i) then
             local okDvp, dvp = pcall(function() return p:GetStats():GetDiplomaticVictoryPoints() end)
-            if okDvp and dvp and dvp >= 15 then
+            if okDvp and dvp and dvp >= 10 then
                 local cfg = PlayerConfigurations[i]
                 print("DIPLO_THREAT|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. dvp)
             end

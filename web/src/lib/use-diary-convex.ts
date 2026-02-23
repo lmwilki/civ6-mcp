@@ -19,6 +19,9 @@ export function useDiaryListConvex(): DiaryFile[] {
     label: g.label,
     count: g.count,
     hasCities: g.hasCities,
+    leader: g.leader,
+    status: g.status as "live" | "completed",
+    outcome: g.outcome ?? null,
   }))
 }
 

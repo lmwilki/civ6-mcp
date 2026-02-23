@@ -11,6 +11,9 @@ export const ingestPlayerRows = mutation({
   },
   handler: async (ctx, { gameId, civ, leader, seed, rows }) => {
     for (const row of rows) {
+      // Backfill fields added after early game data was recorded
+      if (row.exploration_pct === undefined) row.exploration_pct = 0;
+
       // Upsert by (gameId, turn, pid) — handles reflection merges
       const existing = await ctx.db
         .query("playerRows")
@@ -98,16 +101,27 @@ export const ingestLogEntries = mutation({
     entries: v.array(v.any()),
   },
   handler: async (ctx, { gameId, civ, seed, entries }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let gameOverOutcome: any = null
+
     for (const entry of entries) {
+      // Detect game_over entries before stripping for logEntries insert
+      if (entry.type === "game_over" && entry.outcome) {
+        gameOverOutcome = entry
+      }
+
+      // Strip outcome field — logEntries schema doesn't include it
+      const { outcome: _outcome, ...logEntry } = entry
+
       // Dedup by (gameId, line)
       const existing = await ctx.db
         .query("logEntries")
         .withIndex("by_game_line", (q) =>
-          q.eq("gameId", gameId).eq("line", entry.line)
+          q.eq("gameId", gameId).eq("line", logEntry.line)
         )
         .unique()
       if (!existing) {
-        await ctx.db.insert("logEntries", { gameId, ...entry })
+        await ctx.db.insert("logEntries", { gameId, ...logEntry })
       }
     }
 
@@ -116,20 +130,51 @@ export const ingestLogEntries = mutation({
       .query("games")
       .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
       .unique()
+
     if (game) {
-      await ctx.db.patch(game._id, { hasLogs: true, lastUpdated: Date.now() })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = { hasLogs: true, lastUpdated: Date.now() }
+      if (gameOverOutcome) {
+        const o = gameOverOutcome.outcome
+        patch.status = "completed"
+        const outcomeTurn = gameOverOutcome.turn ?? 0
+        patch.outcome = {
+          result: o.is_defeat ? ("defeat" as const) : ("victory" as const),
+          winnerCiv: o.winner_civ ?? "Unknown",
+          winnerLeader: o.winner_leader ?? "Unknown",
+          victoryType: o.victory_type ?? "Unknown",
+          turn: outcomeTurn,
+          playerAlive: o.player_alive ?? true,
+        }
+        if (outcomeTurn > 0) {
+          patch.lastTurn = Math.max(game.lastTurn, outcomeTurn)
+          patch.turnCount = Math.max(game.turnCount, outcomeTurn)
+        }
+      }
+      await ctx.db.patch(game._id, patch)
     } else {
+      const outcomeTurn = gameOverOutcome?.turn ?? 0
       await ctx.db.insert("games", {
         gameId,
         civ,
         leader: "",
         seed,
-        status: "live",
-        lastTurn: 0,
+        status: gameOverOutcome ? "completed" : "live",
+        lastTurn: outcomeTurn,
         lastUpdated: Date.now(),
-        turnCount: 0,
+        turnCount: outcomeTurn,
         hasCities: false,
         hasLogs: true,
+        ...(gameOverOutcome ? {
+          outcome: {
+            result: gameOverOutcome.outcome.is_defeat ? ("defeat" as const) : ("victory" as const),
+            winnerCiv: gameOverOutcome.outcome.winner_civ ?? "Unknown",
+            winnerLeader: gameOverOutcome.outcome.winner_leader ?? "Unknown",
+            victoryType: gameOverOutcome.outcome.victory_type ?? "Unknown",
+            turn: outcomeTurn,
+            playerAlive: gameOverOutcome.outcome.player_alive ?? true,
+          },
+        } : {}),
       })
     }
   },
@@ -144,6 +189,29 @@ export const markGameCompleted = mutation({
       .unique()
     if (game) {
       await ctx.db.patch(game._id, { status: "completed" })
+    }
+  },
+})
+
+export const patchGameOutcome = mutation({
+  args: {
+    gameId: v.string(),
+    outcome: v.object({
+      result: v.union(v.literal("victory"), v.literal("defeat")),
+      winnerCiv: v.string(),
+      winnerLeader: v.string(),
+      victoryType: v.string(),
+      turn: v.number(),
+      playerAlive: v.boolean(),
+    }),
+  },
+  handler: async (ctx, { gameId, outcome }) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .unique()
+    if (game) {
+      await ctx.db.patch(game._id, { status: "completed", outcome })
     }
   },
 })

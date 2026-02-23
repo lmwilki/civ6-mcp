@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { NavBar } from "@/components/nav-bar"
-import { LiveGameBanner } from "@/components/live-game-banner"
+import { RecentGames } from "@/components/recent-games"
 import { CivIcon } from "@/components/civ-icon"
 import { CIV6_COLORS } from "@/lib/civ-colors"
 import {
@@ -13,6 +13,7 @@ import {
   FlaskConical,
   Flame,
   Trophy,
+  ScrollText,
 } from "lucide-react"
 
 const CAPABILITIES = [
@@ -60,90 +61,99 @@ export default function LandingPage() {
       <NavBar active="home" />
 
       <main className="flex-1">
-        {/* Hero */}
-        <section className="mx-auto max-w-2xl px-6 pt-16 pb-12 text-center">
-          <h2 className="font-display text-2xl font-bold tracking-[0.08em] uppercase text-marble-800">
-            civ6-mcp
-          </h2>
-          <p className="mt-4 text-lg leading-relaxed text-marble-600">
-            An MCP server that connects LLM agents to live games of
-            Civilization VI. The agent reads full game state, moves units,
-            manages cities, conducts diplomacy, and plays complete games
-            through the engine&apos;s own rule-enforcing APIs.
-          </p>
-          <div className="mt-6 flex items-center justify-center gap-4">
-            <a
-              href="https://github.com/lmwilki/civ6-mcp"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-sm border border-marble-400 bg-marble-100 px-4 py-2 text-sm font-medium text-marble-700 transition-colors hover:border-marble-500 hover:bg-marble-200"
-            >
-              <Github className="h-4 w-4" />
-              GitHub
-            </a>
-          </div>
-        </section>
-
-        {/* Live Game Banner */}
-        <div className="mx-auto max-w-2xl px-6 pb-8">
-          <LiveGameBanner />
-        </div>
-
-        {/* Divider */}
-        <div className="mx-auto max-w-2xl border-t border-marble-300/50" />
-
-        {/* Capabilities */}
-        <section className="mx-auto max-w-2xl px-6 py-12">
-          <h3 className="mb-6 text-center font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
-            70+ Tools
-          </h3>
-          <div className="grid grid-cols-3 gap-4">
-            {CAPABILITIES.map((cap) => (
-              <div
-                key={cap.title}
-                className="rounded-sm border border-marble-300/50 bg-marble-50 p-3"
-              >
-                <div className="flex items-center gap-2">
-                  <CivIcon icon={cap.icon} color={cap.color} size="sm" />
-                  <h4 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
-                    {cap.title}
-                  </h4>
-                </div>
-                <p className="mt-1.5 text-xs leading-relaxed text-marble-600">
-                  {cap.description}
-                </p>
+        <div className="mx-auto grid max-w-5xl gap-10 px-6 py-10 lg:grid-cols-[1fr_280px]">
+          {/* Left column */}
+          <div>
+            {/* Hero */}
+            <section>
+              <h2 className="font-display text-3xl font-bold tracking-[0.08em] uppercase text-marble-800">
+                civ6-mcp
+              </h2>
+              <p className="mt-3 text-xl leading-relaxed text-marble-600">
+                An MCP server that connects LLM agents to live games of
+                Civilization VI. The agent reads full game state, moves units,
+                manages cities, conducts diplomacy, and plays complete games
+                through the engine&apos;s own rule-enforcing APIs.
+              </p>
+              <div className="mt-5">
+                <a
+                  href="https://github.com/lmwilki/civ6-mcp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-sm border border-marble-400 bg-marble-100 px-4 py-2 text-sm font-medium text-marble-700 transition-colors hover:border-marble-500 hover:bg-marble-200"
+                >
+                  <Github className="h-4 w-4" />
+                  GitHub
+                </a>
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
 
-        {/* Divider */}
-        <div className="mx-auto max-w-2xl border-t border-marble-300/50" />
+            {/* Divider */}
+            <div className="my-8 border-t border-marble-300/50" />
 
-        {/* Archive */}
-        <section className="mx-auto max-w-2xl px-6 py-12 text-center">
-          <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
-            Game Archive
-          </h3>
-          <p className="mt-3 text-sm text-marble-600">
-            Browse game diaries — turn-by-turn state, agent reflections, and
-            rival comparisons.
-          </p>
-          <div className="mt-4 flex items-center justify-center gap-4">
-            <Link
-              href="/diary"
-              className="inline-flex items-center gap-2 rounded-sm border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-medium text-gold-dark transition-colors hover:bg-gold/20"
-            >
-              Browse Diaries
-            </Link>
-            <Link
-              href="/timeline"
-              className="inline-flex items-center gap-2 rounded-sm border border-marble-300 bg-marble-100 px-4 py-2 text-sm font-medium text-marble-700 transition-colors hover:bg-marble-200"
-            >
-              Tool Timeline
-            </Link>
+            {/* Capabilities */}
+            <section>
+              <h3 className="mb-4 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+                70+ Tools
+              </h3>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {CAPABILITIES.map((cap) => (
+                  <div
+                    key={cap.title}
+                    className="rounded-sm border border-marble-300/50 bg-marble-50 p-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CivIcon icon={cap.icon} color={cap.color} size="sm" />
+                      <h4 className="font-display text-xs font-bold uppercase tracking-[0.1em] text-marble-700">
+                        {cap.title}
+                      </h4>
+                    </div>
+                    <p className="mt-1.5 text-sm leading-relaxed text-marble-600">
+                      {cap.description}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Divider */}
+            <div className="my-8 border-t border-marble-300/50" />
+
+            {/* Archive */}
+            <section>
+              <h3 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+                Game Archive
+              </h3>
+              <p className="mt-2 text-sm text-marble-600">
+                Browse game diaries — turn-by-turn state, agent reflections, and
+                rival comparisons.
+              </p>
+              <div className="mt-3 flex items-center gap-3">
+                <Link
+                  href="/diary"
+                  className="inline-flex items-center gap-2 rounded-sm border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-medium text-gold-dark transition-colors hover:bg-gold/20"
+                >
+                  Browse Diaries
+                </Link>
+                <Link
+                  href="/timeline"
+                  className="inline-flex items-center gap-2 rounded-sm border border-marble-300 bg-marble-100 px-4 py-2 text-sm font-medium text-marble-700 transition-colors hover:bg-marble-200"
+                >
+                  Tool Timeline
+                </Link>
+              </div>
+            </section>
           </div>
-        </section>
+
+          {/* Right column — Recent Games */}
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            <h3 className="mb-3 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+              <CivIcon icon={ScrollText} color={CIV6_COLORS.goldMetal} size="sm" />
+              Recent Games
+            </h3>
+            <RecentGames />
+          </aside>
+        </div>
       </main>
 
       {/* Footer */}

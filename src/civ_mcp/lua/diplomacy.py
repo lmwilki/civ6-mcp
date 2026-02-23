@@ -154,7 +154,8 @@ for i = 0, 62 do
             local cfg = PlayerConfigurations[i]
             local civName = Locale.Lookup(cfg:GetCivilizationShortDescription())
             local leaderName = Locale.Lookup(cfg:GetLeaderName())
-            print("SESSION|" .. sid .. "|" .. i .. "|" .. civName .. "|" .. leaderName .. "|" .. dialogueText .. "|" .. reasonText .. "|" .. buttonInfo)
+            local atWar = Players[me]:GetDiplomacy():IsAtWarWith(i) and "1" or "0"
+            print("SESSION|" .. sid .. "|" .. i .. "|" .. civName .. "|" .. leaderName .. "|" .. dialogueText .. "|" .. reasonText .. "|" .. buttonInfo .. "|" .. atWar)
             found = true
             local okD, deal = pcall(function() return DealManager.GetWorkingDeal(DealDirection.INCOMING, me, i) end)
             if okD and deal then
@@ -899,6 +900,7 @@ def parse_diplomacy_sessions(lines: list[str]) -> list[DiplomacySession]:
                         dialogue_text=parts[5] if len(parts) > 5 else "",
                         reason_text=parts[6] if len(parts) > 6 else "",
                         buttons=parts[7] if len(parts) > 7 else "",
+                        is_at_war=parts[8] == "1" if len(parts) > 8 else False,
                     )
                 )
         elif line.startswith("DEAL_ITEM|") and sessions:

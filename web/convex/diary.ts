@@ -20,6 +20,7 @@ export const listGames = query({
       status: g.status,
       leader: g.leader,
       lastUpdated: g.lastUpdated,
+      outcome: g.outcome ?? null,
     }))
   },
 })

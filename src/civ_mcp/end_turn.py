@@ -58,13 +58,39 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
         elif line.startswith("DIPLO_THREAT|"):
             parts = line.split("|")
             if len(parts) >= 3:
-                events.append(
-                    lq.TurnEvent(
-                        priority=1,
-                        category="victory",
-                        message=f"!! DIPLOMATIC VICTORY THREAT: {parts[1]} has {parts[2]}/20 Diplomatic Victory Points!",
+                dvp = int(parts[2])
+                if dvp >= 20:
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=f"!!! DIPLOMATIC VICTORY IMMINENT: {parts[1]} has {dvp}/20 DVP — wins immediately, does NOT wait for World Congress!",
+                        )
                     )
-                )
+                elif dvp >= 18:
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=f"!! DIPLOMATIC VICTORY THREAT: {parts[1]} has {dvp}/20 DVP — wins IMMEDIATELY at 20, does not wait for WC. Must strip DVP at next World Congress BEFORE they reach 20.",
+                        )
+                    )
+                elif dvp >= 15:
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=f"!! DIPLOMATIC VICTORY THREAT: {parts[1]} has {dvp}/20 DVP!",
+                        )
+                    )
+                else:
+                    events.append(
+                        lq.TurnEvent(
+                            priority=2,
+                            category="victory",
+                            message=f"Diplomatic race: {parts[1]} has {dvp}/20 DVP.",
+                        )
+                    )
         elif line.startswith("SCI_THREAT|"):
             parts = line.split("|")
             if len(parts) >= 4:
@@ -93,11 +119,13 @@ async def execute_end_turn(gs: GameState) -> str:
     # 0. Game-over check — don't try to advance a finished game
     gameover = await gs.check_game_over()
     if gameover is not None:
+        gs._pending_end_turn = False
+        gs._pending_end_turn_from = None
         vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
         if gameover.is_defeat:
             return (
-                f"GAME OVER — DEFEAT. {gameover.winner_name} won a {vtype} victory. "
-                f"The game has ended. Use load_save to reload an earlier save, or start a new game."
+                f"GAME OVER — DEFEAT. {gameover.winner_leader} of {gameover.winner_name} won a {vtype} victory. "
+                f"The game has ended. No further actions are possible."
             )
         else:
             return (
@@ -478,7 +506,9 @@ async def execute_end_turn(gs: GameState) -> str:
                             f"    if exp then "
                             f"      local xp = exp:GetExperiencePoints(); "
                             f"      local thresh = exp:GetExperienceForNextLevel(); "
-                            f"      if xp >= thresh then "
+                            f"      local stored = 0; "
+                            f"      pcall(function() stored = exp:GetStoredPromotions() end); "
+                            f"      if xp >= thresh and stored > 0 then "
                             f"        local ui = GameInfo.Units[u:GetType()]; "
                             f'        local promClass = ui and ui.PromotionClass or ""; '
                             f'        if promClass ~= "" then '
@@ -625,12 +655,22 @@ async def execute_end_turn(gs: GameState) -> str:
             log.debug("Blocking check failed, proceeding anyway", exc_info=True)
             break
 
-    # Take pre-turn snapshot
-    try:
-        snap_before = await gs._take_snapshot()
-    except Exception:
-        log.debug("Pre-turn snapshot failed", exc_info=True)
+    # Take pre-turn snapshot.
+    # When re-entering after mid-turn diplomacy (_pending_end_turn=True),
+    # the turn may have already advanced. Use the previous call's snapshot
+    # as the baseline so the diff captures what changed across the turn.
+    if gs._pending_end_turn and gs._last_snapshot is not None:
         snap_before = gs._last_snapshot
+        log.debug(
+            "Using previous snapshot (turn %s) as baseline for pending end-turn",
+            snap_before.turn,
+        )
+    else:
+        try:
+            snap_before = await gs._take_snapshot()
+        except Exception:
+            log.debug("Pre-turn snapshot failed", exc_info=True)
+            snap_before = gs._last_snapshot
 
     # Pre-turn threat scan (for fog-of-war direction tracking)
     threats_before: list[lq.ThreatInfo] = []
@@ -644,9 +684,24 @@ async def execute_end_turn(gs: GameState) -> str:
 
     turn_before = snap_before.turn if snap_before else await _get_turn_number(gs)
 
-    # Request end turn
+    # Request end turn — but skip if a previous ACTION_ENDTURN is still in flight.
+    # This prevents duplicate requests that cause turns to skip (e.g. 412 → 415).
+    # After mid-turn diplomacy/deals, the game auto-continues AI processing
+    # with the original request, so we only need to poll for advancement.
     lua = lq.build_end_turn()
-    await gs.conn.execute_write(lua)
+    if gs._pending_end_turn:
+        log.info(
+            "Skipping ACTION_ENDTURN — previous request still in flight (from turn %s)",
+            gs._pending_end_turn_from,
+        )
+        # Use the original turn number as baseline for advancement detection.
+        # The current turn_before may already be advanced if the game auto-continued.
+        if gs._pending_end_turn_from is not None:
+            turn_before = gs._pending_end_turn_from
+    else:
+        await gs.conn.execute_write(lua)
+        gs._pending_end_turn = True
+        gs._pending_end_turn_from = turn_before
 
     # Poll for turn advancement using GameCore-only queries.
     # CRITICAL: Do NOT send InGame queries while AI civs are processing
@@ -695,36 +750,100 @@ async def execute_end_turn(gs: GameState) -> str:
                 if any(not s.dialogue_text for s in mid_sessions):
                     await asyncio.sleep(2.0)
                     mid_sessions = await gs.get_diplomacy_sessions()
-                session_info = []
-                for s in mid_sessions:
-                    phase = (
-                        "deal"
-                        if s.deal_summary
-                        else ("goodbye" if s.buttons == "GOODBYE" else "active")
-                    )
-                    session_info.append(
-                        f"{s.other_civ_name} ({s.other_leader_name}) [{phase}]"
-                    )
-                has_deal = any(s.deal_summary for s in mid_sessions)
-                lines = [
-                    f"Turn paused — AI diplomatic proposal from {', '.join(session_info)}.",
-                ]
-                for s in mid_sessions:
-                    if s.dialogue_text:
-                        lines.append(f'{s.other_civ_name} says: "{s.dialogue_text}"')
-                    if s.reason_text:
-                        lines.append(f"Reason: {s.reason_text}")
-                    if s.deal_summary:
-                        lines.append(f"Deal from {s.other_civ_name}: {s.deal_summary}")
-                if has_deal:
-                    lines.append(
-                        "Use respond_to_trade(other_player_id=X, accept=True/False) to handle it, then end_turn again."
-                    )
+
+                # Auto-dismiss war declarations — these are informational only
+                # (you can't decline a war). Dismiss and report to the agent.
+                war_sessions = [s for s in mid_sessions if s.is_at_war]
+                if war_sessions:
+                    war_names = []
+                    for ws in war_sessions:
+                        close_lua = lq.build_diplomacy_respond(
+                            ws.other_player_id, "EXIT"
+                        )
+                        await gs.conn.execute_write(close_lua)
+                        war_names.append(
+                            f"{ws.other_civ_name} ({ws.other_leader_name})"
+                        )
+                        log.info(
+                            "Auto-dismissed war declaration from %s",
+                            ws.other_civ_name,
+                        )
+                    # Remove war sessions from the list
+                    mid_sessions = [s for s in mid_sessions if not s.is_at_war]
+                    # If only war sessions, resume polling (original ACTION_ENDTURN
+                    # is still in flight — do NOT re-send or turns will skip)
+                    if not mid_sessions:
+                        war_msg = ", ".join(war_names)
+                        for _ in range(10):
+                            await asyncio.sleep(2.0)
+                            turn_after = await _get_turn_number(gs)
+                            if (
+                                turn_after is not None
+                                and turn_before is not None
+                                and turn_after > turn_before
+                            ):
+                                advanced = True
+                                break
+                        if advanced:
+                            # Fall through to snapshot/diff — war info added below
+                            pass
+                        else:
+                            # Original ACTION_ENDTURN was consumed — next call must re-send
+                            gs._pending_end_turn = False
+                            gs._pending_end_turn_from = None
+                            return (
+                                f"WAR DECLARED by {war_msg}! Session dismissed.\n"
+                                f"Turn did not advance — call end_turn again.\n"
+                                f"Reassess: check unit positions, city defenses, and military strength."
+                            )
+                    # If there were also non-war sessions, continue to handle them below
+
+                if not mid_sessions:
+                    # All sessions were war declarations and turn advanced
+                    if advanced and war_sessions:
+                        # Inject war event into post-turn processing below
+                        pass
+                    elif not advanced:
+                        pass  # fall through to other checks
                 else:
+                    session_info = []
+                    for s in mid_sessions:
+                        phase = (
+                            "deal"
+                            if s.deal_summary
+                            else ("goodbye" if s.buttons == "GOODBYE" else "active")
+                        )
+                        session_info.append(
+                            f"{s.other_civ_name} ({s.other_leader_name}) [{phase}]"
+                        )
+                    has_deal = any(s.deal_summary for s in mid_sessions)
+                    lines = []
+                    if war_sessions:
+                        war_names_str = ", ".join(
+                            f"{ws.other_civ_name}" for ws in war_sessions
+                        )
+                        lines.append(
+                            f"WAR DECLARED by {war_names_str}! (auto-dismissed)"
+                        )
                     lines.append(
-                        "Use respond_to_diplomacy to handle it, then end_turn again."
+                        f"Turn paused — AI diplomatic proposal from {', '.join(session_info)}.",
                     )
-                return "\n".join(lines)
+                    for s in mid_sessions:
+                        if s.dialogue_text:
+                            lines.append(f'{s.other_civ_name} says: "{s.dialogue_text}"')
+                        if s.reason_text:
+                            lines.append(f"Reason: {s.reason_text}")
+                        if s.deal_summary:
+                            lines.append(f"Deal from {s.other_civ_name}: {s.deal_summary}")
+                    if has_deal:
+                        lines.append(
+                            "Use respond_to_trade(other_player_id=X, accept=True/False) to handle it, then end_turn again."
+                        )
+                    else:
+                        lines.append(
+                            "Use respond_to_diplomacy to handle it, then end_turn again."
+                        )
+                    return "\n".join(lines)
         except Exception:
             log.debug("Mid-turn diplomacy check failed", exc_info=True)
 
@@ -774,13 +893,15 @@ async def execute_end_turn(gs: GameState) -> str:
         # Check if game ended during turn transition (victory/defeat)
         gameover = await gs.check_game_over()
         if gameover is not None:
+            gs._pending_end_turn = False
+            gs._pending_end_turn_from = None
             vtype = (
                 gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
             )
             if gameover.is_defeat:
                 return (
-                    f"GAME OVER — DEFEAT. {gameover.winner_name} won a {vtype} victory. "
-                    f"The game has ended. Use load_save to reload an earlier save, or start a new game."
+                    f"GAME OVER — DEFEAT. {gameover.winner_leader} of {gameover.winner_name} won a {vtype} victory. "
+                    f"The game has ended. No further actions are possible."
                 )
             else:
                 return (
@@ -807,9 +928,16 @@ async def execute_end_turn(gs: GameState) -> str:
                 details.append(f"Blocker: {display}" + (f" ({bm})" if bm else ""))
         except Exception:
             pass
+        # Turn didn't advance — clear the pending flag so next call re-sends
+        gs._pending_end_turn = False
+        gs._pending_end_turn_from = None
         if details:
             return f"End turn blocked (turn {turn_after or turn_before}): {'; '.join(details)}"
         return f"End turn requested (turn is still {turn_after or turn_before}). Check get_pending_diplomacy or dismiss_popup."
+
+    # Turn advanced — clear the pending flag
+    gs._pending_end_turn = False
+    gs._pending_end_turn_from = None
 
     # Take post-turn snapshot and diff
     try:

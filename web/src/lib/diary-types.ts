@@ -177,9 +177,21 @@ export interface TurnData {
   allCities: CityRow[]
 }
 
+export interface GameOutcome {
+  result: "victory" | "defeat"
+  winnerCiv: string
+  winnerLeader: string
+  victoryType: string
+  turn: number
+  playerAlive: boolean
+}
+
 export interface DiaryFile {
   filename: string
   label: string
   count: number
   hasCities: boolean
+  leader?: string
+  status?: "live" | "completed"
+  outcome?: GameOutcome | null
 }

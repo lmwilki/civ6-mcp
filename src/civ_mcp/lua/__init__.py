@@ -252,6 +252,7 @@ from civ_mcp.lua.units import (  # noqa: F401
     build_fortify_unit,
     build_heal_unit,
     build_improve_tile,
+    build_remove_feature,
     build_move_unit,
     build_skip_remaining_units,
     build_skip_unit,

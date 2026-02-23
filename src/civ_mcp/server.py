@@ -157,11 +157,21 @@ async def get_game_overview(ctx: Context) -> str:
             if gameover.is_defeat:
                 text += (
                     f"\n\n*** GAME OVER — DEFEAT ***\n"
-                    f"{gameover.winner_name} won a {vtype} victory.\n"
-                    f"Use load_save to reload an earlier save, or start a new game."
+                    f"{gameover.winner_leader} of {gameover.winner_name} won a {vtype} victory.\n"
+                    f"No further actions are possible."
                 )
             else:
                 text += f"\n\n*** GAME OVER — VICTORY ***\nYou won a {vtype} victory!"
+            try:
+                await logger.log_game_over(
+                    is_defeat=gameover.is_defeat,
+                    winner_civ=gameover.winner_name,
+                    winner_leader=gameover.winner_leader,
+                    victory_type=vtype,
+                    player_alive=gameover.player_alive,
+                )
+            except Exception:
+                log.warning("Failed to log game-over in overview", exc_info=True)
         return text
 
     return await _logged(ctx, "get_game_overview", {}, _run)
@@ -1094,7 +1104,7 @@ async def unit_action(
 
     Args:
         unit_id: The unit's composite ID (from get_units output)
-        action: One of: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion
+        action: One of: move, attack, fortify, skip, found_city, improve, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion
         target_x: Target X coordinate (required for move/attack/trade_route/teleport)
         target_y: Target Y coordinate (required for move/attack/trade_route/teleport)
         improvement: Improvement type for builders (required for improve), e.g.
@@ -1143,6 +1153,8 @@ async def unit_action(
                 if not improvement:
                     return "Error: improve requires improvement name (e.g. IMPROVEMENT_FARM)"
                 return await gs.improve_tile(unit_index, improvement)
+            case "remove_feature":
+                return await gs.remove_feature(unit_index)
             case "automate":
                 return await gs.automate_explore(unit_index)
             case "heal":
@@ -1166,7 +1178,7 @@ async def unit_action(
                     return "Error: teleport requires target_x and target_y of the destination city"
                 return await gs.teleport_to_city(unit_index, target_x, target_y)
             case _:
-                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion"
+                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion"
 
     result = await _logged(ctx, "unit_action", params, _run)
     if action.lower() in ("move", "attack", "trade_route", "teleport") \
@@ -1447,6 +1459,22 @@ async def end_turn(
             _get_logger(ctx).set_turn(int(m.group(1)))
     elif "Turn paused" in result or "World Congress fires" in result:
         gs._end_turn_blocked = True
+
+    # Log structured game-over entry
+    if "GAME OVER" in result:
+        try:
+            gameover = await gs.check_game_over()
+            if gameover is not None:
+                vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+                await _get_logger(ctx).log_game_over(
+                    is_defeat=gameover.is_defeat,
+                    winner_civ=gameover.winner_name,
+                    winner_leader=gameover.winner_leader,
+                    victory_type=vtype,
+                    player_alive=gameover.player_alive,
+                )
+        except Exception:
+            log.warning("Failed to log game-over entry", exc_info=True)
 
     return result
 
