@@ -7,9 +7,7 @@ import { useDiaryListConvex, useDiaryConvex } from "./use-diary-convex"
 
 const POLL_INTERVAL = 3000
 
-export function useDiaryList(): DiaryFile[] {
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  if (CONVEX_MODE) return useDiaryListConvex()
+function useDiaryListFs(): DiaryFile[] {
   const [diaries, setDiaries] = useState<DiaryFile[]>([])
 
   useEffect(() => {
@@ -26,6 +24,8 @@ export function useDiaryList(): DiaryFile[] {
 
   return diaries
 }
+
+export const useDiaryList = CONVEX_MODE ? useDiaryListConvex : useDiaryListFs
 
 /** Group raw player + city rows into per-turn snapshots */
 function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
@@ -70,9 +70,7 @@ function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
   return result
 }
 
-export function useDiary(filename: string | null, live: boolean = true): { turns: TurnData[]; loading: boolean; reload: () => Promise<void> } {
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  if (CONVEX_MODE) return useDiaryConvex(filename)
+function useDiaryFs(filename: string | null, live: boolean = true): { turns: TurnData[]; loading: boolean; reload: () => Promise<void> } {
   const [turns, setTurns] = useState<TurnData[]>([])
   const [loading, setLoading] = useState(false)
   const prevCount = useRef(0)
@@ -114,3 +112,5 @@ export function useDiary(filename: string | null, live: boolean = true): { turns
 
   return { turns, loading, reload: load }
 }
+
+export const useDiary = CONVEX_MODE ? useDiaryConvex : useDiaryFs

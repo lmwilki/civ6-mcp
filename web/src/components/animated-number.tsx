@@ -21,7 +21,6 @@ export function AnimatedNumber({
 
     if (Math.abs(from - to) < 0.001) {
       displayedRef.current = to
-      setDisplayed(to)
       return
     }
 

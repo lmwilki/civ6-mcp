@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useReducer, useState } from "react"
 import { NavBar } from "@/components/nav-bar"
 import { AgentOverview } from "@/components/agent-overview"
 import { LeaderboardTable } from "@/components/leaderboard-table"
@@ -34,37 +34,40 @@ import {
 export default function DiaryPage() {
   const diaries = useDiaryList()
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const { turns, loading } = useDiary(selectedFile)
-  const [index, setIndex] = useState(0)
-  const followingRef = useRef(true)
+  const effectiveFile = selectedFile ?? (diaries.length > 0 ? diaries[0].filename : null)
+  const { turns, loading } = useDiary(effectiveFile)
 
-  // Auto-select first diary
-  useEffect(() => {
-    if (diaries.length > 0 && !selectedFile) {
-      setSelectedFile(diaries[0].filename)
-    }
-  }, [diaries, selectedFile])
-
-  // Auto-follow: jump to latest turn
-  useEffect(() => {
-    if (turns.length > 0 && followingRef.current) {
-      setIndex(turns.length - 1)
-    }
-  }, [turns.length])
-
-  // Track whether user is "following"
-  useEffect(() => {
-    followingRef.current = index >= turns.length - 1
-  }, [index, turns.length])
+  // Navigation state: useReducer keeps userIndex + following in sync atomically
+  const [nav, dispatch] = useReducer(
+    (state: { userIndex: number; following: boolean }, action: { type: string; max?: number; index?: number }) => {
+      switch (action.type) {
+        case "prev":
+          return { userIndex: Math.max(0, state.userIndex - 1), following: false }
+        case "next": {
+          const next = Math.min(action.max!, state.userIndex + 1)
+          return { userIndex: next, following: next >= action.max! }
+        }
+        case "first":
+          return { userIndex: 0, following: false }
+        case "last":
+          return { userIndex: action.max!, following: true }
+        case "seek":
+          return { userIndex: action.index!, following: false }
+        default:
+          return state
+      }
+    },
+    { userIndex: 0, following: true }
+  )
+  const index = nav.following
+    ? Math.max(0, turns.length - 1)
+    : Math.min(nav.userIndex, Math.max(0, turns.length - 1))
 
   // Navigation
-  const goPrev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), [])
-  const goNext = useCallback(
-    () => setIndex((i) => Math.min(turns.length - 1, i + 1)),
-    [turns.length]
-  )
-  const goFirst = useCallback(() => setIndex(0), [])
-  const goLast = useCallback(() => setIndex(turns.length - 1), [turns.length])
+  const goPrev = useCallback(() => dispatch({ type: "prev" }), [])
+  const goNext = useCallback(() => dispatch({ type: "next", max: turns.length - 1 }), [turns.length])
+  const goFirst = useCallback(() => dispatch({ type: "first" }), [])
+  const goLast = useCallback(() => dispatch({ type: "last", max: turns.length - 1 }), [turns.length])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -135,7 +138,7 @@ export default function DiaryPage() {
                 min={0}
                 max={turns.length - 1}
                 value={index}
-                onChange={(e) => setIndex(parseInt(e.target.value, 10))}
+                onChange={(e) => dispatch({ type: "seek", index: parseInt(e.target.value, 10) })}
                 className="mx-2 w-48 accent-gold"
               />
             )}

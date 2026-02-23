@@ -72,7 +72,7 @@ function stripConvexFields<T extends { _id: unknown; _creationTime: unknown; gam
 }
 
 /** Convex-backed diary data — real-time updates via subscription. */
-export function useDiaryConvex(filename: string | null) {
+export function useDiaryConvex(filename: string | null, _live?: boolean) {
   const gameId = filename ? filenameToGameId(filename) : null
   const data = useQuery(
     api.diary.getGameTurns,

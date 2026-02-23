@@ -5,10 +5,7 @@ import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import { CONVEX_MODE } from "./convex-provider"
 
-export function LiveGameBanner() {
-  if (!CONVEX_MODE) return null
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+function LiveGameBannerConvex() {
   const liveGame = useQuery(api.diary.getLiveGame)
 
   if (!liveGame) return null
@@ -31,4 +28,8 @@ export function LiveGameBanner() {
       <span className="text-xs text-patina group-hover:underline">Watch live</span>
     </Link>
   )
+}
+
+export function LiveGameBanner() {
+  return CONVEX_MODE ? <LiveGameBannerConvex /> : null
 }

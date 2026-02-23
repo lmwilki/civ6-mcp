@@ -33,7 +33,9 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
   const [metric, setMetric] = useState<NumericPlayerField>("score")
   const [rotating, setRotating] = useState(false)
   const rotatingRef = useRef(rotating)
-  rotatingRef.current = rotating
+  useEffect(() => {
+    rotatingRef.current = rotating
+  }, [rotating])
 
   const advanceMetric = useCallback(() => {
     setMetric((prev) => {

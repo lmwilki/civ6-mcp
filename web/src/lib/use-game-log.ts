@@ -7,9 +7,7 @@ import { useGameLogsConvex, useGameLogConvex } from "./use-game-log-convex"
 
 const POLL_INTERVAL = 2000
 
-export function useGameLogs(): GameLogInfo[] {
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  if (CONVEX_MODE) return useGameLogsConvex()
+function useGameLogsFs(): GameLogInfo[] {
   const [games, setGames] = useState<GameLogInfo[]>([])
 
   useEffect(() => {
@@ -28,33 +26,35 @@ export function useGameLogs(): GameLogInfo[] {
   return games
 }
 
-export function useGameLog(live: boolean, game: string | null, session?: string | null): { entries: LogEntry[]; connected: boolean } {
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  if (CONVEX_MODE) return useGameLogConvex(live, game, session)
+export const useGameLogs = CONVEX_MODE ? useGameLogsConvex : useGameLogsFs
+
+function useGameLogFs(live: boolean, game: string | null, session?: string | null): { entries: LogEntry[]; connected: boolean } {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [connected, setConnected] = useState(false)
   const lastLine = useRef(0)
-  const gameRef = useRef(game)
-  const sessionRef = useRef(session)
 
-  // Reset when game or session changes
+  // Reset entries when game or session changes (adjust-state-during-render pattern)
+  const [prevGame, setPrevGame] = useState(game)
+  const [prevSession, setPrevSession] = useState(session)
+  if (game !== prevGame || session !== prevSession) {
+    setPrevGame(game)
+    setPrevSession(session)
+    setEntries([])
+  }
+
+  // Reset cursor ref when game/session changes (effect, not during render)
   useEffect(() => {
-    if (game !== gameRef.current || session !== sessionRef.current) {
-      gameRef.current = game
-      sessionRef.current = session
-      setEntries([])
-      lastLine.current = 0
-    }
+    lastLine.current = 0
   }, [game, session])
 
   const fetchEntries = useCallback(async () => {
-    if (!gameRef.current) return
+    if (!game) return
     try {
       const params = new URLSearchParams({
         after: String(lastLine.current),
-        game: gameRef.current,
+        game,
       })
-      if (sessionRef.current) params.set("session", sessionRef.current)
+      if (session) params.set("session", session)
       const res = await fetch(`/api/log?${params}`)
       if (!res.ok) return
       const data: LogEntry[] = await res.json()
@@ -66,12 +66,12 @@ export function useGameLog(live: boolean, game: string | null, session?: string 
     } catch {
       setConnected(false)
     }
-  }, [])
+  }, [game, session])
 
   // Initial fetch + refetch on game/session change
   useEffect(() => {
     fetchEntries()
-  }, [fetchEntries, game, session])
+  }, [fetchEntries])
 
   // Polling when live
   useEffect(() => {
@@ -82,3 +82,5 @@ export function useGameLog(live: boolean, game: string | null, session?: string 
 
   return { entries, connected }
 }
+
+export const useGameLog = CONVEX_MODE ? useGameLogConvex : useGameLogFs

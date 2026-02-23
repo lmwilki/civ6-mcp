@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { Timeline } from "@/components/timeline"
 import { LiveIndicator } from "@/components/live-indicator"
 import { NavBar } from "@/components/nav-bar"
@@ -51,23 +51,15 @@ export default function Home() {
   const [showToolFilter, setShowToolFilter] = useState(false)
 
   const games = useGameLogs()
-  const autoSelected = useRef(false)
-
-  // Auto-select most recent game on first load
-  useEffect(() => {
-    if (!autoSelected.current && games.length > 0 && selectedGame === null) {
-      setSelectedGame(games[0].game)
-      autoSelected.current = true
-    }
-  }, [games, selectedGame])
+  const effectiveGame = selectedGame ?? (games.length > 0 ? games[0].game : null)
 
   // Get sessions for the selected game
   const selectedGameInfo = useMemo(
-    () => games.find((g) => g.game === selectedGame),
-    [games, selectedGame]
+    () => games.find((g) => g.game === effectiveGame),
+    [games, effectiveGame]
   )
 
-  const { entries, connected } = useGameLog(live, selectedGame, selectedSession)
+  const { entries, connected } = useGameLog(live, effectiveGame, selectedSession)
 
   // Compute tool counts for the filter panel
   const toolCounts = useMemo(() => {
@@ -144,7 +136,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-4xl items-center gap-4">
           {/* Game picker */}
           <select
-            value={selectedGame ?? ""}
+            value={effectiveGame ?? ""}
             onChange={(e) => {
               setSelectedGame(e.target.value || null)
               setSelectedSession(null)
