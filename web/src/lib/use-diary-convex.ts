@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
+import type { Doc } from "../../convex/_generated/dataModel"
 import type { PlayerRow, CityRow, TurnData, DiaryFile } from "./diary-types"
 
 /** Extract gameId from diary filename: diary_india_123.jsonl → india_123 */
@@ -10,18 +11,10 @@ function filenameToGameId(filename: string): string {
   return filename.replace(/^diary_/, "").replace(/\.jsonl$/, "")
 }
 
-interface GameDoc {
-  gameId: string
-  filename: string
-  label: string
-  count: number
-  hasCities: boolean
-}
-
 /** Convex-backed diary list — real-time, no polling. */
 export function useDiaryListConvex(): DiaryFile[] {
-  const games: GameDoc[] = useQuery(api.diary.listGames) ?? []
-  return games.map((g: GameDoc) => ({
+  const games = useQuery(api.diary.listGames) ?? []
+  return games.map((g) => ({
     filename: g.filename,
     label: g.label,
     count: g.count,
@@ -29,7 +22,7 @@ export function useDiaryListConvex(): DiaryFile[] {
   }))
 }
 
-/** Group raw player + city rows into per-turn snapshots (shared with filesystem mode) */
+/** Group raw player + city rows into per-turn snapshots */
 function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
   const turnMap = new Map<number, { players: PlayerRow[]; cities: CityRow[] }>()
 
@@ -70,24 +63,30 @@ function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
   return result
 }
 
-interface GameTurnsResult {
-  playerRows: (PlayerRow & { _id: string; _creationTime: number; gameId: string })[]
-  cityRows: (CityRow & { _id: string; _creationTime: number; gameId: string })[]
+/** Strip Convex system fields from a document */
+function stripConvexFields<T extends { _id: unknown; _creationTime: unknown; gameId: unknown }>(
+  row: T
+): Omit<T, "_id" | "_creationTime" | "gameId"> {
+  const { _id, _creationTime, gameId: _, ...rest } = row
+  return rest
 }
 
 /** Convex-backed diary data — real-time updates via subscription. */
 export function useDiaryConvex(filename: string | null) {
   const gameId = filename ? filenameToGameId(filename) : null
-  const data: GameTurnsResult | undefined = useQuery(
+  const data = useQuery(
     api.diary.getGameTurns,
     gameId ? { gameId } : "skip"
   )
 
   const turns = useMemo(() => {
     if (!data) return []
-    // Strip Convex internal fields before passing to groupByTurn
-    const players = data.playerRows.map(({ _id, _creationTime, gameId: _, ...rest }) => rest as PlayerRow)
-    const cities = data.cityRows.map(({ _id, _creationTime, gameId: _, ...rest }) => rest as CityRow)
+    const players = data.playerRows.map(
+      (row: Doc<"playerRows">) => stripConvexFields(row) as PlayerRow
+    )
+    const cities = data.cityRows.map(
+      (row: Doc<"cityRows">) => stripConvexFields(row) as CityRow
+    )
     return groupByTurn(players, cities)
   }, [data])
 

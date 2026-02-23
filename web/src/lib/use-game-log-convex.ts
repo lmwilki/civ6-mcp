@@ -3,11 +3,12 @@
 import { useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
+import type { Doc } from "../../convex/_generated/dataModel"
 import type { LogEntry, GameLogInfo } from "./types"
 
 /** Convex-backed game log list — real-time. */
 export function useGameLogsConvex(): GameLogInfo[] {
-  const games: GameLogInfo[] = useQuery(api.logs.listGameLogs) ?? []
+  const games = useQuery(api.logs.listGameLogs) ?? []
   return games
 }
 
@@ -17,8 +18,7 @@ export function useGameLogConvex(
   game: string | null,
   session?: string | null
 ) {
-  type ConvexLogEntry = LogEntry & { _id: string; _creationTime: number; gameId: string }
-  const data: ConvexLogEntry[] | undefined = useQuery(
+  const data = useQuery(
     api.logs.getLogEntries,
     game
       ? {
@@ -30,7 +30,10 @@ export function useGameLogConvex(
 
   const entries = useMemo(() => {
     if (!data) return []
-    return data.map(({ _id, _creationTime, gameId: _, ...rest }) => rest as LogEntry)
+    return data.map((row: Doc<"logEntries">): LogEntry => {
+      const { _id, _creationTime, gameId: _, ...fields } = row
+      return fields as LogEntry
+    })
   }, [data])
 
   return {

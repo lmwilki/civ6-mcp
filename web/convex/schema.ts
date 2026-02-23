@@ -123,7 +123,7 @@ export default defineSchema({
   })
     .index("by_game_turn", ["gameId", "turn"]),
 
-  // One doc per tool call log line
+  // One doc per tool call log line — mirrors LogEntry from types.ts
   logEntries: defineTable({
     gameId: v.string(),
     line: v.number(),
@@ -132,15 +132,15 @@ export default defineSchema({
     seed: v.number(),
     session: v.string(),
     ts: v.number(),
-    turn: v.optional(v.union(v.number(), v.null())),
+    turn: v.union(v.number(), v.null()),
     seq: v.number(),
     type: v.string(),
     tool: v.string(),
     category: v.string(),
-    params: v.optional(v.any()),
-    result_summary: v.optional(v.union(v.string(), v.null())),
-    result: v.optional(v.union(v.string(), v.null())),
-    duration_ms: v.optional(v.union(v.number(), v.null())),
+    params: v.union(v.any(), v.null()),
+    result_summary: v.union(v.string(), v.null()),
+    result: v.union(v.string(), v.null()),
+    duration_ms: v.union(v.number(), v.null()),
     success: v.boolean(),
     events: v.optional(v.any()),
     agent_model: v.optional(v.union(v.string(), v.null())),

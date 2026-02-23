@@ -5,18 +5,11 @@ import { useQuery } from "convex/react"
 import { api } from "../../convex/_generated/api"
 import { CONVEX_MODE } from "./convex-provider"
 
-interface LiveGame {
-  gameId: string
-  civ: string
-  leader: string
-  lastTurn: number
-}
-
 export function LiveGameBanner() {
   if (!CONVEX_MODE) return null
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const liveGame: LiveGame | null | undefined = useQuery(api.diary.getLiveGame)
+  const liveGame = useQuery(api.diary.getLiveGame)
 
   if (!liveGame) return null
 
