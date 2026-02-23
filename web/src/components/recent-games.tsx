@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useDiaryList } from "@/lib/use-diary"
 import { getCivColors } from "@/lib/civ-colors"
+import { getCivSymbol, getLeaderPortrait } from "@/lib/civ-images"
 
 export function RecentGames() {
   const games = useDiaryList()
@@ -42,21 +43,40 @@ export function RecentGames() {
             />
 
             <div className="flex flex-1 items-center justify-between px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: colors.primary }}
-                  />
-                  <span className="font-display text-sm font-bold tracking-wide uppercase text-marble-800">
-                    {game.label}
-                  </span>
+              <div className="flex min-w-0 items-center gap-2.5">
+                {(() => {
+                  const portrait = game.leader ? getLeaderPortrait(game.leader) : null
+                  return portrait ? (
+                    <img
+                      src={portrait}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded-full border border-marble-300 object-cover object-top"
+                    />
+                  ) : (
+                    <span
+                      className="inline-block h-9 w-9 shrink-0 rounded-full"
+                      style={{ backgroundColor: colors.primary }}
+                    />
+                  )
+                })()}
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    {(() => {
+                      const sym = getCivSymbol(game.label)
+                      return sym ? (
+                        <img src={sym} alt="" className="h-4 w-4 shrink-0 rounded-full object-cover" />
+                      ) : null
+                    })()}
+                    <span className="font-display text-sm font-bold tracking-wide uppercase text-marble-800">
+                      {game.label}
+                    </span>
+                  </div>
+                  {game.leader && (
+                    <p className="mt-0.5 text-xs text-marble-500">
+                      {game.leader}
+                    </p>
+                  )}
                 </div>
-                {game.leader && (
-                  <p className="mt-0.5 pl-[18px] text-xs text-marble-500">
-                    {game.leader}
-                  </p>
-                )}
               </div>
 
               <div className="shrink-0 pl-3 text-right">

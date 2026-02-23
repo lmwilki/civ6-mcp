@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import type { TurnData, NumericPlayerField, PlayerRow } from "@/lib/diary-types"
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors"
+import { getCivSymbol } from "@/lib/civ-images"
 import { CivIcon } from "./civ-icon"
 import { BarChart3, Play, Pause } from "lucide-react"
 
@@ -197,15 +198,22 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
             }),
           ]
           entries.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
-          return entries.map((e) => (
-            <div key={e.key} className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: e.color }} />
-              <span className={`flex-1 text-[10px] ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}>{e.name}</span>
-              <span className="font-mono text-[10px] tabular-nums text-marble-700">
-                {e.value ?? "—"}
-              </span>
-            </div>
-          ))
+          return entries.map((e) => {
+            const sym = getCivSymbol(e.name)
+            return (
+              <div key={e.key} className="flex items-center gap-1.5">
+                {sym ? (
+                  <img src={sym} alt="" className="h-3 w-3 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: e.color }} />
+                )}
+                <span className={`flex-1 text-[10px] ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}>{e.name}</span>
+                <span className="font-mono text-[10px] tabular-nums text-marble-700">
+                  {e.value ?? "—"}
+                </span>
+              </div>
+            )
+          })
         })()}
       </div>
     </div>

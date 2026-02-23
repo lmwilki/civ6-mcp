@@ -135,6 +135,8 @@ export function getCivColors(civName: string, leader?: string): { primary: strin
     if (byLeader) return byLeader
   }
   const known = CIV_PLAYER_COLORS[civName]
+    ?? CIV_PLAYER_COLORS[civName.replace(/s$/, "")]
+    ?? CIV_PLAYER_COLORS[civName + "s"]
   if (known) return known
   // Simple hash for deterministic fallback
   let hash = 0

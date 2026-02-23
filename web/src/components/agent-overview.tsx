@@ -3,6 +3,7 @@
 import type { TurnData } from "@/lib/diary-types"
 import { cleanCivName } from "@/lib/diary-types"
 import { CIV6_COLORS } from "@/lib/civ-colors"
+import { getLeaderPortrait, getCivSymbol } from "@/lib/civ-images"
 import { CivIcon } from "./civ-icon"
 import { AnimatedNumber } from "./animated-number"
 import {
@@ -180,24 +181,40 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
   return (
     <div className="mx-auto w-full max-w-2xl">
       {/* Header */}
-      <div className="mb-4 flex items-baseline justify-between">
-        <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-marble-800">
-            Turn {a.turn}
-          </h2>
-          <p className="mt-0.5 text-sm text-marble-600">
-            {a.civ} ({a.leader}) &middot; {cleanCivName(a.era)} &middot; {timestamp}
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="flex items-center gap-1.5 font-mono text-lg tabular-nums text-marble-800">
-            <CivIcon icon={Star} color={CIV6_COLORS.goldMetal} size="sm" />
-            <AnimatedNumber value={a.score} decimals={0} />
-            <ScoreDelta current={a.score} prev={pa?.score} />
+      <div className="mb-4 flex items-center gap-3">
+        {(() => {
+          const portrait = getLeaderPortrait(a.leader)
+          return portrait ? (
+            <img
+              src={portrait}
+              alt={a.leader}
+              className="h-14 w-14 shrink-0 rounded-full border-2 border-marble-300 object-cover object-top"
+            />
+          ) : null
+        })()}
+        <div className="flex flex-1 items-baseline justify-between">
+          <div>
+            <h2 className="font-display text-2xl font-bold tracking-wide text-marble-800">
+              Turn {a.turn}
+            </h2>
+            <p className="mt-0.5 flex items-center gap-1.5 text-sm text-marble-600">
+              {(() => {
+                const sym = getCivSymbol(a.civ)
+                return sym ? <img src={sym} alt="" className="inline h-4 w-4 rounded-full object-cover" /> : null
+              })()}
+              {a.civ} ({a.leader}) &middot; {cleanCivName(a.era)} &middot; {timestamp}
+            </p>
           </div>
-          <p className="font-mono text-xs tabular-nums text-marble-600">
-            Entry {index + 1} / {total}
-          </p>
+          <div className="text-right">
+            <div className="flex items-center gap-1.5 font-mono text-lg tabular-nums text-marble-800">
+              <CivIcon icon={Star} color={CIV6_COLORS.goldMetal} size="sm" />
+              <AnimatedNumber value={a.score} decimals={0} />
+              <ScoreDelta current={a.score} prev={pa?.score} />
+            </div>
+            <p className="font-mono text-xs tabular-nums text-marble-600">
+              Entry {index + 1} / {total}
+            </p>
+          </div>
         </div>
       </div>
 
