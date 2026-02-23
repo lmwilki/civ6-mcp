@@ -137,26 +137,32 @@ export const ingestLogEntries = mutation({
       if (gameOverOutcome) {
         const o = gameOverOutcome.outcome
         patch.status = "completed"
+        const outcomeTurn = gameOverOutcome.turn ?? 0
         patch.outcome = {
           result: o.is_defeat ? ("defeat" as const) : ("victory" as const),
           winnerCiv: o.winner_civ ?? "Unknown",
           winnerLeader: o.winner_leader ?? "Unknown",
           victoryType: o.victory_type ?? "Unknown",
-          turn: gameOverOutcome.turn ?? 0,
+          turn: outcomeTurn,
           playerAlive: o.player_alive ?? true,
+        }
+        if (outcomeTurn > 0) {
+          patch.lastTurn = Math.max(game.lastTurn, outcomeTurn)
+          patch.turnCount = Math.max(game.turnCount, outcomeTurn)
         }
       }
       await ctx.db.patch(game._id, patch)
     } else {
+      const outcomeTurn = gameOverOutcome?.turn ?? 0
       await ctx.db.insert("games", {
         gameId,
         civ,
         leader: "",
         seed,
         status: gameOverOutcome ? "completed" : "live",
-        lastTurn: 0,
+        lastTurn: outcomeTurn,
         lastUpdated: Date.now(),
-        turnCount: 0,
+        turnCount: outcomeTurn,
         hasCities: false,
         hasLogs: true,
         ...(gameOverOutcome ? {
@@ -165,7 +171,7 @@ export const ingestLogEntries = mutation({
             winnerCiv: gameOverOutcome.outcome.winner_civ ?? "Unknown",
             winnerLeader: gameOverOutcome.outcome.winner_leader ?? "Unknown",
             victoryType: gameOverOutcome.outcome.victory_type ?? "Unknown",
-            turn: gameOverOutcome.turn ?? 0,
+            turn: outcomeTurn,
             playerAlive: gameOverOutcome.outcome.player_alive ?? true,
           },
         } : {}),

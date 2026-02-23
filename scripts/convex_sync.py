@@ -125,23 +125,30 @@ class ConvexClient:
         )
 
     async def mutation(self, path: str, args: dict[str, Any]) -> Any:
-        """Call a Convex mutation with retries."""
+        """Call a Convex mutation with retries. Raises on persistent failure."""
         url = f"{self.base_url}/api/mutation"
         payload = {"path": path, "args": args, "format": "json"}
+        last_error: Exception | None = None
         for attempt in range(MAX_RETRIES):
             try:
                 resp = await self.client.post(url, json=payload)
                 data = resp.json()
                 if data.get("status") == "success":
                     return data.get("value")
+                last_error = RuntimeError(
+                    f"Mutation {path} failed: {data.get('errorMessage')}"
+                )
                 log.error("Mutation %s failed: %s", path, data.get("errorMessage"))
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(RETRY_BACKOFF[attempt])
             except (httpx.HTTPError, json.JSONDecodeError) as e:
-                log.error("HTTP error calling %s: %s", path, e)
+                last_error = e
+                log.exception("HTTP error calling %s", path)
                 if attempt < MAX_RETRIES - 1:
                     await asyncio.sleep(RETRY_BACKOFF[attempt])
-        return None
+        raise last_error or RuntimeError(
+            f"Mutation {path} failed after {MAX_RETRIES} retries"
+        )
 
     async def close(self) -> None:
         await self.client.aclose()

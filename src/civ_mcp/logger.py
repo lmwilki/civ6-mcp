@@ -77,6 +77,7 @@ class GameLogger:
         game_id = f"{civ}_{seed}"
         if self._game == game_id:
             return  # already bound to this game
+        self._game_over_logged = False
 
         self._game = game_id
         self._civ = civ
