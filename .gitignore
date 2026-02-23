@@ -21,6 +21,10 @@ wheels/
 # Next.js web viewer
 web/node_modules/
 web/.next/
+web/.env.local
+
+# Convex generated files (regenerated during build)
+web/convex/_generated/
 
 # LaTeX build artifacts
 docs/paper/build/
@@ -33,3 +37,4 @@ docs/paper/build/
 # CivBench eval artifacts
 evals/saves/*.Civ6Save
 eval-logs/
+.vercel
