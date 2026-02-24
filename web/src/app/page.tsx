@@ -5,6 +5,7 @@ import { NavBar } from "@/components/nav-bar"
 import { RecentGames } from "@/components/recent-games"
 import { CivIcon } from "@/components/civ-icon"
 import { CIV6_COLORS } from "@/lib/civ-colors"
+import { ModelLeaderboard } from "@/components/model-leaderboard"
 import {
   Github,
   Swords,
@@ -87,6 +88,12 @@ export default function LandingPage() {
                 </a>
               </div>
             </section>
+
+            {/* Divider */}
+            <div className="my-8 border-t border-marble-300/50" />
+
+            {/* Leaderboard */}
+            <ModelLeaderboard />
 
             {/* Divider */}
             <div className="my-8 border-t border-marble-300/50" />

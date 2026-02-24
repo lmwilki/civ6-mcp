@@ -19,16 +19,30 @@ function listDiaries(dir: string) {
       const label = match ? match[1].replace(/_/g, " ") : f
       let count = 0
       let mtime = 0
+      let agent_model: string | undefined
+      let leader: string | undefined
       try {
         const content = readFileSync(join(dir, f), "utf-8")
-        count = content.split("\n").filter((l) => l.trim()).length
+        const lines = content.split("\n").filter((l) => l.trim())
+        count = lines.length
         mtime = statSync(join(dir, f)).mtimeMs
+        // Extract metadata from the first agent entry
+        for (const line of lines) {
+          try {
+            const row = JSON.parse(line)
+            if (row.is_agent) {
+              if (row.agent_model) agent_model = row.agent_model
+              if (row.leader) leader = row.leader
+              break
+            }
+          } catch { break }
+        }
       } catch {
         // ignore
       }
       const citiesFile = f.replace(".jsonl", "_cities.jsonl")
       const hasCities = existsSync(join(dir, citiesFile))
-      return { filename: f, label, count, mtime, hasCities }
+      return { filename: f, label, count, mtime, hasCities, agent_model, leader }
     })
     .sort((a, b) => b.mtime - a.mtime)
     .map(({ mtime: _, ...rest }) => rest)

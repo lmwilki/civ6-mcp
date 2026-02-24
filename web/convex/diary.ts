@@ -10,18 +10,30 @@ export const listGames = query({
       .withIndex("by_status")
       .order("desc")
       .collect()
-    return games.map((g) => ({
-      gameId: g.gameId,
-      filename: `diary_${g.gameId}.jsonl`,
-      label: g.civ,
-      count: g.turnCount,
-      hasCities: g.hasCities,
-      hasLogs: g.hasLogs,
-      status: g.status,
-      leader: g.leader,
-      lastUpdated: g.lastUpdated,
-      outcome: g.outcome ?? null,
-    }))
+    // Fetch agent_model from the first agent playerRow per game
+    const results = await Promise.all(
+      games.map(async (g) => {
+        const firstAgent = await ctx.db
+          .query("playerRows")
+          .withIndex("by_game_turn", (q) => q.eq("gameId", g.gameId))
+          .filter((q) => q.eq(q.field("is_agent"), true))
+          .first()
+        return {
+          gameId: g.gameId,
+          filename: `diary_${g.gameId}.jsonl`,
+          label: g.civ,
+          count: g.turnCount,
+          hasCities: g.hasCities,
+          hasLogs: g.hasLogs,
+          status: g.status,
+          leader: g.leader,
+          lastUpdated: g.lastUpdated,
+          outcome: g.outcome ?? null,
+          agent_model: firstAgent?.agent_model ?? null,
+        }
+      })
+    )
+    return results
   },
 })
 
@@ -57,5 +69,45 @@ export const getGameTurns = query({
       .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
       .collect()
     return { playerRows, cityRows }
+  },
+})
+
+/** Get completed games with outcomes + last-turn player rows for ELO computation */
+export const getEloData = query({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db
+      .query("games")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .collect()
+
+    const results = []
+    for (const game of games) {
+      if (!game.outcome?.winnerCiv) continue
+
+      // Get player rows for the last recorded turn
+      const lastTurnRows = await ctx.db
+        .query("playerRows")
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", game.gameId).eq("turn", game.lastTurn)
+        )
+        .collect()
+
+      if (lastTurnRows.length < 2) continue
+
+      results.push({
+        gameId: game.gameId,
+        winnerCiv: game.outcome.winnerCiv,
+        players: lastTurnRows.map((r) => ({
+          pid: r.pid,
+          civ: r.civ,
+          leader: r.leader,
+          is_agent: r.is_agent,
+          agent_model: r.agent_model ?? null,
+        })),
+      })
+    }
+
+    return results
   },
 })

@@ -136,14 +136,14 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
               {agent.governors.map((g, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-sm bg-marble-100 px-2 py-1 text-xs">
                   <span className="font-medium text-marble-700">
-                    {g.type.replace(/^GOVERNOR_THE_/, "").replace(/_/g, " ")}
+                    {(g.type ?? "Unknown").replace(/^GOVERNOR_THE_/, "").replace(/_/g, " ")}
                   </span>
                   {g.city && (
                     <span className="text-marble-500">
                       in {g.city} {g.established ? "" : "(establishing)"}
                     </span>
                   )}
-                  {g.promotions.length > 0 && (
+                  {g.promotions?.length > 0 && (
                     <span className="text-marble-400">
                       [{g.promotions.length} promo{g.promotions.length !== 1 ? "s" : ""}]
                     </span>

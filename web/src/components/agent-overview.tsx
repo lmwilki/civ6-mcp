@@ -1,7 +1,7 @@
 "use client"
 
 import type { TurnData } from "@/lib/diary-types"
-import { cleanCivName } from "@/lib/diary-types"
+import { cleanCivName, formatModelName } from "@/lib/diary-types"
 import { CIV6_COLORS } from "@/lib/civ-colors"
 import { getLeaderPortrait, getCivSymbol } from "@/lib/civ-images"
 import { CivIcon } from "./civ-icon"
@@ -58,6 +58,7 @@ import {
   Flower,
   PiggyBank,
   Hexagon,
+  Bot,
 } from "lucide-react"
 
 function ScoreDelta({ current, prev, suffix }: { current: number; prev?: number; suffix?: string }) {
@@ -204,6 +205,12 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
               })()}
               {a.civ} ({a.leader}) &middot; {cleanCivName(a.era)} &middot; {timestamp}
             </p>
+            {a.agent_model && (
+              <span className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-marble-300 bg-marble-100 px-2.5 py-0.5 text-sm font-medium text-marble-700">
+                <Bot className="h-4 w-4 text-marble-500" />
+                {formatModelName(a.agent_model)}
+              </span>
+            )}
           </div>
           <div className="text-right">
             <div className="flex items-center gap-1.5 font-mono text-lg tabular-nums text-marble-800">

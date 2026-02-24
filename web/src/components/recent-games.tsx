@@ -2,8 +2,10 @@
 
 import Link from "next/link"
 import { useDiaryList } from "@/lib/use-diary"
+import { formatModelName } from "@/lib/diary-types"
 import { getCivColors } from "@/lib/civ-colors"
 import { getCivSymbol, getLeaderPortrait } from "@/lib/civ-images"
+import { Bot } from "lucide-react"
 
 export function RecentGames() {
   const games = useDiaryList()
@@ -74,6 +76,12 @@ export function RecentGames() {
                   {game.leader && (
                     <p className="mt-0.5 text-xs text-marble-500">
                       {game.leader}
+                    </p>
+                  )}
+                  {game.agent_model && (
+                    <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-marble-600">
+                      <Bot className="h-3 w-3 text-marble-400" />
+                      {formatModelName(game.agent_model)}
                     </p>
                   )}
                 </div>

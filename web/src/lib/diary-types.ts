@@ -1,5 +1,23 @@
 // === Display helpers ===
 
+const MODEL_NAMES: Record<string, string> = {
+  "claude-opus-4-6": "Claude Opus 4.6",
+  "claude-opus-4-5-20250620": "Claude Opus 4.5",
+  "claude-sonnet-4-6": "Claude Sonnet 4.6",
+  "claude-sonnet-4-5-20250514": "Claude Sonnet 4.5",
+  "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+  "gpt-5": "GPT-5",
+  "gpt-4o": "GPT-4o",
+  "o3": "o3",
+}
+
+/** Prettify a model ID string: "claude-opus-4-6" → "Claude Opus 4.6" */
+export function formatModelName(raw: string): string {
+  if (MODEL_NAMES[raw]) return MODEL_NAMES[raw]
+  // Fallback: title-case with hyphens → spaces
+  return raw.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 /** Strip Civ 6 prefixes and title-case: TECH_POTTERY → "Pottery" */
 export function cleanCivName(s: string): string {
   return s
@@ -192,6 +210,7 @@ export interface DiaryFile {
   count: number
   hasCities: boolean
   leader?: string
+  agent_model?: string
   status?: "live" | "completed"
   outcome?: GameOutcome | null
 }
