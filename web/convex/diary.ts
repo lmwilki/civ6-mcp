@@ -10,14 +10,21 @@ export const listGames = query({
       .withIndex("by_status")
       .order("desc")
       .collect()
-    // Fetch agent_model from the first agent playerRow per game
+
+    // Batch-fetch agent_model for each game from its latest agent playerRow
     const results = await Promise.all(
       games.map(async (g) => {
-        const firstAgent = await ctx.db
+        let agentModel: string | null = null
+        const agentRow = await ctx.db
           .query("playerRows")
-          .withIndex("by_game_turn", (q) => q.eq("gameId", g.gameId))
+          .withIndex("by_game_turn", (q) =>
+            q.eq("gameId", g.gameId).eq("turn", g.lastTurn)
+          )
           .filter((q) => q.eq(q.field("is_agent"), true))
           .first()
+        if (agentRow?.agent_model) {
+          agentModel = agentRow.agent_model
+        }
         return {
           gameId: g.gameId,
           filename: `diary_${g.gameId}.jsonl`,
@@ -29,7 +36,7 @@ export const listGames = query({
           leader: g.leader,
           lastUpdated: g.lastUpdated,
           outcome: g.outcome ?? null,
-          agent_model: firstAgent?.agent_model ?? null,
+          agentModel,
         }
       })
     )
@@ -56,6 +63,44 @@ export const getLiveGame = query({
   },
 })
 
+/** Get ELO data — completed games with winner + player info */
+export const getEloData = query({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db
+      .query("games")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .collect()
+
+    const results = []
+    for (const game of games) {
+      if (!game.outcome?.winnerCiv) continue
+
+      const playerRows = await ctx.db
+        .query("playerRows")
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", game.gameId).eq("turn", game.lastTurn)
+        )
+        .collect()
+
+      if (playerRows.length < 2) continue
+
+      results.push({
+        gameId: game.gameId,
+        winnerCiv: game.outcome.winnerCiv,
+        players: playerRows.map((p) => ({
+          pid: p.pid,
+          civ: p.civ,
+          leader: p.leader,
+          is_agent: p.is_agent,
+          agent_model: p.agent_model ?? null,
+        })),
+      })
+    }
+    return results
+  },
+})
+
 /** Get all player + city rows for a game */
 export const getGameTurns = query({
   args: { gameId: v.string() },
@@ -69,45 +114,5 @@ export const getGameTurns = query({
       .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
       .collect()
     return { playerRows, cityRows }
-  },
-})
-
-/** Get completed games with outcomes + last-turn player rows for ELO computation */
-export const getEloData = query({
-  args: {},
-  handler: async (ctx) => {
-    const games = await ctx.db
-      .query("games")
-      .withIndex("by_status", (q) => q.eq("status", "completed"))
-      .collect()
-
-    const results = []
-    for (const game of games) {
-      if (!game.outcome?.winnerCiv) continue
-
-      // Get player rows for the last recorded turn
-      const lastTurnRows = await ctx.db
-        .query("playerRows")
-        .withIndex("by_game_turn", (q) =>
-          q.eq("gameId", game.gameId).eq("turn", game.lastTurn)
-        )
-        .collect()
-
-      if (lastTurnRows.length < 2) continue
-
-      results.push({
-        gameId: game.gameId,
-        winnerCiv: game.outcome.winnerCiv,
-        players: lastTurnRows.map((r) => ({
-          pid: r.pid,
-          civ: r.civ,
-          leader: r.leader,
-          is_agent: r.is_agent,
-          agent_model: r.agent_model ?? null,
-        })),
-      })
-    }
-
-    return results
   },
 })

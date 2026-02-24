@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react"
 import { Timeline } from "@/components/timeline"
 import { LiveIndicator } from "@/components/live-indicator"
-import { NavBar } from "@/components/nav-bar"
 import { useGameLog, useGameLogs } from "@/lib/use-game-log"
 import { getToolCategory } from "@/lib/types"
 import type { LogEntry } from "@/lib/types"
@@ -36,30 +35,27 @@ const CATEGORY_STYLES: Record<ToolCategory, { on: string; off: string }> = {
   },
 }
 
-function formatGameLabel(g: { game: string; civ: string; count: number; min_turn: number | null; max_turn: number | null }): string {
-  const civ = g.civ.replace(/\b\w/g, (c) => c.toUpperCase())
-  const turns = g.min_turn != null && g.max_turn != null ? `T${g.min_turn}-${g.max_turn}` : "no turns"
-  return `${civ} (${turns}, ${g.count})`
+interface GameLogViewProps {
+  /** Game slug, e.g. "mali_-37953408" */
+  gameSlug: string
 }
 
-export default function Home() {
+export function GameLogView({ gameSlug }: GameLogViewProps) {
   const [live, setLive] = useState(true)
-  const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   const [hiddenCategories, setHiddenCategories] = useState<Set<ToolCategory>>(new Set())
   const [hiddenTools, setHiddenTools] = useState<Set<string>>(new Set())
   const [showToolFilter, setShowToolFilter] = useState(false)
 
   const games = useGameLogs()
-  const effectiveGame = selectedGame ?? (games.length > 0 ? games[0].game : null)
 
-  // Get sessions for the selected game
+  // Find the matching game info for session list
   const selectedGameInfo = useMemo(
-    () => games.find((g) => g.game === effectiveGame),
-    [games, effectiveGame]
+    () => games.find((g) => g.game === gameSlug),
+    [games, gameSlug]
   )
 
-  const { entries, connected } = useGameLog(live, effectiveGame, selectedSession)
+  const { entries, connected } = useGameLog(live, gameSlug, selectedSession)
 
   // Compute tool counts for the filter panel
   const toolCounts = useMemo(() => {
@@ -88,8 +84,6 @@ export default function Home() {
       return true
     })
   }, [entries, hiddenCategories, hiddenTools])
-
-  const currentTurn = filtered.length > 0 ? filtered[filtered.length - 1].turn : null
 
   const toggleCategory = (cat: ToolCategory) => {
     setHiddenCategories((prev) => {
@@ -128,30 +122,11 @@ export default function Home() {
   }, [toolCounts])
 
   return (
-    <div className="flex h-screen flex-col">
-      <NavBar active="timeline" turn={currentTurn} />
-
+    <>
       {/* Sub-header with filters */}
       <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-3 py-2 sm:px-6">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 sm:gap-4">
-          {/* Game picker */}
-          <select
-            value={effectiveGame ?? ""}
-            onChange={(e) => {
-              setSelectedGame(e.target.value || null)
-              setSelectedSession(null)
-            }}
-            className="rounded-sm border border-marble-300 bg-marble-100 px-2 py-1 font-mono text-xs text-marble-700"
-          >
-            <option value="">Select game...</option>
-            {games.map((g) => (
-              <option key={g.game} value={g.game}>
-                {formatGameLabel(g)}
-              </option>
-            ))}
-          </select>
-
-          {/* Session sub-filter (within selected game) */}
+          {/* Session sub-filter */}
           {selectedGameInfo && selectedGameInfo.sessions.length > 1 && (
             <select
               value={selectedSession ?? ""}
@@ -265,6 +240,6 @@ export default function Home() {
 
       {/* Timeline */}
       <Timeline entries={filtered} live={live} />
-    </div>
+    </>
   )
 }

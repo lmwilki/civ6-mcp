@@ -20,9 +20,9 @@ export function useDiaryListConvex(): DiaryFile[] {
     count: g.count,
     hasCities: g.hasCities,
     leader: g.leader,
-    agent_model: g.agent_model ?? undefined,
     status: g.status as "live" | "completed",
     outcome: g.outcome ?? null,
+    agentModel: g.agentModel ?? undefined,
   }))
 }
 
