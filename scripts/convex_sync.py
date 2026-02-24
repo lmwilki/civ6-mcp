@@ -6,9 +6,11 @@ Watches ~/.civ6-mcp/ for diary, city, and log JSONL files and pushes
 new/changed rows to Convex via the HTTP mutation API.
 
 Usage:
-    CONVEX_URL=https://your-deployment.convex.cloud \
-    CONVEX_DEPLOY_KEY=prod:... \
-    python scripts/convex_sync.py
+    python scripts/convex_sync.py          # sync to dev (reads web/.env.local)
+    python scripts/convex_sync.py --prod   # sync to prod (reads web/.env.prod)
+
+Env files are loaded from web/ relative to this script. Environment variables
+CONVEX_URL and CONVEX_DEPLOY_KEY override file values if set.
 
 Optional:
     CIV6_DIARY_DIR=~/.civ6-mcp   (default)
@@ -16,6 +18,7 @@ Optional:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -42,9 +45,47 @@ log = logging.getLogger("convex_sync")
 # Configuration
 # ---------------------------------------------------------------------------
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+WEB_DIR = SCRIPT_DIR.parent / "web"
+
+
+def _load_env_file(path: Path) -> dict[str, str]:
+    """Parse a .env file into a dict. Ignores comments and blank lines."""
+    env: dict[str, str] = {}
+    if not path.exists():
+        return env
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().split("#")[0].strip()  # strip inline comments
+        env[key] = value
+    return env
+
+
+def _resolve_config(prod: bool) -> tuple[str, str]:
+    """Resolve CONVEX_URL and CONVEX_DEPLOY_KEY from env file + environment.
+
+    Environment variables take precedence over file values.
+    """
+    env_file = WEB_DIR / (".env.prod" if prod else ".env.local")
+    file_env = _load_env_file(env_file)
+
+    convex_url = os.environ.get("CONVEX_URL") or file_env.get("CONVEX_URL", "")
+    deploy_key = os.environ.get("CONVEX_DEPLOY_KEY") or file_env.get("CONVEX_DEPLOY_KEY", "")
+
+    # .env.local uses NEXT_PUBLIC_CONVEX_URL, .env.prod uses CONVEX_URL
+    if not convex_url:
+        convex_url = file_env.get("NEXT_PUBLIC_CONVEX_URL", "")
+
+    return convex_url, deploy_key
+
+
 DIARY_DIR = Path(os.environ.get("CIV6_DIARY_DIR", Path.home() / ".civ6-mcp"))
-CONVEX_URL = os.environ.get("CONVEX_URL", "")
-CONVEX_DEPLOY_KEY = os.environ.get("CONVEX_DEPLOY_KEY", "")
 STATE_FILE = DIARY_DIR / ".sync_state.json"
 
 # How many recent diary lines to re-check for reflection merges
@@ -344,17 +385,27 @@ async def check_idle_games(state: dict, client: ConvexClient) -> None:
 
 
 async def main() -> None:
-    if not CONVEX_URL:
-        log.error("CONVEX_URL not set")
+    parser = argparse.ArgumentParser(description="Sync civ-mcp JSONL files to Convex")
+    parser.add_argument(
+        "--prod", action="store_true",
+        help="Target production deployment (reads web/.env.prod)",
+    )
+    args = parser.parse_args()
+
+    convex_url, deploy_key = _resolve_config(prod=args.prod)
+    env_label = "PROD" if args.prod else "DEV"
+
+    if not convex_url:
+        log.error("CONVEX_URL not set — check web/.env.prod" if args.prod else "CONVEX_URL not set — check web/.env.local")
         sys.exit(1)
-    if not CONVEX_DEPLOY_KEY:
-        log.error("CONVEX_DEPLOY_KEY not set")
+    if not deploy_key:
+        log.error("CONVEX_DEPLOY_KEY not set — check web/.env.prod" if args.prod else "CONVEX_DEPLOY_KEY not set — check web/.env.local")
         sys.exit(1)
 
-    log.info("Watching %s → %s", DIARY_DIR, CONVEX_URL)
+    log.info("[%s] Watching %s → %s", env_label, DIARY_DIR, convex_url)
 
     state = load_state()
-    client = ConvexClient(CONVEX_URL, CONVEX_DEPLOY_KEY)
+    client = ConvexClient(convex_url, deploy_key)
 
     # Graceful shutdown
     shutdown = asyncio.Event()
