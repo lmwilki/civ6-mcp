@@ -61,7 +61,7 @@ export default function LandingPage() {
       <NavBar active="home" />
 
       <main className="flex-1">
-        <div className="mx-auto grid max-w-5xl gap-10 px-6 py-10 lg:grid-cols-[1fr_280px]">
+        <div className="mx-auto grid max-w-5xl gap-10 px-4 py-6 sm:px-6 sm:py-10 lg:grid-cols-[1fr_280px]">
           {/* Left column */}
           <div>
             {/* Hero */}

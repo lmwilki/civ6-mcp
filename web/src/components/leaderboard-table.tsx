@@ -53,9 +53,9 @@ export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTablePro
               <th className="py-1 px-1 text-left">Pop</th>
               <th className="py-1 px-1 text-left">Sci</th>
               <th className="py-1 px-1 text-left">Cul</th>
-              <th className="py-1 px-1 text-left">Gold</th>
-              <th className="py-1 px-1 text-left">Mil</th>
-              <th className="py-1 px-1 text-left">Techs</th>
+              <th className="hidden py-1 px-1 text-left sm:table-cell">Gold</th>
+              <th className="hidden py-1 px-1 text-left sm:table-cell">Mil</th>
+              <th className="hidden py-1 px-1 text-left sm:table-cell">Techs</th>
             </tr>
           </thead>
           <tbody>
@@ -101,13 +101,13 @@ export function LeaderboardTable({ turnData, prevTurnData }: LeaderboardTablePro
                   <td className={`py-1 px-1 font-mono tabular-nums ${b(p.culture, best.culture)}`}>
                     {Math.round(p.culture)} <ScoreDelta current={p.culture} prev={prev?.culture} />
                   </td>
-                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.gold, best.gold)}`}>
+                  <td className={`hidden py-1 px-1 font-mono tabular-nums sm:table-cell ${b(p.gold, best.gold)}`}>
                     {Math.round(p.gold)} <ScoreDelta current={p.gold} prev={prev?.gold} />
                   </td>
-                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.military, best.military)}`}>
+                  <td className={`hidden py-1 px-1 font-mono tabular-nums sm:table-cell ${b(p.military, best.military)}`}>
                     {p.military} <ScoreDelta current={p.military} prev={prev?.military} />
                   </td>
-                  <td className={`py-1 px-1 font-mono tabular-nums ${b(p.techs_completed, best.techs)}`}>
+                  <td className={`hidden py-1 px-1 font-mono tabular-nums sm:table-cell ${b(p.techs_completed, best.techs)}`}>
                     {p.techs_completed}
                   </td>
                 </tr>

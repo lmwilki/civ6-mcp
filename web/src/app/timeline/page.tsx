@@ -132,8 +132,8 @@ export default function Home() {
       <NavBar active="timeline" turn={currentTurn} />
 
       {/* Sub-header with filters */}
-      <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-6 py-2">
-        <div className="mx-auto flex max-w-4xl items-center gap-4">
+      <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-3 py-2 sm:px-6">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 sm:gap-4">
           {/* Game picker */}
           <select
             value={effectiveGame ?? ""}

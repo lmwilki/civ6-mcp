@@ -29,11 +29,14 @@ import {
   MapPin,
   Compass,
   Users,
+  X,
+  BarChart3,
 } from "lucide-react"
 
 export default function DiaryPage() {
   const diaries = useDiaryList()
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [showSidebar, setShowSidebar] = useState(false)
   const effectiveFile = selectedFile ?? (diaries.length > 0 ? diaries[0].filename : null)
   const { turns, loading } = useDiary(effectiveFile)
 
@@ -98,8 +101,8 @@ export default function DiaryPage() {
       <NavBar active="diary" turn={turnNumber} />
 
       {/* Diary selector + controls */}
-      <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-6 py-2">
-        <div className="mx-auto flex max-w-4xl items-center justify-between">
+      <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-3 py-2 sm:px-6">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <select
               value={selectedFile || ""}
@@ -139,7 +142,7 @@ export default function DiaryPage() {
                 max={turns.length - 1}
                 value={index}
                 onChange={(e) => dispatch({ type: "seek", index: parseInt(e.target.value, 10) })}
-                className="mx-2 w-48 accent-gold"
+                className="mx-2 w-24 accent-gold sm:w-48"
               />
             )}
 
@@ -166,7 +169,7 @@ export default function DiaryPage() {
       {/* Main content */}
       <div className="flex min-h-0 flex-1">
         {/* Panels */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
           {loading && (
             <div className="flex h-full items-center justify-center">
               <p className="font-display text-sm tracking-[0.12em] uppercase text-marble-500">
@@ -215,9 +218,9 @@ export default function DiaryPage() {
           )}
         </div>
 
-        {/* Sparkline sidebar */}
+        {/* Sparkline sidebar — desktop */}
         {turns.length > 1 && (
-          <div className="w-96 shrink-0 overflow-y-auto border-l border-marble-300 bg-marble-50 p-4">
+          <div className="hidden w-96 shrink-0 overflow-y-auto border-l border-marble-300 bg-marble-50 p-4 lg:block">
             <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
               <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
               Trends
@@ -240,6 +243,53 @@ export default function DiaryPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Sparkline sidebar — mobile overlay */}
+        {turns.length > 1 && showSidebar && (
+          <div className="fixed inset-0 z-40 flex lg:hidden">
+            <div className="absolute inset-0 bg-black/30" onClick={() => setShowSidebar(false)} />
+            <div className="relative ml-auto h-full w-80 max-w-[85vw] overflow-y-auto bg-marble-50 p-4 shadow-lg">
+              <button
+                onClick={() => setShowSidebar(false)}
+                className="absolute right-3 top-3 rounded-sm p-1 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+                <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
+                Trends
+              </h3>
+              <div className="space-y-2">
+                <ScoreSparkline turns={turns} currentIndex={index} field="score" label="Score" color={CIV6_COLORS.goldMetal} icon={Trophy} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="science" label="Science" color={CIV6_COLORS.science} icon={FlaskConical} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="culture" label="Culture" color={CIV6_COLORS.culture} icon={BookOpen} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="gold" label="Gold" color={CIV6_COLORS.goldDark} icon={Coins} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color={CIV6_COLORS.military} icon={Shield} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color={CIV6_COLORS.faith} icon={Flame} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color={CIV6_COLORS.marine} icon={MapPin} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="exploration_pct" label="Explored" color={CIV6_COLORS.favor} icon={Compass} />
+                <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color={CIV6_COLORS.growth} icon={Users} />
+              </div>
+
+              {turns.some((t) => t.rivals.length > 0) && (
+                <div className="mt-4 border-t border-marble-300/50 pt-4">
+                  <MultiCivChart turns={turns} currentIndex={index} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Floating toggle button — mobile only */}
+        {turns.length > 1 && (
+          <button
+            onClick={() => setShowSidebar(true)}
+            className="fixed bottom-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-marble-300 bg-marble-50 text-marble-600 shadow-md transition-colors hover:bg-marble-100 lg:hidden"
+            title="Show trends"
+          >
+            <BarChart3 className="h-5 w-5" />
+          </button>
         )}
       </div>
     </div>
