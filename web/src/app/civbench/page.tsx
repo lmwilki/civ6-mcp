@@ -5,7 +5,7 @@ import { NavBar } from "@/components/nav-bar"
 import { FullLeaderboard } from "@/components/model-leaderboard"
 import { CivIcon } from "@/components/civ-icon"
 import { CIV6_COLORS } from "@/lib/civ-colors"
-import { Swords, ScrollText, Trophy, BarChart3 } from "lucide-react"
+import { Swords, ScrollText, BarChart3 } from "lucide-react"
 
 export default function CivBenchPage() {
   return (
