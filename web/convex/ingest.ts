@@ -193,6 +193,24 @@ export const markGameCompleted = mutation({
   },
 })
 
+export const backfillAgentModel = mutation({
+  args: { model: v.string() },
+  handler: async (ctx, { model }) => {
+    const rows = await ctx.db
+      .query("playerRows")
+      .filter((q) => q.eq(q.field("is_agent"), true))
+      .collect()
+    let patched = 0
+    for (const row of rows) {
+      if (!row.agent_model) {
+        await ctx.db.patch(row._id, { agent_model: model })
+        patched++
+      }
+    }
+    return { patched, total: rows.length }
+  },
+})
+
 export const patchGameOutcome = mutation({
   args: {
     gameId: v.string(),

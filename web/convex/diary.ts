@@ -44,6 +44,44 @@ export const getLiveGame = query({
   },
 })
 
+/** Get ELO data — completed games with winner + player info */
+export const getEloData = query({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db
+      .query("games")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .collect()
+
+    const results = []
+    for (const game of games) {
+      if (!game.outcome?.winnerCiv) continue
+
+      const playerRows = await ctx.db
+        .query("playerRows")
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", game.gameId).eq("turn", game.lastTurn)
+        )
+        .collect()
+
+      if (playerRows.length < 2) continue
+
+      results.push({
+        gameId: game.gameId,
+        winnerCiv: game.outcome.winnerCiv,
+        players: playerRows.map((p) => ({
+          pid: p.pid,
+          civ: p.civ,
+          leader: p.leader,
+          is_agent: p.is_agent,
+          agent_model: p.agent_model ?? null,
+        })),
+      })
+    }
+    return results
+  },
+})
+
 /** Get all player + city rows for a game */
 export const getGameTurns = query({
   args: { gameId: v.string() },

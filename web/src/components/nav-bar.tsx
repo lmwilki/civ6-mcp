@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ThemeToggle } from "./theme-toggle"
 
 interface NavBarProps {
-  active: "home" | "diary" | "timeline"
+  active: "home" | "diary" | "leaderboard" | "timeline"
   connected?: boolean
   turn?: number | null
 }
@@ -31,6 +31,16 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
               }`}
             >
               Diary
+            </Link>
+            <Link
+              href="/leaderboard"
+              className={`text-sm transition-colors ${
+                active === "leaderboard"
+                  ? "font-semibold text-gold-dark"
+                  : "text-marble-500 hover:text-marble-700"
+              }`}
+            >
+              Leaderboard
             </Link>
             <Link
               href="/timeline"
