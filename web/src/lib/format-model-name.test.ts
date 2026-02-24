@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { formatModelName } from "./diary-types"
+import { formatModelName } from "./model-registry"
 
 describe("formatModelName", () => {
   it("formats claude-opus-4-6", () => {
