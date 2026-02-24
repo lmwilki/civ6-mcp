@@ -192,7 +192,7 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
             />
           ) : null
         })()}
-        <div className="flex flex-1 items-baseline justify-between">
+        <div className="flex flex-1 flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
           <div>
             <h2 className="font-display text-2xl font-bold tracking-wide text-marble-800">
               Turn {a.turn}
@@ -219,7 +219,7 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
       </div>
 
       {/* Yield grid */}
-      <div className="mb-4 grid grid-cols-4 gap-2">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <YieldPill icon={<CivIcon icon={FlaskConical} color={CIV6_COLORS.science} />} value={a.science} prev={pa?.science} label="Science" suffix="/t" />
         <YieldPill icon={<CivIcon icon={Palette} color={CIV6_COLORS.culture} />} value={a.culture} prev={pa?.culture} label="Culture" suffix="/t" />
         <YieldPill icon={<CivIcon icon={Coins} color={CIV6_COLORS.goldDark} />} value={a.gold} prev={pa?.gold} label="Gold" />

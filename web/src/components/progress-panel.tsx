@@ -88,7 +88,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         )}
 
         {/* Completed counts */}
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           {[
             { icon: FlaskConical, color: CIV6_COLORS.science, label: "Techs", val: agent.techs_completed, prev: prevAgent?.techs_completed },
             { icon: BookOpen, color: CIV6_COLORS.culture, label: "Civics", val: agent.civics_completed, prev: prevAgent?.civics_completed },
@@ -219,7 +219,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
             <CivIcon icon={Trophy} color={CIV6_COLORS.goldMetal} size="sm" />
             Victory Progress
           </h4>
-          <div className="grid grid-cols-5 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
             {VICTORY_TYPES.map(({ label, key, max, color, icon: Icon }) => {
               const val = agent[key]
               return (

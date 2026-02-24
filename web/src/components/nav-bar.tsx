@@ -11,9 +11,9 @@ interface NavBarProps {
 
 export function NavBar({ active, connected, turn }: NavBarProps) {
   return (
-    <header className="shrink-0 border-b border-marble-300 bg-marble-50 px-6 py-3">
+    <header className="shrink-0 border-b border-marble-300 bg-marble-50 px-3 py-3 sm:px-6">
       <div className="mx-auto flex max-w-6xl items-center justify-between">
-        <div className="flex items-baseline gap-6">
+        <div className="flex items-baseline gap-3 sm:gap-6">
           <Link href="/">
             <h1 className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
               active === "home" ? "text-gold-dark" : "text-marble-800"
