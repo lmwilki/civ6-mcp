@@ -3,8 +3,9 @@
 import type { TurnData } from "@/lib/diary-types"
 import { cleanCivName } from "@/lib/diary-types"
 import { CIV6_COLORS } from "@/lib/civ-colors"
-import { getLeaderPortrait, getCivSymbol } from "@/lib/civ-images"
+import { getCivSymbol } from "@/lib/civ-images"
 import { CivIcon } from "./civ-icon"
+import { LeaderPortrait } from "./leader-portrait"
 import { AnimatedNumber } from "./animated-number"
 import {
   Coins,
@@ -182,16 +183,11 @@ export function AgentOverview({ turnData, prevTurnData, index, total }: AgentOve
     <div className="mx-auto w-full max-w-2xl">
       {/* Header */}
       <div className="mb-4 flex items-center gap-3">
-        {(() => {
-          const portrait = getLeaderPortrait(a.leader)
-          return portrait ? (
-            <img
-              src={portrait}
-              alt={a.leader}
-              className="h-14 w-14 shrink-0 rounded-full border-2 border-marble-300 object-cover object-top"
-            />
-          ) : null
-        })()}
+        <LeaderPortrait
+          leader={a.leader}
+          agentModel={a.agent_model}
+          size="lg"
+        />
         <div className="flex flex-1 flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
           <div>
             <h2 className="font-display text-2xl font-bold tracking-wide text-marble-800">
