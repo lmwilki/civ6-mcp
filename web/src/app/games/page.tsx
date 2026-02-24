@@ -1,6 +1,6 @@
 "use client"
 
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { NavBar } from "@/components/nav-bar"
 import { useDiaryList } from "@/lib/use-diary"
 import { getCivColors } from "@/lib/civ-colors"
@@ -14,6 +14,7 @@ function slugFromFilename(filename: string): string {
 }
 
 export default function GamesPage() {
+  const router = useRouter()
   const games = useDiaryList()
 
   // Live games first, then by turn count descending
@@ -64,11 +65,11 @@ export default function GamesPage() {
                         key={game.filename}
                         className="border-b border-marble-300/30 last:border-0 transition-colors hover:bg-marble-100/50 cursor-pointer"
                         style={{ borderLeftWidth: 5, borderLeftColor: colors.primary }}
-                        onClick={() => { window.location.href = `/games/${slug}` }}
+                        onClick={() => { router.push(`/games/${slug}`) }}
                       >
                         {/* Game — portrait + civ info */}
                         <td className="px-3 py-2">
-                          <Link href={`/games/${slug}`} className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-2.5">
                             <LeaderPortrait
                               leader={game.leader}
                               agentModel={game.agentModel}
@@ -90,7 +91,7 @@ export default function GamesPage() {
                                 </p>
                               )}
                             </div>
-                          </Link>
+                          </div>
                         </td>
 
                         {/* Model */}
@@ -116,7 +117,7 @@ export default function GamesPage() {
                             outcome={game.outcome}
                             turnCount={game.count}
                           />
-                          {game.outcome && (
+                          {game.outcome?.winnerLeader && (
                             <p className="mt-0.5 text-right text-[10px] text-marble-400">
                               {game.outcome.winnerLeader}
                             </p>

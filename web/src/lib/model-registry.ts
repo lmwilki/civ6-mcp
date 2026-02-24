@@ -44,6 +44,9 @@ export function formatModelName(raw: string): string {
 
 /** Get model metadata. Returns a sensible fallback for unknown model IDs. */
 export function getModelMeta(modelId: string): ModelMeta {
+  if (!modelId?.trim()) {
+    return { id: "", name: "Unknown", provider: "Unknown", providerLogo: "", color: "#6b7280" }
+  }
   if (MODEL_REGISTRY[modelId]) return MODEL_REGISTRY[modelId]
 
   // Fallback: title-case the ID, unknown provider

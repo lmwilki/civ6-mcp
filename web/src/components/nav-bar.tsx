@@ -43,6 +43,26 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
             >
               Docs
             </Link>
+            <Link
+              href="/games"
+              className={`text-sm transition-colors lg:hidden ${
+                active === "games"
+                  ? "font-semibold text-gold-dark"
+                  : "text-marble-500 hover:text-marble-700"
+              }`}
+            >
+              Games
+            </Link>
+            <Link
+              href="/civbench"
+              className={`text-sm transition-colors lg:hidden ${
+                active === "leaderboard"
+                  ? "font-semibold text-gold-dark"
+                  : "text-marble-500 hover:text-marble-700"
+              }`}
+            >
+              CivBench
+            </Link>
           </nav>
         </div>
 

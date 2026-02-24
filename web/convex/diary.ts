@@ -81,6 +81,7 @@ export const getEloData = query({
         .withIndex("by_game_turn", (q) =>
           q.eq("gameId", game.gameId).eq("turn", game.lastTurn)
         )
+        .order("asc")
         .collect()
 
       if (playerRows.length < 2) continue
