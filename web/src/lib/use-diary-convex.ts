@@ -22,6 +22,7 @@ export function useDiaryListConvex(): DiaryFile[] {
     leader: g.leader,
     status: g.status as "live" | "completed",
     outcome: g.outcome ?? null,
+    agentModel: g.agentModel ?? undefined,
   }))
 }
 

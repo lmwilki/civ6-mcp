@@ -62,9 +62,9 @@ export default function LandingPage() {
       <NavBar active="home" />
 
       <main className="flex-1">
-        <div className="mx-auto grid max-w-5xl gap-10 px-4 py-6 sm:px-6 sm:py-10 lg:grid-cols-[1fr_280px]">
-          {/* Left column */}
-          <div>
+        <div className="mx-auto grid max-w-5xl gap-10 px-4 py-6 sm:px-6 sm:py-10 lg:gap-0 lg:grid-cols-[1fr_1px_340px]">
+          {/* Left column — civ6-mcp project */}
+          <div className="lg:pr-12">
             {/* Hero */}
             <section>
               <h2 className="font-display text-3xl font-bold tracking-[0.08em] uppercase text-marble-800">
@@ -88,12 +88,6 @@ export default function LandingPage() {
                 </a>
               </div>
             </section>
-
-            {/* Divider */}
-            <div className="my-8 border-t border-marble-300/50" />
-
-            {/* Leaderboard Preview */}
-            <LeaderboardPreview />
 
             {/* Divider */}
             <div className="my-8 border-t border-marble-300/50" />
@@ -133,32 +127,48 @@ export default function LandingPage() {
               </h3>
               <p className="mt-2 text-sm text-marble-600">
                 Browse game diaries — turn-by-turn state, agent reflections, and
-                rival comparisons.
+                tool call logs.
               </p>
-              <div className="mt-3 flex items-center gap-3">
+              <div className="mt-3">
                 <Link
-                  href="/diary"
+                  href="/games"
                   className="inline-flex items-center gap-2 rounded-sm border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-medium text-gold-dark transition-colors hover:bg-gold/20"
                 >
-                  Browse Diaries
-                </Link>
-                <Link
-                  href="/timeline"
-                  className="inline-flex items-center gap-2 rounded-sm border border-marble-300 bg-marble-100 px-4 py-2 text-sm font-medium text-marble-700 transition-colors hover:bg-marble-200"
-                >
-                  Tool Timeline
+                  Browse Games
                 </Link>
               </div>
             </section>
           </div>
 
-          {/* Right column — Recent Games */}
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <h3 className="mb-3 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
-              <CivIcon icon={ScrollText} color={CIV6_COLORS.goldMetal} size="sm" />
-              Recent Games
-            </h3>
-            <RecentGames />
+          {/* Horizontal divider (mobile) / vertical divider (desktop) */}
+          <div className="border-t border-marble-300/50 lg:border-t-0 lg:bg-marble-300/50" />
+
+          {/* Right column — CivBench */}
+          <aside className="pt-2 lg:pt-0 lg:sticky lg:top-6 lg:self-start lg:pl-12 space-y-6">
+            {/* CivBench header */}
+            <div>
+              <h3 className="font-display text-3xl font-bold tracking-[0.08em] uppercase text-marble-800">
+                CivBench
+              </h3>
+              <p className="mt-1 text-xs text-marble-500">
+                ELO rankings for LLM models playing Civilization VI against the built-in AI.
+              </p>
+            </div>
+
+            {/* ELO Rankings */}
+            <LeaderboardPreview />
+
+            {/* Divider */}
+            <div className="border-t border-marble-300/50" />
+
+            {/* Recent Games */}
+            <div>
+              <h3 className="mb-3 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+                <CivIcon icon={ScrollText} color={CIV6_COLORS.goldMetal} size="sm" />
+                Recent Games
+              </h3>
+              <RecentGames />
+            </div>
           </aside>
         </div>
       </main>

@@ -194,4 +194,5 @@ export interface DiaryFile {
   leader?: string
   status?: "live" | "completed"
   outcome?: GameOutcome | null
+  agentModel?: string
 }

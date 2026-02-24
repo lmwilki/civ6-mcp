@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useReducer, useState } from "react"
-import { NavBar } from "@/components/nav-bar"
 import { AgentOverview } from "@/components/agent-overview"
 import { LeaderboardTable } from "@/components/leaderboard-table"
 import { CitiesPanel } from "@/components/cities-panel"
@@ -11,7 +10,7 @@ import { ProgressPanel } from "@/components/progress-panel"
 import { ReflectionsPanel } from "@/components/reflections-panel"
 import { ScoreSparkline } from "@/components/score-sparkline"
 import { MultiCivChart } from "@/components/multi-civ-chart"
-import { useDiaryList, useDiary } from "@/lib/use-diary"
+import { useDiary } from "@/lib/use-diary"
 import { CIV6_COLORS } from "@/lib/civ-colors"
 import { CivIcon } from "@/components/civ-icon"
 import {
@@ -33,12 +32,13 @@ import {
   BarChart3,
 } from "lucide-react"
 
-export default function DiaryPage() {
-  const diaries = useDiaryList()
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+interface GameDiaryViewProps {
+  filename: string
+}
+
+export function GameDiaryView({ filename }: GameDiaryViewProps) {
+  const { turns, loading } = useDiary(filename)
   const [showSidebar, setShowSidebar] = useState(false)
-  const effectiveFile = selectedFile ?? (diaries.length > 0 ? diaries[0].filename : null)
-  const { turns, loading } = useDiary(effectiveFile)
 
   // Navigation state: useReducer keeps userIndex + following in sync atomically
   const [nav, dispatch] = useReducer(
@@ -66,7 +66,7 @@ export default function DiaryPage() {
     ? Math.max(0, turns.length - 1)
     : Math.min(nav.userIndex, Math.max(0, turns.length - 1))
 
-  // Navigation
+  // Navigation callbacks
   const goPrev = useCallback(() => dispatch({ type: "prev" }), [])
   const goNext = useCallback(() => dispatch({ type: "next", max: turns.length - 1 }), [turns.length])
   const goFirst = useCallback(() => dispatch({ type: "first" }), [])
@@ -94,75 +94,62 @@ export default function DiaryPage() {
 
   const currentTurn = turns[index]
   const prevTurn = index > 0 ? turns[index - 1] : undefined
-  const turnNumber = currentTurn?.turn ?? null
 
   return (
-    <div className="flex h-screen flex-col">
-      <NavBar active="diary" turn={turnNumber} />
-
-      {/* Diary selector + controls */}
+    <>
+      {/* Turn navigation controls */}
       <div className="shrink-0 border-b border-marble-300 bg-marble-50/50 px-3 py-2 sm:px-6">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedFile || ""}
-              onChange={(e) => setSelectedFile(e.target.value || null)}
-              className="rounded-sm border border-marble-300 bg-marble-100 px-2 py-1 font-mono text-xs text-marble-700"
-            >
-              {diaries.map((d) => (
-                <option key={d.filename} value={d.filename}>
-                  {d.label} ({d.count} entries)
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="mx-auto flex max-w-4xl items-center justify-center gap-1">
+          <button
+            onClick={goFirst}
+            disabled={index === 0}
+            className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
+            title="First entry (Home)"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </button>
+          <button
+            onClick={goPrev}
+            disabled={index === 0}
+            className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
+            title="Previous entry (Left arrow)"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={goFirst}
-              disabled={index === 0}
-              className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
-              title="First entry (Home)"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={goPrev}
-              disabled={index === 0}
-              className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
-              title="Previous entry (Left arrow)"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+          {turns.length > 1 && (
+            <input
+              type="range"
+              min={0}
+              max={turns.length - 1}
+              value={index}
+              onChange={(e) => dispatch({ type: "seek", index: parseInt(e.target.value, 10) })}
+              className="mx-2 w-24 accent-gold sm:w-48"
+            />
+          )}
 
-            {turns.length > 1 && (
-              <input
-                type="range"
-                min={0}
-                max={turns.length - 1}
-                value={index}
-                onChange={(e) => dispatch({ type: "seek", index: parseInt(e.target.value, 10) })}
-                className="mx-2 w-24 accent-gold sm:w-48"
-              />
-            )}
+          <button
+            onClick={goNext}
+            disabled={index >= turns.length - 1}
+            className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
+            title="Next entry (Right arrow)"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <button
+            onClick={goLast}
+            disabled={index >= turns.length - 1}
+            className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
+            title="Last entry (End)"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </button>
 
-            <button
-              onClick={goNext}
-              disabled={index >= turns.length - 1}
-              className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
-              title="Next entry (Right arrow)"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              onClick={goLast}
-              disabled={index >= turns.length - 1}
-              className="rounded-sm p-1.5 text-marble-500 transition-colors hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30"
-              title="Last entry (End)"
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </button>
-          </div>
+          {currentTurn && (
+            <span className="ml-2 font-mono text-xs tabular-nums text-marble-500">
+              Turn {currentTurn.turn}
+            </span>
+          )}
         </div>
       </div>
 
@@ -292,6 +279,6 @@ export default function DiaryPage() {
           </button>
         )}
       </div>
-    </div>
+    </>
   )
 }

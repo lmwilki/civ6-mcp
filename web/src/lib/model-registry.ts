@@ -11,12 +11,12 @@ export interface ModelMeta {
 }
 
 const PROVIDERS = {
-  anthropic: { name: "Anthropic", logo: "/images/providers/anthropic_small.svg", color: "#cc785c" },
-  openai:    { name: "OpenAI",    logo: "/images/providers/openai_small.svg",    color: "#1f1f1f" },
-  google:    { name: "Google",    logo: "/images/providers/google_small.svg",    color: "#34A853" },
-  meta:      { name: "Meta",      logo: "/images/providers/meta_small.svg",      color: "#0089f4" },
-  deepseek:  { name: "DeepSeek",  logo: "/images/providers/deepseek_small.svg",  color: "#2243e6" },
-  xai:       { name: "xAI",       logo: "/images/providers/xai.svg",             color: "#736cd3" },
+  anthropic: { name: "Anthropic", logo: "/images/providers/anthropic_small.svg", color: "#D97757" },
+  openai:    { name: "OpenAI",    logo: "/images/providers/openai_small.svg",    color: "#00A67E" },
+  google:    { name: "Google",    logo: "/images/providers/google_small.svg",    color: "#4285F4" },
+  meta:      { name: "Meta",      logo: "/images/providers/meta_small.svg",      color: "#0668E1" },
+  deepseek:  { name: "DeepSeek",  logo: "/images/providers/deepseek_small.svg",  color: "#4D6BFE" },
+  xai:       { name: "xAI",       logo: "/images/providers/xai.svg",             color: "#6B7280" },
 } as const
 
 function m(id: string, name: string, p: keyof typeof PROVIDERS): ModelMeta {

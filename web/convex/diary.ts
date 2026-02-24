@@ -10,18 +10,37 @@ export const listGames = query({
       .withIndex("by_status")
       .order("desc")
       .collect()
-    return games.map((g) => ({
-      gameId: g.gameId,
-      filename: `diary_${g.gameId}.jsonl`,
-      label: g.civ,
-      count: g.turnCount,
-      hasCities: g.hasCities,
-      hasLogs: g.hasLogs,
-      status: g.status,
-      leader: g.leader,
-      lastUpdated: g.lastUpdated,
-      outcome: g.outcome ?? null,
-    }))
+
+    // Batch-fetch agent_model for each game from its latest agent playerRow
+    const results = await Promise.all(
+      games.map(async (g) => {
+        let agentModel: string | null = null
+        const agentRow = await ctx.db
+          .query("playerRows")
+          .withIndex("by_game_turn", (q) =>
+            q.eq("gameId", g.gameId).eq("turn", g.lastTurn)
+          )
+          .filter((q) => q.eq(q.field("is_agent"), true))
+          .first()
+        if (agentRow?.agent_model) {
+          agentModel = agentRow.agent_model
+        }
+        return {
+          gameId: g.gameId,
+          filename: `diary_${g.gameId}.jsonl`,
+          label: g.civ,
+          count: g.turnCount,
+          hasCities: g.hasCities,
+          hasLogs: g.hasLogs,
+          status: g.status,
+          leader: g.leader,
+          lastUpdated: g.lastUpdated,
+          outcome: g.outcome ?? null,
+          agentModel,
+        }
+      })
+    )
+    return results
   },
 })
 
