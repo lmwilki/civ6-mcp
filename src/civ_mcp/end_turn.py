@@ -939,6 +939,24 @@ async def execute_end_turn(gs: GameState) -> str:
     gs._pending_end_turn = False
     gs._pending_end_turn_from = None
 
+    # Post-advance game-over check — victory can trigger during the turn
+    # transition (e.g. science vessel arriving, diplo VP threshold).
+    # Must check here so "GAME OVER" appears in result for log_game_over.
+    gameover = await gs.check_game_over()
+    if gameover is not None:
+        vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+        if gameover.is_defeat:
+            return (
+                f"Turn {turn_before} -> {turn_after}\n"
+                f"GAME OVER — DEFEAT. {gameover.winner_leader} of {gameover.winner_name} won a {vtype} victory. "
+                f"The game has ended. No further actions are possible."
+            )
+        else:
+            return (
+                f"Turn {turn_before} -> {turn_after}\n"
+                f"GAME OVER — VICTORY! You won a {vtype} victory! The game has ended."
+            )
+
     # Take post-turn snapshot and diff
     try:
         snap_after = await gs._take_snapshot()
