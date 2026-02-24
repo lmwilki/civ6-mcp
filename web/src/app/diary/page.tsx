@@ -12,6 +12,7 @@ import { ReflectionsPanel } from "@/components/reflections-panel"
 import { ScoreSparkline } from "@/components/score-sparkline"
 import { MultiCivChart } from "@/components/multi-civ-chart"
 import { useDiaryList, useDiary } from "@/lib/use-diary"
+import { formatModelName } from "@/lib/diary-types"
 import { CIV6_COLORS } from "@/lib/civ-colors"
 import { CivIcon } from "@/components/civ-icon"
 import {
@@ -111,7 +112,7 @@ export default function DiaryPage() {
             >
               {diaries.map((d) => (
                 <option key={d.filename} value={d.filename}>
-                  {d.label} ({d.count} entries)
+                  {d.label}{d.agent_model ? ` — ${formatModelName(d.agent_model)}` : ""} ({d.count} entries)
                 </option>
               ))}
             </select>
