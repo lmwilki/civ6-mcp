@@ -69,6 +69,9 @@ export const MODEL_REGISTRY: Record<string, ModelMeta> = {
     "Claude Haiku 4.5",
     "anthropic",
   ),
+  // Google
+  "gemini-2.5-pro": m("gemini-2.5-pro", "Gemini 2.5 Pro", "google"),
+  "gemini-2.5-flash": m("gemini-2.5-flash", "Gemini 2.5 Flash", "google"),
   // OpenAI
   "gpt-5": m("gpt-5", "GPT-5", "openai"),
   "gpt-4o": m("gpt-4o", "GPT-4o", "openai"),

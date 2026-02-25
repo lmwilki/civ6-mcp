@@ -228,6 +228,44 @@ export const patchGameOutcome = mutation({
   },
 });
 
+export const deleteGame = mutation({
+  args: { gameId: v.string() },
+  handler: async (ctx, { gameId }) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .unique();
+    if (game) await ctx.db.delete(game._id);
+
+    const playerRows = await ctx.db
+      .query("playerRows")
+      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+      .collect();
+    for (const row of playerRows) await ctx.db.delete(row._id);
+
+    const cityRows = await ctx.db
+      .query("cityRows")
+      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+      .collect();
+    for (const row of cityRows) await ctx.db.delete(row._id);
+
+    const logEntries = await ctx.db
+      .query("logEntries")
+      .withIndex("by_game_line", (q) => q.eq("gameId", gameId))
+      .collect();
+    for (const row of logEntries) await ctx.db.delete(row._id);
+
+    return {
+      deleted: {
+        game: game ? 1 : 0,
+        playerRows: playerRows.length,
+        cityRows: cityRows.length,
+        logEntries: logEntries.length,
+      },
+    };
+  },
+});
+
 export const backfillAgentModel = mutation({
   args: { model: v.string() },
   handler: async (ctx, { model }) => {

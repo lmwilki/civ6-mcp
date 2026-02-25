@@ -22,17 +22,21 @@ function listDiaries(dir: string) {
       let mtime = 0;
       let agentModel: string | undefined;
       let score: number | undefined;
+      let civ: string | undefined;
+      let leader: string | undefined;
       try {
         const content = readFileSync(join(dir, f), "utf-8");
         const lines = content.split("\n").filter((l) => l.trim());
         count = lines.length;
         mtime = statSync(join(dir, f)).mtimeMs;
-        // Extract agent_model + score from agent rows
+        // Extract agent fields from agent rows
         for (const line of lines) {
           try {
             const row = JSON.parse(line);
             if (row.is_agent) {
               if (row.agent_model && !agentModel) agentModel = row.agent_model;
+              if (row.civ && !civ) civ = row.civ;
+              if (row.leader && !leader) leader = row.leader;
               if (typeof row.score === "number") score = row.score; // keep latest
             }
           } catch {
@@ -44,7 +48,9 @@ function listDiaries(dir: string) {
       }
       const citiesFile = f.replace(".jsonl", "_cities.jsonl");
       const hasCities = existsSync(join(dir, citiesFile));
-      return { filename: f, label, count, mtime, hasCities, agentModel, score };
+      // Use civ name from data (properly cased) over filename-derived label
+      const displayLabel = civ || label;
+      return { filename: f, label: displayLabel, leader, count, mtime, hasCities, agentModel, score };
     })
     .sort((a, b) => b.mtime - a.mtime)
     .map(({ mtime, ...rest }) => ({ ...rest, lastUpdated: mtime }));
