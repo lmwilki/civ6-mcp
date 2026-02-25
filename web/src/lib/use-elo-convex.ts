@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { useMemo } from "react";
 import {
   computeElo,
+  type EloEntry,
   type GameResult,
   type Participant,
-  type EloEntry,
 } from "./elo";
 
 interface EloData {
@@ -16,41 +16,38 @@ interface EloData {
   loading: boolean;
 }
 
-/** Convex-backed ELO — real-time, no polling. */
 export function useEloConvex(): EloData {
-  const data = useQuery(api.diary.getEloData);
+  const raw = useQuery(api.diary.getEloData);
 
-  const { ratings, gameCount } = useMemo(() => {
-    if (!data) return { ratings: [] as EloEntry[], gameCount: 0 };
+  return useMemo(() => {
+    if (raw === undefined) return { ratings: [], gameCount: 0, loading: true };
+    if (!raw || raw.length === 0)
+      return { ratings: [], gameCount: 0, loading: false };
 
-    const results: GameResult[] = [];
-    for (const game of data) {
-      const participants: Participant[] = [];
-      for (const p of game.players) {
-        const won = p.civ.toUpperCase() === game.winnerCiv.toUpperCase();
-        if (p.is_agent && p.agent_model) {
-          participants.push({
-            id: `model:${p.agent_model}`,
-            name: p.agent_model,
-            type: "model",
-            civ: p.civ,
-            won,
-          });
-        } else {
-          participants.push({
-            id: `ai:${p.leader}`,
-            name: p.leader,
-            type: "ai_leader",
-            civ: p.civ,
-            won,
-          });
-        }
-      }
-      results.push({ gameId: game.gameId, participants });
-    }
+    const results: GameResult[] = raw.map((g) => {
+      const participants: Participant[] = g.players.map((p) => {
+        const isAgent = p.is_agent;
+        const id =
+          isAgent && p.agent_model
+            ? `model:${p.agent_model}`
+            : `ai:${p.leader}`;
+        return {
+          id,
+          name: isAgent && p.agent_model ? p.agent_model : p.leader,
+          type: (isAgent && p.agent_model ? "model" : "ai_leader") as
+            | "model"
+            | "ai_leader",
+          civ: p.civ,
+          won: p.civ === g.winnerCiv,
+        };
+      });
+      return { gameId: g.gameId, participants };
+    });
 
-    return { ratings: computeElo(results), gameCount: results.length };
-  }, [data]);
-
-  return { ratings, gameCount, loading: data === undefined };
+    return {
+      ratings: computeElo(results),
+      gameCount: results.length,
+      loading: false,
+    };
+  }, [raw]);
 }
