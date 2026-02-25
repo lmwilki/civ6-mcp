@@ -216,3 +216,65 @@ body::before {
 .dark body::before {
   opacity: 0.03;
 }
+
+/* ── Fumadocs overrides — match marble/gold design system ── */
+
+/* Sidebar title — use display font with civ6-style tracking */
+#nd-sidebar a[href="/docs"] {
+  font-family: var(--font-cinzel), serif;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--marble-800);
+}
+
+/* Active sidebar link — gold instead of default primary */
+#nd-sidebar [data-active="true"] {
+  background-color: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--gold-dark);
+}
+#nd-sidebar [data-active="true"]::before {
+  background-color: var(--gold) !important;
+}
+
+/* Sidebar hover — marble accent */
+#nd-sidebar a:hover {
+  background-color: color-mix(in srgb, var(--marble-300) 40%, transparent);
+}
+
+/* Sidebar border — marble */
+#nd-sidebar {
+  border-color: var(--marble-300);
+}
+
+/* Search bar — marble styling */
+#nd-sidebar [data-search-full] {
+  border-color: var(--marble-300);
+  background-color: var(--marble-100);
+}
+
+/* Mobile subnav header — marble bg and border */
+#nd-subnav {
+  background-color: color-mix(in srgb, var(--marble-50) 80%, transparent);
+  border-color: var(--marble-300);
+}
+#nd-subnav a {
+  font-family: var(--font-cinzel), serif;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--marble-800);
+}
+
+/* TOC popover — marble border */
+[data-toc-popover] header {
+  border-color: var(--marble-300);
+  background-color: color-mix(in srgb, var(--marble-50) 80%, transparent);
+}
+
+/* Search dialog — marble theme */
+[data-search] [role="dialog"] {
+  border-color: var(--marble-300);
+}
