@@ -37,12 +37,16 @@ export const ingestPlayerRows = mutation({
       .unique();
 
     if (game) {
-      await ctx.db.patch(game._id, {
+      const patch: Record<string, unknown> = {
         lastTurn: Math.max(game.lastTurn, maxTurn),
         lastUpdated: Date.now(),
         turnCount: Math.max(game.turnCount, maxTurn),
         status: "live" as const,
-      });
+      };
+      // Backfill leader/civ if game was created by log ingestion with empty values
+      if (!game.leader && leader) patch.leader = leader;
+      if (!game.civ && civ) patch.civ = civ;
+      await ctx.db.patch(game._id, patch);
     } else {
       await ctx.db.insert("games", {
         gameId,
