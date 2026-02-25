@@ -6,7 +6,7 @@ Watches ~/.civ6-mcp/ for diary, city, and log JSONL files and pushes
 new/changed rows to Convex via the HTTP mutation API.
 
 Usage:
-    python scripts/convex_sync.py          # sync to dev (reads web/.env.local)
+    python scripts/convex_sync.py          # sync to dev (reads web/.env.dev)
     python scripts/convex_sync.py --prod   # sync to prod (reads web/.env.prod)
 
 Env files are loaded from web/ relative to this script. Environment variables
@@ -72,7 +72,7 @@ def _resolve_config(prod: bool) -> tuple[str, str]:
 
     Environment variables take precedence over file values.
     """
-    env_file = WEB_DIR / (".env.prod" if prod else ".env.local")
+    env_file = WEB_DIR / (".env.prod" if prod else ".env.dev")
     file_env = _load_env_file(env_file)
 
     convex_url = os.environ.get("CONVEX_URL") or file_env.get("CONVEX_URL", "")
@@ -388,7 +388,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Sync civ-mcp JSONL files to Convex")
     parser.add_argument(
         "--prod", action="store_true",
-        help="Target production deployment (reads web/.env.prod)",
+        help="Target production deployment (reads web/.env.prod instead of web/.env.dev)",
     )
     args = parser.parse_args()
 
@@ -396,10 +396,10 @@ async def main() -> None:
     env_label = "PROD" if args.prod else "DEV"
 
     if not convex_url:
-        log.error("CONVEX_URL not set — check web/.env.prod" if args.prod else "CONVEX_URL not set — check web/.env.local")
+        log.error("CONVEX_URL not set — check web/.env.prod" if args.prod else "CONVEX_URL not set — check web/.env.dev")
         sys.exit(1)
     if not deploy_key:
-        log.error("CONVEX_DEPLOY_KEY not set — check web/.env.prod" if args.prod else "CONVEX_DEPLOY_KEY not set — check web/.env.local")
+        log.error("CONVEX_DEPLOY_KEY not set — check web/.env.prod" if args.prod else "CONVEX_DEPLOY_KEY not set — check web/.env.dev")
         sys.exit(1)
 
     log.info("[%s] Watching %s → %s", env_label, DIARY_DIR, convex_url)
