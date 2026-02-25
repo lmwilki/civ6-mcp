@@ -1,0 +1,1 @@
+{"mcpServers": {"civ6-mcp": {"command": "uv", "args": ["run", "--directory", ".", "civ-mcp"]}}}

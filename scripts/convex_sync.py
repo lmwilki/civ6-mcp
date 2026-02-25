@@ -117,8 +117,13 @@ def load_state() -> dict[str, Any]:
 def save_state(state: dict[str, Any]) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STATE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, indent=2))
-    tmp.rename(STATE_FILE)
+    try:
+        tmp.write_text(json.dumps(state, indent=2))
+        tmp.rename(STATE_FILE)
+    except OSError:
+        # Atomic rename can fail on some FS configs; fall back to direct write
+        STATE_FILE.write_text(json.dumps(state, indent=2))
+        tmp.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
