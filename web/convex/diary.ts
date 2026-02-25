@@ -105,18 +105,29 @@ export const getEloData = query({
   },
 });
 
-/** Get all player + city rows for a game */
+/** Get all player + city rows for a game, plus game metadata */
 export const getGameTurns = query({
   args: { gameId: v.string() },
   handler: async (ctx, { gameId }) => {
-    const playerRows = await ctx.db
-      .query("playerRows")
-      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
-      .collect();
-    const cityRows = await ctx.db
-      .query("cityRows")
-      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
-      .collect();
-    return { playerRows, cityRows };
+    const [game, playerRows, cityRows] = await Promise.all([
+      ctx.db
+        .query("games")
+        .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+        .first(),
+      ctx.db
+        .query("playerRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+        .collect(),
+      ctx.db
+        .query("cityRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+        .collect(),
+    ]);
+    return {
+      playerRows,
+      cityRows,
+      status: game?.status ?? null,
+      outcome: game?.outcome ?? null,
+    };
   },
 });

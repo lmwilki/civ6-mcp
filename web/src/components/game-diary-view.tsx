@@ -10,6 +10,9 @@ import { ProgressPanel } from "@/components/progress-panel";
 import { ReflectionsPanel } from "@/components/reflections-panel";
 import { SparklineSidebar } from "@/components/sparkline-sidebar";
 import { useDiary } from "@/lib/use-diary";
+import type { GameOutcome } from "@/lib/diary-types";
+import { getVictoryTypeMeta } from "@/components/game-status-badge";
+import { CivIcon, CivSymbol } from "@/components/civ-icon";
 import {
   ChevronLeft,
   ChevronRight,
@@ -17,14 +20,69 @@ import {
   ChevronsRight,
   X,
   BarChart3,
+  Skull,
+  Trophy,
 } from "lucide-react";
 
 interface GameDiaryViewProps {
   filename: string;
 }
 
+const STATUS_COLORS = {
+  victory: "#3D8B6E",
+  defeat: "#C0503A",
+} as const;
+
+function OutcomeBanner({ outcome }: { outcome: GameOutcome }) {
+  const isVictory = outcome.result === "victory";
+  const vt = getVictoryTypeMeta(outcome.victoryType);
+  const VtIcon = vt.icon;
+  const bgColor = isVictory ? "rgba(61,139,110,0.08)" : "rgba(192,80,58,0.08)";
+  const borderColor = isVictory ? "rgba(61,139,110,0.25)" : "rgba(192,80,58,0.25)";
+  const headColor = isVictory ? STATUS_COLORS.victory : STATUS_COLORS.defeat;
+
+  return (
+    <div
+      className="mx-auto w-full max-w-2xl rounded-sm border px-4 py-3"
+      style={{ backgroundColor: bgColor, borderColor }}
+    >
+      <div className="flex items-center gap-3">
+        <CivIcon
+          icon={isVictory ? Trophy : Skull}
+          color={headColor}
+          size="md"
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className="font-display text-sm font-bold uppercase tracking-[0.08em]"
+              style={{ color: headColor }}
+            >
+              {isVictory ? "Victory" : "Defeated"}
+            </span>
+            <span className="font-mono text-xs tabular-nums text-marble-500">
+              Turn {outcome.turn}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <CivIcon icon={VtIcon} color={vt.color} size="sm" />
+            <span className="text-xs" style={{ color: vt.color }}>
+              {vt.label} Victory
+            </span>
+            <span className="text-xs text-marble-500">—</span>
+            <CivSymbol civ={outcome.winnerCiv} className="h-3.5 w-3.5" />
+            <span className="text-xs text-marble-700">
+              {outcome.winnerCiv} ({outcome.winnerLeader})
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GameDiaryView({ filename }: GameDiaryViewProps) {
-  const { turns, loading } = useDiary(filename);
+  const { turns, loading, outcome } = useDiary(filename);
   const [showSidebar, setShowSidebar] = useState(false);
 
   // Navigation state: useReducer keeps userIndex + following in sync atomically
@@ -151,6 +209,17 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
               Turn {currentTurn.turn}
             </span>
           )}
+          {outcome && (
+            <span
+              className="ml-1.5 rounded-sm px-1.5 py-0.5 font-display text-[9px] font-bold uppercase tracking-[0.08em]"
+              style={{
+                color: outcome.result === "victory" ? STATUS_COLORS.victory : STATUS_COLORS.defeat,
+                backgroundColor: outcome.result === "victory" ? "rgba(61,139,110,0.1)" : "rgba(192,80,58,0.1)",
+              }}
+            >
+              {outcome.result === "victory" ? "Victory" : "Defeat"} T{outcome.turn}
+            </span>
+          )}
         </div>
       </div>
 
@@ -181,6 +250,11 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
 
           {!loading && currentTurn && (
             <>
+              {outcome && index === turns.length - 1 && (
+                <div className="mx-auto mb-4 w-full max-w-2xl">
+                  <OutcomeBanner outcome={outcome} />
+                </div>
+              )}
               <AgentOverview
                 turnData={currentTurn}
                 prevTurnData={prevTurn}

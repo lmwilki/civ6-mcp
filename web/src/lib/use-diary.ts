@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PlayerRow, CityRow, TurnData, DiaryFile } from "./diary-types";
+import type { PlayerRow, CityRow, TurnData, DiaryFile, GameOutcome } from "./diary-types";
 import { groupTurnData } from "./diary-types";
 import { CONVEX_MODE } from "@/components/convex-provider";
 import { useDiaryListConvex, useDiaryConvex } from "./use-diary-convex";
@@ -28,10 +28,18 @@ function useDiaryListFs(): DiaryFile[] {
 
 export const useDiaryList = CONVEX_MODE ? useDiaryListConvex : useDiaryListFs;
 
+export interface UseDiaryResult {
+  turns: TurnData[];
+  loading: boolean;
+  reload: () => Promise<void>;
+  outcome?: GameOutcome | null;
+  status?: "live" | "completed";
+}
+
 function useDiaryFs(
   filename: string | null,
   live: boolean = true,
-): { turns: TurnData[]; loading: boolean; reload: () => Promise<void> } {
+): UseDiaryResult {
   const [turns, setTurns] = useState<TurnData[]>([]);
   const [loading, setLoading] = useState(false);
   const prevCount = useRef(0);
@@ -71,7 +79,7 @@ function useDiaryFs(
     return () => clearInterval(id);
   }, [live, load]);
 
-  return { turns, loading, reload: load };
+  return { turns, loading, reload: load, outcome: null };
 }
 
 export const useDiary = CONVEX_MODE ? useDiaryConvex : useDiaryFs;

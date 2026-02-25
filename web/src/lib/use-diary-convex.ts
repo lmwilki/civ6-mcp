@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
-import type { PlayerRow, CityRow, DiaryFile } from "./diary-types";
+import type { PlayerRow, CityRow, DiaryFile, GameOutcome } from "./diary-types";
 import { slugFromFilename, groupTurnData } from "./diary-types";
 
 /** Convex-backed diary list — real-time, no polling. */
@@ -49,9 +49,16 @@ export function useDiaryConvex(filename: string | null) {
     return groupTurnData(players, cities);
   }, [data]);
 
+  const outcome = useMemo<GameOutcome | null>(() => {
+    if (!data?.outcome) return null;
+    return data.outcome as GameOutcome;
+  }, [data]);
+
   return {
     turns,
     loading: data === undefined,
     reload: async () => {}, // No-op — Convex auto-updates
+    outcome,
+    status: (data?.status as "live" | "completed") ?? undefined,
   };
 }
