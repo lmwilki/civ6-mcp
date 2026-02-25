@@ -1,15 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { EloEntry } from "./elo";
+import type { EloEntry, EloData } from "./elo";
 import { CONVEX_MODE } from "@/components/convex-provider";
 import { useEloConvex } from "./use-elo-convex";
-
-interface EloData {
-  ratings: EloEntry[];
-  gameCount: number;
-  loading: boolean;
-}
 
 function useEloFs(): EloData {
   const [ratings, setRatings] = useState<EloEntry[]>([]);

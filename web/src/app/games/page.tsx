@@ -1,32 +1,24 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { NavBar } from "@/components/nav-bar";
+import { PageShell } from "@/components/page-shell";
 import { useDiaryList } from "@/lib/use-diary";
+import { slugFromFilename, sortGamesLiveFirst } from "@/lib/diary-types";
 import { getCivColors } from "@/lib/civ-colors";
-import { getCivSymbol } from "@/lib/civ-images";
+import { CivSymbol } from "@/components/civ-icon";
 import { getModelMeta, formatModelName } from "@/lib/model-registry";
 import { LeaderPortrait } from "@/components/leader-portrait";
 import { GameStatusBadge } from "@/components/game-status-badge";
-
-function slugFromFilename(filename: string): string {
-  return filename.replace(/^diary_/, "").replace(/\.jsonl$/, "");
-}
 
 export default function GamesPage() {
   const router = useRouter();
   const games = useDiaryList();
 
-  // Live games first, then by turn count descending
-  const sorted = [...games].sort((a, b) => {
-    if (a.status === "live" && b.status !== "live") return -1;
-    if (b.status === "live" && a.status !== "live") return 1;
-    return b.count - a.count;
-  });
+  const sorted = sortGamesLiveFirst(games);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <NavBar active="games" />
+    <PageShell active="games">
 
       <main className="flex-1 px-3 py-6 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-5xl">
@@ -57,7 +49,6 @@ export default function GamesPage() {
                   {sorted.map((game) => {
                     const slug = slugFromFilename(game.filename);
                     const colors = getCivColors(game.label, game.leader);
-                    const symbol = getCivSymbol(game.label);
                     const modelMeta = game.agentModel
                       ? getModelMeta(game.agentModel)
                       : null;
@@ -85,13 +76,7 @@ export default function GamesPage() {
                             />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                {symbol && (
-                                  <img
-                                    src={symbol}
-                                    alt=""
-                                    className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
-                                  />
-                                )}
+                                <CivSymbol civ={game.label} />
                                 <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
                                   {game.label}
                                 </span>
@@ -110,9 +95,11 @@ export default function GamesPage() {
                           {modelMeta ? (
                             <div className="flex items-center gap-1.5">
                               {modelMeta.providerLogo && (
-                                <img
+                                <Image
                                   src={modelMeta.providerLogo}
                                   alt=""
+                                  width={14}
+                                  height={14}
                                   className="h-3.5 w-3.5"
                                 />
                               )}
@@ -149,6 +136,6 @@ export default function GamesPage() {
           )}
         </div>
       </main>
-    </div>
+    </PageShell>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { NavBar } from "@/components/nav-bar";
+import { PageShell } from "@/components/page-shell";
 import { GameDiaryView } from "@/components/game-diary-view";
 import { GameLogView } from "@/components/game-log-view";
 
@@ -22,8 +22,7 @@ export default function GameDetailPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <NavBar active="games" />
+    <PageShell active="games" footer={false}>
 
       {/* Tab bar */}
       <div className="shrink-0 border-b border-marble-300 bg-marble-50 px-3 sm:px-6">
@@ -57,6 +56,6 @@ export default function GameDetailPage() {
       ) : (
         <GameLogView gameSlug={slug} />
       )}
-    </div>
+    </PageShell>
   );
 }

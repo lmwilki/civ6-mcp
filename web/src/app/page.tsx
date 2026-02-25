@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NavBar } from "@/components/nav-bar";
+import { PageShell } from "@/components/page-shell";
 import { RecentGames } from "@/components/recent-games";
 import { CivIcon } from "@/components/civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
@@ -62,9 +62,7 @@ const CAPABILITIES = [
 
 export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <NavBar active="home" />
-
+    <PageShell active="home">
       <main className="flex-1">
         <div className="mx-auto grid max-w-5xl gap-10 px-4 py-6 sm:px-6 sm:py-10 lg:gap-0 lg:grid-cols-[1fr_1px_340px]">
           {/* Left column — civ6-mcp project */}
@@ -181,11 +179,6 @@ export default function LandingPage() {
           </aside>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-marble-300 px-6 py-4 text-center">
-        <p className="font-mono text-xs text-marble-500">MIT License</p>
-      </footer>
-    </div>
+    </PageShell>
   );
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
+import { PulsingDot } from "./pulsing-dot";
 
 interface NavBarProps {
   active: "home" | "about" | "docs" | "games" | "leaderboard";
@@ -111,13 +112,10 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
             </span>
           )}
           <ThemeToggle />
-          <span className="relative flex h-2 w-2">
-            <span
-              className={`inline-flex h-2 w-2 rounded-full ${
-                connected ? "bg-patina" : "bg-marble-400"
-              }`}
-            />
-          </span>
+          <PulsingDot
+            color={connected ? "bg-patina" : "bg-marble-400"}
+            ping={false}
+          />
         </div>
       </div>
     </header>

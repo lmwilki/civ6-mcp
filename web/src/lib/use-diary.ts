@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlayerRow, CityRow, TurnData, DiaryFile } from "./diary-types";
+import { groupTurnData } from "./diary-types";
 import { CONVEX_MODE } from "@/components/convex-provider";
 import { useDiaryListConvex, useDiaryConvex } from "./use-diary-convex";
 
@@ -27,52 +28,6 @@ function useDiaryListFs(): DiaryFile[] {
 
 export const useDiaryList = CONVEX_MODE ? useDiaryListConvex : useDiaryListFs;
 
-/** Group raw player + city rows into per-turn snapshots */
-function groupByTurn(players: PlayerRow[], cities: CityRow[]): TurnData[] {
-  const turnMap = new Map<
-    number,
-    { players: PlayerRow[]; cities: CityRow[] }
-  >();
-
-  // Deduplicate players per (turn, pid) — last row wins (handles interrupted writes)
-  const deduped = new Map<string, PlayerRow>();
-  for (const p of players) {
-    deduped.set(`${p.turn}:${p.pid}`, p);
-  }
-  for (const p of deduped.values()) {
-    if (!turnMap.has(p.turn)) turnMap.set(p.turn, { players: [], cities: [] });
-    turnMap.get(p.turn)!.players.push(p);
-  }
-  // Deduplicate cities per (turn, city_id) — last row wins
-  const dedupedCities = new Map<string, CityRow>();
-  for (const c of cities) {
-    dedupedCities.set(`${c.turn}:${c.city_id}`, c);
-  }
-  for (const c of dedupedCities.values()) {
-    if (!turnMap.has(c.turn)) turnMap.set(c.turn, { players: [], cities: [] });
-    turnMap.get(c.turn)!.cities.push(c);
-  }
-
-  const result: TurnData[] = [];
-  for (const [turn, data] of [...turnMap.entries()].sort(([a], [b]) => a - b)) {
-    const agent = data.players.find((p) => p.is_agent);
-    if (!agent) continue; // skip turns with no agent row
-    const rivals = data.players
-      .filter((p) => !p.is_agent)
-      .sort((a, b) => b.score - a.score);
-    const agentCities = data.cities.filter((c) => c.pid === agent.pid);
-    result.push({
-      turn,
-      timestamp: agent.timestamp,
-      agent,
-      rivals,
-      agentCities,
-      allCities: data.cities,
-    });
-  }
-  return result;
-}
-
 function useDiaryFs(
   filename: string | null,
   live: boolean = true,
@@ -93,7 +48,7 @@ function useDiaryFs(
       const citiesData = await citiesRes.json();
       const players: PlayerRow[] = playersData.entries || [];
       const cities: CityRow[] = citiesData.entries || [];
-      const grouped = groupByTurn(players, cities);
+      const grouped = groupTurnData(players, cities);
       prevCount.current = grouped.length;
       setTurns(grouped);
     } catch {

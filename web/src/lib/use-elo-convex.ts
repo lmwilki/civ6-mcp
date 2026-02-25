@@ -5,16 +5,10 @@ import { api } from "../../convex/_generated/api";
 import { useMemo } from "react";
 import {
   computeElo,
-  type EloEntry,
+  type EloData,
   type GameResult,
   type Participant,
 } from "./elo";
-
-interface EloData {
-  ratings: EloEntry[];
-  gameCount: number;
-  loading: boolean;
-}
 
 export function useEloConvex(): EloData {
   const raw = useQuery(api.diary.getEloData);

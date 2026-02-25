@@ -1,10 +1,8 @@
-import { NavBar } from "@/components/nav-bar";
+import { PageShell } from "@/components/page-shell";
 
 export default function AboutPage() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <NavBar active="about" />
-
+    <PageShell active="about">
       <main className="flex-1">
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
           <h1 className="font-display text-2xl font-bold tracking-[0.08em] uppercase text-marble-800">
@@ -33,10 +31,6 @@ export default function AboutPage() {
           </div>
         </div>
       </main>
-
-      <footer className="border-t border-marble-300 px-6 py-4 text-center">
-        <p className="font-mono text-xs text-marble-500">MIT License</p>
-      </footer>
-    </div>
+    </PageShell>
   );
 }

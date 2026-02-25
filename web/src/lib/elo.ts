@@ -28,6 +28,12 @@ export interface EloEntry {
   losses: number;
 }
 
+export interface EloData {
+  ratings: EloEntry[];
+  gameCount: number;
+  loading: boolean;
+}
+
 // ─── ELO computation ────────────────────────────────────────────────────────
 
 const BASE_ELO = 1500;

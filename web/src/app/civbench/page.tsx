@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { NavBar } from "@/components/nav-bar";
+import { PageShell } from "@/components/page-shell";
 import { FullLeaderboard } from "@/components/model-leaderboard";
 import { CivIcon } from "@/components/civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
@@ -9,9 +9,7 @@ import { Swords, ScrollText, BarChart3 } from "lucide-react";
 
 export default function CivBenchPage() {
   return (
-    <div className="flex min-h-screen flex-col">
-      <NavBar active="leaderboard" />
-
+    <PageShell active="leaderboard">
       <main className="flex-1">
         <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
           {/* Hero */}
@@ -105,10 +103,6 @@ export default function CivBenchPage() {
           </div>
         </div>
       </main>
-
-      <footer className="border-t border-marble-300 px-6 py-4 text-center">
-        <p className="font-mono text-xs text-marble-500">MIT License</p>
-      </footer>
-    </div>
+    </PageShell>
   );
 }

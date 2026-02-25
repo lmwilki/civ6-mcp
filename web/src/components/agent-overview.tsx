@@ -3,8 +3,7 @@
 import type { TurnData } from "@/lib/diary-types";
 import { cleanCivName } from "@/lib/diary-types";
 import { CIV6_COLORS } from "@/lib/civ-colors";
-import { getCivSymbol } from "@/lib/civ-images";
-import { CivIcon } from "./civ-icon";
+import { CivIcon, CivSymbol } from "./civ-icon";
 import { LeaderPortrait } from "./leader-portrait";
 import { AnimatedNumber } from "./animated-number";
 import {
@@ -222,16 +221,7 @@ export function AgentOverview({
               Turn {a.turn}
             </h2>
             <p className="mt-0.5 flex items-center gap-1.5 text-sm text-marble-600">
-              {(() => {
-                const sym = getCivSymbol(a.civ);
-                return sym ? (
-                  <img
-                    src={sym}
-                    alt=""
-                    className="inline h-4 w-4 rounded-full object-cover"
-                  />
-                ) : null;
-              })()}
+              <CivSymbol civ={a.civ} className="h-4 w-4" />
               {a.civ} ({a.leader}) &middot; {cleanCivName(a.era)} &middot;{" "}
               {timestamp}
             </p>

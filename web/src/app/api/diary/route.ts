@@ -46,7 +46,8 @@ function listDiaries(dir: string) {
       return { filename: f, label, count, mtime, hasCities, agentModel };
     })
     .sort((a, b) => b.mtime - a.mtime)
-    .map(({ mtime: _, ...rest }) => rest);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    .map(({ mtime: _mtime, ...rest }) => rest);
 }
 
 /** Read entries from a specific JSONL file */

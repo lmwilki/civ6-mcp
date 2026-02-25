@@ -202,3 +202,68 @@ export interface DiaryFile {
   outcome?: GameOutcome | null;
   agentModel?: string;
 }
+
+// === Shared helpers ===
+
+/** diary_india_123.jsonl → india_123 */
+export function slugFromFilename(filename: string): string {
+  return filename.replace(/^diary_/, "").replace(/\.jsonl$/, "");
+}
+
+/** Sort games: live first, then by turn count descending */
+export function sortGamesLiveFirst(games: DiaryFile[]): DiaryFile[] {
+  return [...games].sort((a, b) => {
+    if (a.status === "live" && b.status !== "live") return -1;
+    if (b.status === "live" && a.status !== "live") return 1;
+    return b.count - a.count;
+  });
+}
+
+/** Group raw player + city rows into per-turn snapshots */
+export function groupTurnData(
+  players: PlayerRow[],
+  cities: CityRow[],
+): TurnData[] {
+  const turnMap = new Map<
+    number,
+    { players: PlayerRow[]; cities: CityRow[] }
+  >();
+
+  // Deduplicate players per (turn, pid) — last row wins (handles interrupted writes)
+  const deduped = new Map<string, PlayerRow>();
+  for (const p of players) {
+    deduped.set(`${p.turn}:${p.pid}`, p);
+  }
+  for (const p of deduped.values()) {
+    if (!turnMap.has(p.turn)) turnMap.set(p.turn, { players: [], cities: [] });
+    turnMap.get(p.turn)!.players.push(p);
+  }
+  // Deduplicate cities per (turn, city_id) — last row wins
+  const dedupedCities = new Map<string, CityRow>();
+  for (const c of cities) {
+    dedupedCities.set(`${c.turn}:${c.city_id}`, c);
+  }
+  for (const c of dedupedCities.values()) {
+    if (!turnMap.has(c.turn)) turnMap.set(c.turn, { players: [], cities: [] });
+    turnMap.get(c.turn)!.cities.push(c);
+  }
+
+  const result: TurnData[] = [];
+  for (const [turn, data] of [...turnMap.entries()].sort(([a], [b]) => a - b)) {
+    const agent = data.players.find((p) => p.is_agent);
+    if (!agent) continue; // skip turns with no agent row
+    const rivals = data.players
+      .filter((p) => !p.is_agent)
+      .sort((a, b) => b.score - a.score);
+    const agentCities = data.cities.filter((c) => c.pid === agent.pid);
+    result.push({
+      turn,
+      timestamp: agent.timestamp,
+      agent,
+      rivals,
+      agentCities,
+      allCities: data.cities,
+    });
+  }
+  return result;
+}

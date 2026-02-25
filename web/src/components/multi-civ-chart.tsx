@@ -7,7 +7,8 @@ import type {
   PlayerRow,
 } from "@/lib/diary-types";
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors";
-import { getCivSymbol } from "@/lib/civ-images";
+import { getCivSymbol } from "@/lib/civ-registry";
+import { CivSymbol } from "./civ-icon";
 import { CivIcon } from "./civ-icon";
 import { BarChart3, Play, Pause } from "lucide-react";
 
@@ -241,16 +242,10 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
             (a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity),
           );
           return entries.map((e) => {
-            const sym = getCivSymbol(e.name);
             return (
               <div key={e.key} className="flex items-center gap-1.5">
-                {sym ? (
-                  <img
-                    src={sym}
-                    alt=""
-                    className="h-3 w-3 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
+                <CivSymbol civ={e.name} className="h-3 w-3" />
+                {!getCivSymbol(e.name) && (
                   <span
                     className="inline-block h-2 w-2 shrink-0 rounded-full"
                     style={{ backgroundColor: e.color }}

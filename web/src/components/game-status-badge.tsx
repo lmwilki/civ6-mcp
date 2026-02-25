@@ -2,6 +2,7 @@
 
 import { Trophy, Skull } from "lucide-react";
 import type { GameOutcome } from "@/lib/diary-types";
+import { PulsingDot } from "./pulsing-dot";
 
 interface GameStatusBadgeProps {
   status?: "live" | "completed";
@@ -18,10 +19,7 @@ export function GameStatusBadge({
     return (
       <div className="text-right">
         <div className="flex items-center justify-end gap-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-patina opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-patina" />
-          </span>
+          <PulsingDot />
           <span className="font-display text-[10px] font-bold uppercase tracking-[0.08em] text-patina">
             Live
           </span>

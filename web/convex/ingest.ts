@@ -114,6 +114,7 @@ export const ingestLogEntries = mutation({
       }
 
       // Strip outcome field — logEntries schema doesn't include it
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { outcome: _outcome, ...logEntry } = entry;
 
       // Dedup by (gameId, line)

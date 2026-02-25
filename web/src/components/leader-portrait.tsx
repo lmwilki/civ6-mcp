@@ -1,4 +1,5 @@
-import { getLeaderPortrait } from "@/lib/civ-images";
+import Image from "next/image";
+import { getLeaderPortrait } from "@/lib/civ-registry";
 import { getModelMeta } from "@/lib/model-registry";
 
 const SIZES = {
@@ -45,9 +46,11 @@ export function LeaderPortrait({
   return (
     <div className="relative shrink-0">
       {portrait ? (
-        <img
+        <Image
           src={portrait}
           alt={leader ?? ""}
+          width={40}
+          height={40}
           className={`${s.portrait} shrink-0 rounded-full ${s.border} border-marble-300 object-cover object-top`}
         />
       ) : (
@@ -60,7 +63,7 @@ export function LeaderPortrait({
         <span
           className={`absolute ${s.offset} flex ${s.badge} items-center justify-center rounded-full border border-marble-200 bg-marble-50 shadow-sm`}
         >
-          <img src={modelMeta.providerLogo} alt="" className={s.badgeIcon} />
+          <Image src={modelMeta.providerLogo} alt="" width={12} height={12} className={s.badgeIcon} />
         </span>
       )}
     </div>

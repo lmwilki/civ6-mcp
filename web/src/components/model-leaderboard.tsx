@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useElo } from "@/lib/use-elo";
 import { getModelMeta, formatModelName } from "@/lib/model-registry";
@@ -38,7 +39,7 @@ function ModelAvatar({
         className={`flex ${px} shrink-0 items-center justify-center rounded-full`}
         style={{ backgroundColor: bgColor }}
       >
-        <img src={meta.providerLogo} alt={meta.provider} className={iconPx} />
+        <Image src={meta.providerLogo} alt={meta.provider} width={14} height={14} className={iconPx} />
       </span>
     );
   }
@@ -72,6 +73,16 @@ function EloBadge({ elo, color }: { elo: number; color?: string }) {
       style={color ? { color } : undefined}
     >
       {elo}
+    </span>
+  );
+}
+
+function WinLoss({ wins, losses }: { wins: number; losses: number }) {
+  return (
+    <span className="font-mono text-sm tabular-nums text-marble-600">
+      <span className="text-patina">{wins}</span>
+      <span className="text-marble-400">-</span>
+      <span className="text-terracotta">{losses}</span>
     </span>
   );
 }
@@ -253,9 +264,11 @@ export function FullLeaderboard() {
                     <td className="hidden px-3 py-2.5 sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         {meta.providerLogo && (
-                          <img
+                          <Image
                             src={meta.providerLogo}
                             alt=""
+                            width={14}
+                            height={14}
                             className="h-3.5 w-3.5"
                           />
                         )}
@@ -276,10 +289,8 @@ export function FullLeaderboard() {
                         <EloBadge elo={entry.elo} />
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-xs tabular-nums text-marble-600">
-                      <span className="text-patina">{entry.wins}</span>
-                      <span className="text-marble-400">-</span>
-                      <span className="text-terracotta">{entry.losses}</span>
+                    <td className="px-3 py-2.5 text-right">
+                      <WinLoss wins={entry.wins} losses={entry.losses} />
                     </td>
                     <td className="hidden px-3 py-2.5 sm:table-cell">
                       <div className="flex justify-end">
@@ -342,9 +353,7 @@ export function FullLeaderboard() {
                     </div>
                     <div className="text-center">
                       <div className="font-mono text-sm font-semibold tabular-nums text-marble-700">
-                        <span className="text-patina">{entry.wins}</span>
-                        <span className="text-marble-400">-</span>
-                        <span className="text-terracotta">{entry.losses}</span>
+                        <WinLoss wins={entry.wins} losses={entry.losses} />
                       </div>
                       <div className="text-[9px] uppercase tracking-wider text-marble-500">
                         W-L

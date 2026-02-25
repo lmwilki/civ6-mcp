@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useDiaryList } from "@/lib/use-diary";
+import { slugFromFilename, sortGamesLiveFirst } from "@/lib/diary-types";
 import { getCivColors } from "@/lib/civ-colors";
-import { getCivSymbol } from "@/lib/civ-images";
+import { CivSymbol } from "./civ-icon";
 import { LeaderPortrait } from "@/components/leader-portrait";
 import { GameStatusBadge } from "@/components/game-status-badge";
 import { formatModelName } from "@/lib/model-registry";
@@ -19,12 +20,7 @@ export function RecentGames() {
     );
   }
 
-  // Live games first, then by turn count descending
-  const sorted = [...games].sort((a, b) => {
-    if (a.status === "live" && b.status !== "live") return -1;
-    if (b.status === "live" && a.status !== "live") return 1;
-    return b.count - a.count;
-  });
+  const sorted = sortGamesLiveFirst(games);
 
   return (
     <div className="space-y-1.5">
@@ -34,7 +30,7 @@ export function RecentGames() {
         return (
           <Link
             key={game.filename}
-            href={`/games/${game.filename.replace(/^diary_/, "").replace(/\.jsonl$/, "")}`}
+            href={`/games/${slugFromFilename(game.filename)}`}
             className="group flex items-stretch gap-0 rounded-sm border border-marble-300/50 bg-marble-50 transition-colors hover:border-marble-400 hover:bg-marble-100"
           >
             {/* Color accent bar */}
@@ -53,16 +49,7 @@ export function RecentGames() {
                 />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1">
-                    {(() => {
-                      const sym = getCivSymbol(game.label);
-                      return sym ? (
-                        <img
-                          src={sym}
-                          alt=""
-                          className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
-                        />
-                      ) : null;
-                    })()}
+                    <CivSymbol civ={game.label} />
                     <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
                       {game.label}
                     </span>

@@ -85,7 +85,8 @@ export async function GET() {
 
     games.sort((a, b) => b.mtime - a.mtime);
 
-    return NextResponse.json(games.map(({ mtime: _, ...rest }) => rest));
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    return NextResponse.json(games.map(({ mtime: _mtime, ...rest }) => rest));
   } catch {
     return NextResponse.json([]);
   }

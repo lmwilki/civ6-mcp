@@ -31,7 +31,8 @@ export function useGameLogConvex(
   const entries = useMemo(() => {
     if (!data) return [];
     return data.map((row: Doc<"logEntries">): LogEntry => {
-      const { _id, _creationTime, gameId: _, ...fields } = row;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _id, _creationTime, gameId: _gameId, ...fields } = row;
       return fields as LogEntry;
     });
   }, [data]);

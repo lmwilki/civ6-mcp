@@ -5,7 +5,8 @@ import { ScoreDelta } from "./agent-overview";
 import { CollapsiblePanel } from "./collapsible-panel";
 import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors";
-import { getCivSymbol } from "@/lib/civ-images";
+import { getCivSymbol } from "@/lib/civ-registry";
+import { CivSymbol } from "./civ-icon";
 import { Medal } from "lucide-react";
 
 interface LeaderboardTableProps {
@@ -81,24 +82,16 @@ export function LeaderboardTable({
                     className={`py-1 px-1 ${isAgent ? "font-semibold text-gold-dark" : "font-medium text-marble-700"}`}
                   >
                     <span className="flex items-center gap-1.5">
-                      {(() => {
-                        const sym = getCivSymbol(p.civ);
-                        return sym ? (
-                          <img
-                            src={sym}
-                            alt=""
-                            className="h-4 w-4 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <span
-                            className="inline-block h-2 w-2 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: getCivColors(p.civ, p.leader)
-                                .primary,
-                            }}
-                          />
-                        );
-                      })()}
+                      <CivSymbol civ={p.civ} className="h-4 w-4" />
+                      {!getCivSymbol(p.civ) && (
+                        <span
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: getCivColors(p.civ, p.leader)
+                              .primary,
+                          }}
+                        />
+                      )}
                       {p.civ}
                     </span>
                   </td>
