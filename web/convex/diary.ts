@@ -15,6 +15,7 @@ export const listGames = query({
     const results = await Promise.all(
       games.map(async (g) => {
         let agentModel: string | null = null;
+        let score: number | null = null;
         const agentRow = await ctx.db
           .query("playerRows")
           .withIndex("by_game_turn", (q) =>
@@ -22,8 +23,9 @@ export const listGames = query({
           )
           .filter((q) => q.eq(q.field("is_agent"), true))
           .first();
-        if (agentRow?.agent_model) {
-          agentModel = agentRow.agent_model;
+        if (agentRow) {
+          agentModel = agentRow.agent_model ?? null;
+          score = agentRow.score;
         }
         return {
           gameId: g.gameId,
@@ -37,6 +39,7 @@ export const listGames = query({
           lastUpdated: g.lastUpdated,
           outcome: g.outcome ?? null,
           agentModel,
+          score,
         };
       }),
     );

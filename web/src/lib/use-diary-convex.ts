@@ -19,6 +19,8 @@ export function useDiaryListConvex(): DiaryFile[] {
     status: g.status as "live" | "completed",
     outcome: g.outcome ?? null,
     agentModel: g.agentModel ?? undefined,
+    lastUpdated: g.lastUpdated,
+    score: g.score ?? undefined,
   }));
 }
 

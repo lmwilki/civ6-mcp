@@ -21,18 +21,19 @@ function listDiaries(dir: string) {
       let count = 0;
       let mtime = 0;
       let agentModel: string | undefined;
+      let score: number | undefined;
       try {
         const content = readFileSync(join(dir, f), "utf-8");
         const lines = content.split("\n").filter((l) => l.trim());
         count = lines.length;
         mtime = statSync(join(dir, f)).mtimeMs;
-        // Extract agent_model from first agent row
+        // Extract agent_model + score from agent rows
         for (const line of lines) {
           try {
             const row = JSON.parse(line);
-            if (row.is_agent && row.agent_model) {
-              agentModel = row.agent_model;
-              break;
+            if (row.is_agent) {
+              if (row.agent_model && !agentModel) agentModel = row.agent_model;
+              if (typeof row.score === "number") score = row.score; // keep latest
             }
           } catch {
             /* skip malformed */
@@ -43,11 +44,10 @@ function listDiaries(dir: string) {
       }
       const citiesFile = f.replace(".jsonl", "_cities.jsonl");
       const hasCities = existsSync(join(dir, citiesFile));
-      return { filename: f, label, count, mtime, hasCities, agentModel };
+      return { filename: f, label, count, mtime, hasCities, agentModel, score };
     })
     .sort((a, b) => b.mtime - a.mtime)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    .map(({ mtime: _mtime, ...rest }) => rest);
+    .map(({ mtime, ...rest }) => ({ ...rest, lastUpdated: mtime }));
 }
 
 /** Read entries from a specific JSONL file */

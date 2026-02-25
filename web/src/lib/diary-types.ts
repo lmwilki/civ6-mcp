@@ -201,6 +201,8 @@ export interface DiaryFile {
   status?: "live" | "completed";
   outcome?: GameOutcome | null;
   agentModel?: string;
+  lastUpdated?: number;
+  score?: number;
 }
 
 // === Shared helpers ===
