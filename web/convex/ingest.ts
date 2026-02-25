@@ -36,6 +36,14 @@ export const ingestPlayerRows = mutation({
       .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
       .unique();
 
+    // Denormalize agent model/score and ELO player snapshot
+    const agentRow = rows.find(
+      (r: { is_agent: boolean }) => r.is_agent,
+    );
+    const latestRows = rows.filter(
+      (r: { turn: number }) => r.turn === maxTurn,
+    );
+
     if (game) {
       const patch: Record<string, unknown> = {
         lastTurn: Math.max(game.lastTurn, maxTurn),
@@ -46,6 +54,22 @@ export const ingestPlayerRows = mutation({
       // Backfill leader/civ if game was created by log ingestion with empty values
       if (!game.leader && leader) patch.leader = leader;
       if (!game.civ && civ) patch.civ = civ;
+      // Denormalized fields
+      if (agentRow) {
+        if (agentRow.agent_model) patch.agentModel = agentRow.agent_model;
+        if (typeof agentRow.score === "number") patch.agentScore = agentRow.score;
+      }
+      if (latestRows.length >= 2) {
+        patch.eloPlayers = latestRows.map(
+          (r: { pid: number; civ: string; leader: string; is_agent: boolean; agent_model?: string }) => ({
+            pid: r.pid,
+            civ: r.civ,
+            leader: r.leader,
+            is_agent: r.is_agent,
+            agent_model: r.agent_model ?? null,
+          }),
+        );
+      }
       await ctx.db.patch(game._id, patch);
     } else {
       await ctx.db.insert("games", {
@@ -59,6 +83,21 @@ export const ingestPlayerRows = mutation({
         turnCount: maxTurn,
         hasCities: false,
         hasLogs: false,
+        ...(agentRow?.agent_model ? { agentModel: agentRow.agent_model } : {}),
+        ...(typeof agentRow?.score === "number" ? { agentScore: agentRow.score } : {}),
+        ...(latestRows.length >= 2
+          ? {
+              eloPlayers: latestRows.map(
+                (r: { pid: number; civ: string; leader: string; is_agent: boolean; agent_model?: string }) => ({
+                  pid: r.pid,
+                  civ: r.civ,
+                  leader: r.leader,
+                  is_agent: r.is_agent,
+                  agent_model: r.agent_model ?? null,
+                }),
+              ),
+            }
+          : {}),
       });
     }
   },
@@ -139,12 +178,45 @@ export const ingestLogEntries = mutation({
       .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
       .unique();
 
+    // Compute logSummary from this batch
+    const batchTurns = entries
+      .map((e: { turn: number | null }) => e.turn)
+      .filter((t: number | null): t is number => t != null);
+    const batchTs = entries.map((e: { ts: number }) => e.ts);
+    const batchSessions = [...new Set(entries.map((e: { session: string }) => e.session))];
+    const batchMaxLine = Math.max(...entries.map((e: { line: number }) => e.line));
+
     if (game) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const patch: Record<string, any> = {
         hasLogs: true,
         lastUpdated: Date.now(),
       };
+
+      // Merge logSummary with existing
+      const prev = game.logSummary;
+      const allSessions = prev
+        ? [...new Set([...prev.sessions, ...batchSessions])]
+        : batchSessions;
+      patch.logSummary = {
+        count: prev ? Math.max(prev.count, batchMaxLine) : batchMaxLine,
+        firstTs: prev ? Math.min(prev.firstTs, ...batchTs) : Math.min(...batchTs),
+        lastTs: Math.max(prev?.lastTs ?? 0, ...batchTs),
+        minTurn:
+          batchTurns.length > 0
+            ? prev?.minTurn != null
+              ? Math.min(prev.minTurn, ...batchTurns)
+              : Math.min(...batchTurns)
+            : prev?.minTurn ?? null,
+        maxTurn:
+          batchTurns.length > 0
+            ? prev?.maxTurn != null
+              ? Math.max(prev.maxTurn, ...batchTurns)
+              : Math.max(...batchTurns)
+            : prev?.maxTurn ?? null,
+        sessions: allSessions,
+      };
+
       if (gameOverOutcome) {
         const o = gameOverOutcome.outcome;
         patch.status = "completed";
@@ -176,6 +248,14 @@ export const ingestLogEntries = mutation({
         turnCount: outcomeTurn,
         hasCities: false,
         hasLogs: true,
+        logSummary: {
+          count: batchMaxLine,
+          firstTs: Math.min(...batchTs),
+          lastTs: Math.max(...batchTs),
+          minTurn: batchTurns.length > 0 ? Math.min(...batchTurns) : null,
+          maxTurn: batchTurns.length > 0 ? Math.max(...batchTurns) : null,
+          sessions: batchSessions,
+        },
         ...(gameOverOutcome
           ? {
               outcome: {
@@ -280,6 +360,78 @@ export const deleteGame = mutation({
         logEntries: logEntries.length,
       },
     };
+  },
+});
+
+export const backfillDenormalized = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db.query("games").collect();
+    let patched = 0;
+    for (const game of games) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = {};
+
+      // Backfill agentModel, agentScore, eloPlayers from playerRows
+      const playerRows = await ctx.db
+        .query("playerRows")
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", game.gameId).eq("turn", game.lastTurn),
+        )
+        .collect();
+      if (playerRows.length >= 2) {
+        patch.eloPlayers = playerRows.map((r) => ({
+          pid: r.pid,
+          civ: r.civ,
+          leader: r.leader,
+          is_agent: r.is_agent,
+          agent_model: r.agent_model ?? null,
+        }));
+      }
+      const agentRow = playerRows.find((r) => r.is_agent);
+      if (agentRow) {
+        if (agentRow.agent_model) patch.agentModel = agentRow.agent_model;
+        if (typeof agentRow.score === "number") patch.agentScore = agentRow.score;
+      }
+
+      // Backfill logSummary from logEntries
+      if (game.hasLogs) {
+        const first = await ctx.db
+          .query("logEntries")
+          .withIndex("by_game_line", (q) => q.eq("gameId", game.gameId))
+          .first();
+        const last = await ctx.db
+          .query("logEntries")
+          .withIndex("by_game_line", (q) => q.eq("gameId", game.gameId))
+          .order("desc")
+          .first();
+        // Collect unique sessions from a sample
+        const sample = await ctx.db
+          .query("logEntries")
+          .withIndex("by_game_line", (q) => q.eq("gameId", game.gameId))
+          .take(200);
+        const sessions = [...new Set(sample.map((e) => e.session))];
+        const turns = sample
+          .map((e) => e.turn)
+          .filter((t): t is number => t != null);
+        if (first && last) {
+          patch.logSummary = {
+            count: last.line,
+            firstTs: first.ts,
+            lastTs: last.ts,
+            minTurn: turns.length > 0 ? Math.min(...turns) : null,
+            maxTurn: turns.length > 0 ? Math.max(...turns) : null,
+            sessions,
+          };
+        }
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(game._id, patch);
+        patched++;
+      }
+    }
+    return { patched, total: games.length };
   },
 });
 

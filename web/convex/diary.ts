@@ -11,39 +11,20 @@ export const listGames = query({
       .order("desc")
       .collect();
 
-    // Batch-fetch agent_model for each game from its latest agent playerRow
-    const results = await Promise.all(
-      games.map(async (g) => {
-        let agentModel: string | null = null;
-        let score: number | null = null;
-        const agentRow = await ctx.db
-          .query("playerRows")
-          .withIndex("by_game_turn", (q) =>
-            q.eq("gameId", g.gameId).eq("turn", g.lastTurn),
-          )
-          .filter((q) => q.eq(q.field("is_agent"), true))
-          .first();
-        if (agentRow) {
-          agentModel = agentRow.agent_model ?? null;
-          score = agentRow.score;
-        }
-        return {
-          gameId: g.gameId,
-          filename: `diary_${g.gameId}.jsonl`,
-          label: g.civ,
-          count: g.turnCount,
-          hasCities: g.hasCities,
-          hasLogs: g.hasLogs,
-          status: g.status,
-          leader: g.leader,
-          lastUpdated: g.lastUpdated,
-          outcome: g.outcome ?? null,
-          agentModel: g.agentModelOverride ?? agentModel,
-          score,
-        };
-      }),
-    );
-    return results;
+    return games.map((g) => ({
+      gameId: g.gameId,
+      filename: `diary_${g.gameId}.jsonl`,
+      label: g.civ,
+      count: g.turnCount,
+      hasCities: g.hasCities,
+      hasLogs: g.hasLogs,
+      status: g.status,
+      leader: g.leader,
+      lastUpdated: g.lastUpdated,
+      outcome: g.outcome ?? null,
+      agentModel: g.agentModelOverride ?? g.agentModel ?? null,
+      score: g.agentScore ?? null,
+    }));
   },
 });
 
@@ -75,34 +56,22 @@ export const getEloData = query({
       .withIndex("by_status", (q) => q.eq("status", "completed"))
       .collect();
 
-    const results = [];
-    for (const game of games) {
-      if (!game.outcome?.winnerCiv) continue;
-
-      const playerRows = await ctx.db
-        .query("playerRows")
-        .withIndex("by_game_turn", (q) =>
-          q.eq("gameId", game.gameId).eq("turn", game.lastTurn),
-        )
-        .order("asc")
-        .collect();
-
-      if (playerRows.length < 2) continue;
-
-      const override = game.agentModelOverride ?? null;
-      results.push({
-        gameId: game.gameId,
-        winnerCiv: game.outcome.winnerCiv,
-        players: playerRows.map((p) => ({
-          pid: p.pid,
-          civ: p.civ,
-          leader: p.leader,
-          is_agent: p.is_agent,
-          agent_model: (p.is_agent && override) ? override : (p.agent_model ?? null),
-        })),
+    return games
+      .filter((g) => g.outcome?.winnerCiv && g.eloPlayers && g.eloPlayers.length >= 2)
+      .map((g) => {
+        const override = g.agentModelOverride ?? null;
+        return {
+          gameId: g.gameId,
+          winnerCiv: g.outcome!.winnerCiv,
+          players: g.eloPlayers!.map((p) => ({
+            pid: p.pid,
+            civ: p.civ,
+            leader: p.leader,
+            is_agent: p.is_agent,
+            agent_model: p.is_agent && override ? override : p.agent_model,
+          })),
+        };
       });
-    }
-    return results;
   },
 });
 

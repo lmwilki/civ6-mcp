@@ -15,6 +15,31 @@ export default defineSchema({
     hasCities: v.boolean(),
     hasLogs: v.boolean(),
     agentModelOverride: v.optional(v.string()),
+    // Denormalized from playerRows (set at ingest time)
+    agentModel: v.optional(v.string()),
+    agentScore: v.optional(v.number()),
+    eloPlayers: v.optional(
+      v.array(
+        v.object({
+          pid: v.number(),
+          civ: v.string(),
+          leader: v.string(),
+          is_agent: v.boolean(),
+          agent_model: v.union(v.string(), v.null()),
+        }),
+      ),
+    ),
+    // Denormalized from logEntries (set at ingest time)
+    logSummary: v.optional(
+      v.object({
+        count: v.number(),
+        firstTs: v.number(),
+        lastTs: v.number(),
+        minTurn: v.union(v.number(), v.null()),
+        maxTurn: v.union(v.number(), v.null()),
+        sessions: v.array(v.string()),
+      }),
+    ),
     outcome: v.optional(
       v.object({
         result: v.union(v.literal("victory"), v.literal("defeat")),

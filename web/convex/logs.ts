@@ -10,41 +10,23 @@ export const listGameLogs = query({
       .withIndex("by_status")
       .order("desc")
       .collect();
-    const result = [];
-    for (const g of games) {
-      if (!g.hasLogs) continue;
-      // Get first and last log entry for timestamps
-      const first = await ctx.db
-        .query("logEntries")
-        .withIndex("by_game_line", (q) => q.eq("gameId", g.gameId))
-        .first();
-      const last = await ctx.db
-        .query("logEntries")
-        .withIndex("by_game_line", (q) => q.eq("gameId", g.gameId))
-        .order("desc")
-        .first();
-      // Collect unique sessions (scan first 50 entries)
-      const sample = await ctx.db
-        .query("logEntries")
-        .withIndex("by_game_line", (q) => q.eq("gameId", g.gameId))
-        .take(50);
-      const sessions = [...new Set(sample.map((e) => e.session))];
-      const turns = sample
-        .map((e) => e.turn)
-        .filter((t): t is number => t != null);
-      result.push({
-        game: g.gameId,
-        civ: g.civ,
-        seed: g.seed,
-        count: last ? last.line : 0,
-        first_ts: first?.ts ?? 0,
-        last_ts: last?.ts ?? 0,
-        min_turn: turns.length > 0 ? Math.min(...turns) : null,
-        max_turn: turns.length > 0 ? Math.max(...turns) : null,
-        sessions,
+
+    return games
+      .filter((g) => g.hasLogs && g.logSummary)
+      .map((g) => {
+        const s = g.logSummary!;
+        return {
+          game: g.gameId,
+          civ: g.civ,
+          seed: g.seed,
+          count: s.count,
+          first_ts: s.firstTs,
+          last_ts: s.lastTs,
+          min_turn: s.minTurn,
+          max_turn: s.maxTurn,
+          sessions: s.sessions,
+        };
       });
-    }
-    return result;
   },
 });
 
