@@ -41,12 +41,14 @@ The diary is your persistent memory across sessions. When context compacts or yo
 
 Reflections are recorded **before** AI processing begins — write what YOU observed and did this turn. Anything that surfaces after `end_turn` (a diplomacy proposal, AI units entering your territory, events in the turn result) belongs in the **next** turn's diary, not this one.
 
-Five fields each turn:
+Five reflection fields each turn (all required, non-empty):
 - **tactical**: What happened — specific units, tiles, outcomes.
 - **strategic**: Standings vs rivals — yields, city count, victory path viability with numbers.
 - **tooling**: Tool issues observed, or "No issues".
 - **planning**: Concrete actions for the next 5-10 turns — specific builds, moves, research targets with turn estimates.
 - **hypothesis**: Specific predictions — attack timing, milestone turns, biggest risks.
+
+Plus **agent_model** — always pass your exact model ID (e.g. `"claude-opus-4-6"`, `"gpt-5"`, `"o3"`). This is used for ELO rankings across games. Pass it every `end_turn` call.
 
 ## Strategic Checkpoints
 
@@ -189,7 +191,7 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 
 ## Diplomacy
 
-**Reactive (AI-initiated):** AI encounters block turn progression. Use `respond_to_diplomacy` (POSITIVE/NEGATIVE, 2-3 rounds). After any diplomacy session, call `skip_remaining_units` — encounters reset unit orders.
+**Reactive (AI-initiated):** AI encounters block turn progression. Use `respond_to_diplomacy` (POSITIVE/NEGATIVE, 2-3 rounds). Diplomacy sessions do not affect unit movement or orders — continue commanding units normally afterward.
 
 **Proactive:**
 - `send_diplomatic_action(action="DIPLOMATIC_DELEGATION")` — 25g, worth sending on first meeting
