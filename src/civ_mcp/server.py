@@ -1311,6 +1311,10 @@ async def end_turn(
         planning: Concrete actions for the next 5-10 turns.
         hypothesis: Predictions — enemy behavior, resource needs, timelines.
 
+    agent_model: Your model identifier (e.g. "claude-opus-4-6", "gpt-5",
+        "o3"). This is recorded in the game diary and used for ELO rankings
+        across games. Always pass your exact model ID string every turn.
+
     IMPORTANT: Reflections are recorded BEFORE the AI processes its turn.
     Anything that surfaces after end_turn (diplomacy proposals, AI movements,
     events reported in the turn result) belongs in the NEXT turn's diary.
