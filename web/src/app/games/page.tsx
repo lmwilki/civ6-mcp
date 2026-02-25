@@ -9,7 +9,7 @@ import { getCivColors } from "@/lib/civ-colors";
 import { CivSymbol } from "@/components/civ-icon";
 import { getModelMeta, formatModelName } from "@/lib/model-registry";
 import { LeaderPortrait } from "@/components/leader-portrait";
-import { GameStatusBadge } from "@/components/game-status-badge";
+import { GameStatusBadge, getGameStatusColor } from "@/components/game-status-badge";
 
 export default function GamesPage() {
   const router = useRouter();
@@ -59,7 +59,7 @@ export default function GamesPage() {
                         className="border-b border-marble-300/30 last:border-0 transition-colors hover:bg-marble-100/50 cursor-pointer"
                         style={{
                           borderLeftWidth: 5,
-                          borderLeftColor: colors.primary,
+                          borderLeftColor: getGameStatusColor(game.status, game.outcome),
                         }}
                         onClick={() => {
                           router.push(`/games/${slug}`);

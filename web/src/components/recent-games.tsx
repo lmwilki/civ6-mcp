@@ -6,7 +6,7 @@ import { slugFromFilename, sortGamesLiveFirst } from "@/lib/diary-types";
 import { getCivColors } from "@/lib/civ-colors";
 import { CivSymbol } from "./civ-icon";
 import { LeaderPortrait } from "@/components/leader-portrait";
-import { GameStatusBadge } from "@/components/game-status-badge";
+import { GameStatusBadge, getGameStatusColor } from "@/components/game-status-badge";
 import { formatModelName } from "@/lib/model-registry";
 
 export function RecentGames() {
@@ -36,7 +36,7 @@ export function RecentGames() {
             {/* Color accent bar */}
             <div
               className="w-1.5 shrink-0 rounded-l-sm"
-              style={{ backgroundColor: colors.primary }}
+              style={{ backgroundColor: getGameStatusColor(game.status, game.outcome) }}
             />
 
             <div className="flex flex-1 items-center justify-between gap-2 px-2.5 py-2.5">
