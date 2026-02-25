@@ -75,30 +75,44 @@ export const getEloData = query({
   },
 });
 
-/** Get all player + city rows for a game, plus game metadata */
-export const getGameTurns = query({
+/** Game summary — metadata + sparkline series. Cheap: reads 1 doc. */
+export const getGameSummary = query({
   args: { gameId: v.string() },
   handler: async (ctx, { gameId }) => {
-    const [game, playerRows, cityRows] = await Promise.all([
-      ctx.db
-        .query("games")
-        .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
-        .first(),
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .first();
+    if (!game) return null;
+    return {
+      status: game.status,
+      outcome: game.outcome ?? null,
+      agentModelOverride: game.agentModelOverride ?? null,
+      turnCount: game.turnCount,
+      lastTurn: game.lastTurn,
+      turnSeries: game.turnSeries ?? null,
+    };
+  },
+});
+
+/** Single turn's player + city rows. Reads ~12 docs instead of ~2000. */
+export const getGameTurnDetail = query({
+  args: { gameId: v.string(), turn: v.number() },
+  handler: async (ctx, { gameId, turn }) => {
+    const [playerRows, cityRows] = await Promise.all([
       ctx.db
         .query("playerRows")
-        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", gameId).eq("turn", turn),
+        )
         .collect(),
       ctx.db
         .query("cityRows")
-        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", gameId).eq("turn", turn),
+        )
         .collect(),
     ]);
-    return {
-      playerRows,
-      cityRows,
-      status: game?.status ?? null,
-      outcome: game?.outcome ?? null,
-      agentModelOverride: game?.agentModelOverride ?? null,
-    };
+    return { playerRows, cityRows };
   },
 });

@@ -1,11 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import type {
-  TurnData,
-  NumericPlayerField,
-  PlayerRow,
-} from "@/lib/diary-types";
+import type { TurnSeries, NumericPlayerField } from "@/lib/diary-types";
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors";
 import { getCivSymbol } from "@/lib/civ-registry";
 import { CivSymbol } from "./civ-icon";
@@ -31,11 +27,11 @@ const H = 100;
 const PAD = 4;
 
 interface MultiCivChartProps {
-  turns: TurnData[];
+  turnSeries: TurnSeries;
   currentIndex: number;
 }
 
-export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
+export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) {
   const [metric, setMetric] = useState<NumericPlayerField>("score");
   const [rotating, setRotating] = useState(false);
   const rotatingRef = useRef(rotating);
@@ -56,86 +52,74 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
     return () => clearInterval(id);
   }, [rotating, advanceMetric]);
 
-  const getValue = (p: PlayerRow): number | null => {
-    const v = p[metric];
-    return typeof v === "number" ? v : null;
-  };
+  const { civMap, agentValues, agentPoints, rivalLines, agentColor, agentCiv } =
+    useMemo(() => {
+      // Find agent player
+      const agentEntry = Object.entries(turnSeries.players).find(
+        ([, p]) => p.is_agent,
+      );
+      const agentPlayer = agentEntry?.[1];
 
-  // Memoize: civ color map, all polyline point strings, agent values
-  const { civMap, agentValues, agentPoints, rivalLines } = useMemo(() => {
-    // Collect all rival civs, assign stable colors
-    const cMap = new Map<number, { name: string; color: string }>();
-    for (const t of turns) {
-      for (const r of t.rivals) {
-        if (!cMap.has(r.pid)) {
-          cMap.set(r.pid, {
-            name: r.civ,
-            color: getCivColors(r.civ, r.leader).primary,
+      // Build rival color map
+      const cMap = new Map<string, { name: string; color: string }>();
+      for (const [pid, p] of Object.entries(turnSeries.players)) {
+        if (!p.is_agent) {
+          cMap.set(pid, {
+            name: p.civ,
+            color: getCivColors(p.civ, p.leader).primary,
           });
         }
       }
-    }
 
-    // Build series
-    const aVals = turns.map((t) => {
-      const v = t.agent[metric];
-      return typeof v === "number" ? v : 0;
-    });
-    const rSeries: { pid: number; values: (number | null)[] }[] = [];
-    for (const pid of cMap.keys()) {
-      rSeries.push({
+      const aVals = agentPlayer?.metrics[metric] ?? [];
+      const rSeries = Array.from(cMap.keys()).map((pid) => ({
         pid,
-        values: turns.map((t) => {
-          const r = t.rivals.find((rv) => rv.pid === pid);
-          if (!r) return null;
-          const v = r[metric];
-          return typeof v === "number" ? v : null;
-        }),
-      });
-    }
+        values: turnSeries.players[pid].metrics[metric] ?? [],
+      }));
 
-    // Compute global min/max
-    const all: number[] = [...aVals];
-    for (const s of rSeries) {
-      for (const v of s.values) {
-        if (v !== null) all.push(v);
+      // Global min/max
+      const all: number[] = [...aVals];
+      for (const s of rSeries) {
+        for (const v of s.values) {
+          if (v !== null && v !== undefined) all.push(v);
+        }
       }
-    }
-    const min = Math.min(...all);
-    const max = Math.max(...all);
-    const range = max - min || 1;
+      const min = Math.min(...all);
+      const max = Math.max(...all);
+      const range = max - min || 1;
 
-    function toPoints(values: (number | null)[]): string {
-      return values
-        .map((v, i) => {
-          if (v === null) return null;
-          const x = PAD + (i / Math.max(values.length - 1, 1)) * (W - 2 * PAD);
-          const y = H - PAD - ((v - min) / range) * (H - 2 * PAD);
-          return `${x},${y}`;
-        })
-        .filter(Boolean)
-        .join(" ");
-    }
+      function toPoints(values: number[]): string {
+        return values
+          .map((v, i) => {
+            const x = PAD + (i / Math.max(values.length - 1, 1)) * (W - 2 * PAD);
+            const y = H - PAD - ((v - min) / range) * (H - 2 * PAD);
+            return `${x},${y}`;
+          })
+          .join(" ");
+      }
 
-    return {
-      civMap: cMap,
-      agentValues: aVals,
-      agentPoints: toPoints(aVals),
-      rivalLines: rSeries.map((s) => ({
-        pid: s.pid,
-        points: toPoints(s.values),
-      })),
-    };
-  }, [turns, metric]);
+      const aColor = agentPlayer
+        ? getCivColors(agentPlayer.civ, agentPlayer.leader).primary
+        : CIV6_COLORS.goldMetal;
+
+      return {
+        civMap: cMap,
+        agentValues: aVals,
+        agentPoints: toPoints(aVals),
+        rivalLines: rSeries.map((s) => ({
+          pid: s.pid,
+          points: toPoints(s.values),
+        })),
+        agentColor: aColor,
+        agentCiv: agentPlayer?.civ ?? "You",
+      };
+    }, [turnSeries, metric]);
 
   if (civMap.size === 0) return null;
 
+  const totalPoints = turnSeries.turns.length;
   const cx =
-    PAD + (currentIndex / Math.max(turns.length - 1, 1)) * (W - 2 * PAD);
-  const currentTurn = turns[currentIndex];
-  const agentColor = currentTurn
-    ? getCivColors(currentTurn.agent.civ, currentTurn.agent.leader).primary
-    : CIV6_COLORS.goldMetal;
+    PAD + (currentIndex / Math.max(totalPoints - 1, 1)) * (W - 2 * PAD);
 
   return (
     <div>
@@ -222,18 +206,19 @@ export function MultiCivChart({ turns, currentIndex }: MultiCivChartProps) {
           }[] = [
             {
               key: "agent",
-              name: currentTurn?.agent.civ ?? "You",
+              name: agentCiv,
               color: agentColor,
               value: agentVal,
               isAgent: true,
             },
             ...Array.from(civMap.entries()).map(([pid, { name, color }]) => {
-              const rival = currentTurn?.rivals.find((r) => r.pid === pid);
+              const rivalMetrics = turnSeries.players[pid]?.metrics[metric];
+              const value = rivalMetrics?.[currentIndex] ?? null;
               return {
-                key: String(pid),
+                key: pid,
                 name,
                 color,
-                value: rival ? getValue(rival) : null,
+                value,
                 isAgent: false,
               };
             }),

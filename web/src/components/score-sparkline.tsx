@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import type { TurnData, NumericPlayerField } from "@/lib/diary-types";
+import type { TurnSeries, NumericPlayerField } from "@/lib/diary-types";
 import { AnimatedNumber } from "./animated-number";
 import { CivIcon } from "./civ-icon";
 
 interface ScoreSparklineProps {
-  turns: TurnData[];
+  turnSeries: TurnSeries;
   currentIndex: number;
   field: NumericPlayerField;
   label: string;
@@ -16,7 +16,7 @@ interface ScoreSparklineProps {
 }
 
 export function ScoreSparkline({
-  turns,
+  turnSeries,
   currentIndex,
   field,
   label,
@@ -28,7 +28,11 @@ export function ScoreSparkline({
   const padding = 2;
 
   const { values, points, min, range } = useMemo(() => {
-    const vals = turns.map((t) => (t.agent[field] as number) ?? 0);
+    const agentEntry = Object.values(turnSeries.players).find(
+      (p) => p.is_agent,
+    );
+    if (!agentEntry) return { values: [], points: "", min: 0, range: 1 };
+    const vals = agentEntry.metrics[field] ?? [];
     const mn = Math.min(...vals);
     const mx = Math.max(...vals);
     const rng = mx - mn || 1;
@@ -40,9 +44,9 @@ export function ScoreSparkline({
       })
       .join(" ");
     return { values: vals, points: pts, min: mn, range: rng };
-  }, [turns, field, height]);
+  }, [turnSeries, field, height]);
 
-  if (turns.length < 2) return null;
+  if (values.length < 2) return null;
 
   const cx = padding + (currentIndex / (values.length - 1)) * (w - 2 * padding);
   const cy =

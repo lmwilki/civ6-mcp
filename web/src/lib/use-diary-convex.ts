@@ -4,7 +4,14 @@ import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
-import type { PlayerRow, CityRow, DiaryFile, GameOutcome } from "./diary-types";
+import type {
+  PlayerRow,
+  CityRow,
+  TurnData,
+  DiaryFile,
+  GameOutcome,
+  TurnSeries,
+} from "./diary-types";
 import { slugFromFilename, groupTurnData } from "./diary-types";
 
 /** Convex-backed diary list — real-time, no polling. */
@@ -33,35 +40,68 @@ function stripConvexFields<
   return rest;
 }
 
-/** Convex-backed diary data — real-time updates via subscription. */
-export function useDiaryConvex(filename: string | null) {
-  const gameId = filename ? slugFromFilename(filename) : null;
-  const data = useQuery(api.diary.getGameTurns, gameId ? { gameId } : "skip");
+export interface DiarySummary {
+  turnSeries: TurnSeries | null;
+  turnNumbers: number[];
+  turnCount: number;
+  loading: boolean;
+  outcome: GameOutcome | null;
+  status: "live" | "completed" | undefined;
+  agentModelOverride: string | null;
+}
 
-  const turns = useMemo(() => {
-    if (!data) return [];
-    const override = data.agentModelOverride;
-    const players = data.playerRows.map((row: Doc<"playerRows">) => {
-      const p = stripConvexFields(row) as PlayerRow;
-      if (p.is_agent && override) p.agent_model = override;
-      return p;
-    });
-    const cities = data.cityRows.map(
-      (row: Doc<"cityRows">) => stripConvexFields(row) as CityRow,
-    );
-    return groupTurnData(players, cities);
-  }, [data]);
+/** Game summary subscription — 1 doc read. Returns sparkline series + metadata. */
+export function useDiarySummaryConvex(filename: string | null): DiarySummary {
+  const gameId = filename ? slugFromFilename(filename) : null;
+  const summary = useQuery(
+    api.diary.getGameSummary,
+    gameId ? { gameId } : "skip",
+  );
+
+  const turnSeries = useMemo<TurnSeries | null>(() => {
+    if (!summary?.turnSeries) return null;
+    return summary.turnSeries as TurnSeries;
+  }, [summary]);
 
   const outcome = useMemo<GameOutcome | null>(() => {
-    if (!data?.outcome) return null;
-    return data.outcome as GameOutcome;
-  }, [data]);
+    if (!summary?.outcome) return null;
+    return summary.outcome as GameOutcome;
+  }, [summary]);
 
   return {
-    turns,
-    loading: data === undefined,
-    reload: async () => {}, // No-op — Convex auto-updates
+    turnSeries,
+    turnNumbers: turnSeries?.turns ?? [],
+    turnCount: summary?.turnCount ?? 0,
+    loading: summary === undefined,
     outcome,
-    status: (data?.status as "live" | "completed") ?? undefined,
+    status: (summary?.status as "live" | "completed") ?? undefined,
+    agentModelOverride: summary?.agentModelOverride ?? null,
   };
+}
+
+/** Single turn detail subscription — ~12 doc reads. */
+export function useDiaryTurnConvex(
+  filename: string | null,
+  turn: number | undefined,
+  agentModelOverride: string | null,
+): TurnData | null {
+  const gameId = filename ? slugFromFilename(filename) : null;
+  const detail = useQuery(
+    api.diary.getGameTurnDetail,
+    gameId && turn !== undefined ? { gameId, turn } : "skip",
+  );
+
+  return useMemo(() => {
+    if (!detail) return null;
+    const players = detail.playerRows.map((row: Doc<"playerRows">) => {
+      const p = stripConvexFields(row) as PlayerRow;
+      if (p.is_agent && agentModelOverride) p.agent_model = agentModelOverride;
+      return p;
+    });
+    const cities = detail.cityRows.map(
+      (row: Doc<"cityRows">) => stripConvexFields(row) as CityRow,
+    );
+    const grouped = groupTurnData(players, cities);
+    return grouped[0] ?? null;
+  }, [detail, agentModelOverride]);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import type { TurnData } from "@/lib/diary-types";
+import type { TurnSeries } from "@/lib/diary-types";
 import { ScoreSparkline } from "./score-sparkline";
 import { MultiCivChart } from "./multi-civ-chart";
 import { CivIcon } from "./civ-icon";
@@ -19,14 +19,18 @@ import {
 } from "lucide-react";
 
 interface SparklineSidebarProps {
-  turns: TurnData[];
+  turnSeries: TurnSeries;
   currentIndex: number;
 }
 
 export function SparklineSidebar({
-  turns,
+  turnSeries,
   currentIndex,
 }: SparklineSidebarProps) {
+  const hasRivals = Object.values(turnSeries.players).some(
+    (p) => !p.is_agent,
+  );
+
   return (
     <>
       <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
@@ -35,7 +39,7 @@ export function SparklineSidebar({
       </h3>
       <div className="space-y-2">
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="score"
           label="Score"
@@ -43,7 +47,7 @@ export function SparklineSidebar({
           icon={Trophy}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="science"
           label="Science"
@@ -51,7 +55,7 @@ export function SparklineSidebar({
           icon={FlaskConical}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="culture"
           label="Culture"
@@ -59,7 +63,7 @@ export function SparklineSidebar({
           icon={BookOpen}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="gold"
           label="Gold"
@@ -67,7 +71,7 @@ export function SparklineSidebar({
           icon={Coins}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="military"
           label="Military"
@@ -75,7 +79,7 @@ export function SparklineSidebar({
           icon={Shield}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="faith"
           label="Faith"
@@ -83,7 +87,7 @@ export function SparklineSidebar({
           icon={Flame}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="territory"
           label="Territory"
@@ -91,7 +95,7 @@ export function SparklineSidebar({
           icon={MapPin}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="exploration_pct"
           label="Explored"
@@ -99,7 +103,7 @@ export function SparklineSidebar({
           icon={Compass}
         />
         <ScoreSparkline
-          turns={turns}
+          turnSeries={turnSeries}
           currentIndex={currentIndex}
           field="pop"
           label="Pop"
@@ -108,9 +112,9 @@ export function SparklineSidebar({
         />
       </div>
 
-      {turns.some((t) => t.rivals.length > 0) && (
+      {hasRivals && (
         <div className="mt-4 border-t border-marble-300/50 pt-4">
-          <MultiCivChart turns={turns} currentIndex={currentIndex} />
+          <MultiCivChart turnSeries={turnSeries} currentIndex={currentIndex} />
         </div>
       )}
     </>

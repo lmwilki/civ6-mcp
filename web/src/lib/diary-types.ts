@@ -172,6 +172,20 @@ export interface CityRow {
   loyalty_per_turn: number;
 }
 
+// === Precomputed sparkline series (from games doc) ===
+
+export interface TurnSeriesPlayer {
+  civ: string;
+  leader: string;
+  is_agent: boolean;
+  metrics: Record<NumericPlayerField, number[]>;
+}
+
+export interface TurnSeries {
+  turns: number[];
+  players: Record<string, TurnSeriesPlayer>; // keyed by pid
+}
+
 // === Grouped view (client-side computed) ===
 
 export interface TurnData {

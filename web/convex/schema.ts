@@ -29,6 +29,13 @@ export default defineSchema({
         }),
       ),
     ),
+    // Precomputed sparkline time-series (set at ingest time)
+    turnSeries: v.optional(
+      v.object({
+        turns: v.array(v.number()),
+        players: v.any(), // { [pid]: { civ, leader, is_agent, metrics: { score: number[], ... } } }
+      }),
+    ),
     // Denormalized from logEntries (set at ingest time)
     logSummary: v.optional(
       v.object({
@@ -88,8 +95,8 @@ export default defineSchema({
     // Progress
     techs_completed: v.number(),
     civics_completed: v.number(),
-    techs: v.array(v.string()),
-    civics: v.array(v.string()),
+    techs: v.optional(v.array(v.string())),
+    civics: v.optional(v.array(v.string())),
     current_research: v.string(),
     current_civic: v.string(),
     // Infrastructure

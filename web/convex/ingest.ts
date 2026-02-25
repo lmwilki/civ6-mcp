@@ -1,6 +1,84 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+// Metrics to precompute for sparkline charts
+const SERIES_METRICS = [
+  "score", "science", "culture", "gold", "military",
+  "faith", "territory", "exploration_pct", "pop", "cities", "tourism",
+] as const;
+
+type SeriesPlayer = {
+  civ: string;
+  leader: string;
+  is_agent: boolean;
+  metrics: Record<string, number[]>;
+};
+
+/** Merge new turn data into existing turnSeries on a games doc. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mergeTurnSeries(existing: any | undefined, rows: any[]): { turns: number[]; players: Record<string, SeriesPlayer> } {
+  const prev = existing ?? { turns: [], players: {} };
+  const turns: number[] = [...prev.turns];
+  const players: Record<string, SeriesPlayer> = {};
+
+  // Copy existing player data
+  for (const [pid, p] of Object.entries(prev.players as Record<string, SeriesPlayer>)) {
+    players[pid] = {
+      civ: p.civ,
+      leader: p.leader,
+      is_agent: p.is_agent,
+      metrics: {} as Record<string, number[]>,
+    };
+    for (const m of SERIES_METRICS) {
+      players[pid].metrics[m] = [...(p.metrics[m] ?? [])];
+    }
+  }
+
+  // Group incoming rows by turn
+  const byTurn = new Map<number, typeof rows>();
+  for (const r of rows) {
+    if (!byTurn.has(r.turn)) byTurn.set(r.turn, []);
+    byTurn.get(r.turn)!.push(r);
+  }
+
+  for (const [turn, turnRows] of byTurn) {
+    let idx = turns.indexOf(turn);
+    if (idx === -1) {
+      // Insert in sorted position
+      idx = turns.findIndex((t) => t > turn);
+      if (idx === -1) idx = turns.length;
+      turns.splice(idx, 0, turn);
+      // Insert placeholder at idx for all existing players
+      for (const p of Object.values(players)) {
+        for (const m of SERIES_METRICS) {
+          p.metrics[m].splice(idx, 0, 0);
+        }
+      }
+    }
+
+    for (const r of turnRows) {
+      const pid = String(r.pid);
+      if (!players[pid]) {
+        players[pid] = {
+          civ: r.civ,
+          leader: r.leader,
+          is_agent: r.is_agent,
+          metrics: {} as Record<string, number[]>,
+        };
+        // Backfill zeros for existing turns
+        for (const m of SERIES_METRICS) {
+          players[pid].metrics[m] = new Array(turns.length).fill(0);
+        }
+      }
+      for (const m of SERIES_METRICS) {
+        players[pid].metrics[m][idx] = typeof r[m] === "number" ? r[m] : 0;
+      }
+    }
+  }
+
+  return { turns, players };
+}
+
 export const ingestPlayerRows = mutation({
   args: {
     gameId: v.string(),
@@ -13,6 +91,10 @@ export const ingestPlayerRows = mutation({
     for (const row of rows) {
       // Backfill fields added after early game data was recorded
       if (row.exploration_pct === undefined) row.exploration_pct = 0;
+
+      // Strip techs/civics arrays — only the _completed counts are displayed
+      delete row.techs;
+      delete row.civics;
 
       // Upsert by (gameId, turn, pid) — handles reflection merges
       const existing = await ctx.db
@@ -70,6 +152,8 @@ export const ingestPlayerRows = mutation({
           }),
         );
       }
+      // Update sparkline series
+      patch.turnSeries = mergeTurnSeries(game.turnSeries, rows);
       await ctx.db.patch(game._id, patch);
     } else {
       await ctx.db.insert("games", {
@@ -98,6 +182,7 @@ export const ingestPlayerRows = mutation({
               ),
             }
           : {}),
+        turnSeries: mergeTurnSeries(undefined, rows),
       });
     }
   },
@@ -432,6 +517,49 @@ export const backfillDenormalized = mutation({
       }
     }
     return { patched, total: games.length };
+  },
+});
+
+/** Backfill one game: strip techs/civics from playerRows + compute turnSeries.
+ *  Run per-game to stay within Convex mutation time limits. */
+export const backfillStripAndSeries = mutation({
+  args: { gameId: v.string() },
+  handler: async (ctx, { gameId }) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .first();
+    if (!game) return { error: "game not found" };
+
+    // Read all playerRows for this game
+    const allRows = await ctx.db
+      .query("playerRows")
+      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+      .collect();
+
+    // Strip techs/civics from each row
+    let stripped = 0;
+    for (const row of allRows) {
+      if (row.techs || row.civics) {
+        await ctx.db.patch(row._id, { techs: undefined, civics: undefined });
+        stripped++;
+      }
+    }
+
+    // Build turnSeries from all rows
+    const turnSeries = mergeTurnSeries(undefined, allRows);
+    await ctx.db.patch(game._id, { turnSeries });
+
+    return { gameId, stripped, totalRows: allRows.length, seriesTurns: turnSeries.turns.length };
+  },
+});
+
+/** List all gameIds for batch backfill. */
+export const listGameIds = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db.query("games").collect();
+    return games.map((g) => g.gameId);
   },
 });
 
