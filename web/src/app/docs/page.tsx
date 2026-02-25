@@ -1,5 +1,5 @@
-import { NavBar } from "@/components/nav-bar"
-import { Github } from "lucide-react"
+import { NavBar } from "@/components/nav-bar";
+import { Github } from "lucide-react";
 
 export default function DocsPage() {
   return (
@@ -44,5 +44,5 @@ export default function DocsPage() {
         <p className="font-mono text-xs text-marble-500">MIT License</p>
       </footer>
     </div>
-  )
+  );
 }

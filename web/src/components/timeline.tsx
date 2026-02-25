@@ -1,28 +1,28 @@
-"use client"
+"use client";
 
-import { memo, useEffect, useMemo, useRef } from "react"
-import { TurnDivider } from "./turn-divider"
-import { LogEntry } from "./log-entry"
-import { groupByTurn } from "@/lib/types"
-import type { LogEntry as LogEntryType } from "@/lib/types"
+import { memo, useEffect, useMemo, useRef } from "react";
+import { TurnDivider } from "./turn-divider";
+import { LogEntry } from "./log-entry";
+import { groupByTurn } from "@/lib/types";
+import type { LogEntry as LogEntryType } from "@/lib/types";
 
 interface TimelineProps {
-  entries: LogEntryType[]
-  live: boolean
+  entries: LogEntryType[];
+  live: boolean;
 }
 
-const MemoLogEntry = memo(LogEntry)
+const MemoLogEntry = memo(LogEntry);
 
 export function Timeline({ entries, live }: TimelineProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (live && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" })
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [entries.length, live])
+  }, [entries.length, live]);
 
-  const groups = useMemo(() => groupByTurn(entries), [entries])
+  const groups = useMemo(() => groupByTurn(entries), [entries]);
 
   if (entries.length === 0) {
     return (
@@ -36,7 +36,7 @@ export function Timeline({ entries, live }: TimelineProps) {
           </p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -58,5 +58,5 @@ export function Timeline({ entries, live }: TimelineProps) {
         <div ref={bottomRef} />
       </div>
     </div>
-  )
+  );
 }

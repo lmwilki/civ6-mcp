@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useQuery } from "convex/react"
-import { api } from "../../convex/_generated/api"
-import { CONVEX_MODE } from "./convex-provider"
+import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { CONVEX_MODE } from "./convex-provider";
 
 function LiveGameBannerConvex() {
-  const liveGame = useQuery(api.diary.getLiveGame)
+  const liveGame = useQuery(api.diary.getLiveGame);
 
-  if (!liveGame) return null
+  if (!liveGame) return null;
 
   return (
     <Link
@@ -25,11 +25,13 @@ function LiveGameBannerConvex() {
           Turn {liveGame.lastTurn}
         </span>
       </span>
-      <span className="text-xs text-patina group-hover:underline">Watch live</span>
+      <span className="text-xs text-patina group-hover:underline">
+        Watch live
+      </span>
     </Link>
-  )
+  );
 }
 
 export function LiveGameBanner() {
-  return CONVEX_MODE ? <LiveGameBannerConvex /> : null
+  return CONVEX_MODE ? <LiveGameBannerConvex /> : null;
 }

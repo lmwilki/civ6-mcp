@@ -1,5 +1,5 @@
-import { query } from "./_generated/server"
-import { v } from "convex/values"
+import { query } from "./_generated/server";
+import { v } from "convex/values";
 
 /** List games that have log data — returns shape compatible with GameLogInfo[] */
 export const listGameLogs = query({
@@ -9,29 +9,29 @@ export const listGameLogs = query({
       .query("games")
       .withIndex("by_status")
       .order("desc")
-      .collect()
-    const result = []
+      .collect();
+    const result = [];
     for (const g of games) {
-      if (!g.hasLogs) continue
+      if (!g.hasLogs) continue;
       // Get first and last log entry for timestamps
       const first = await ctx.db
         .query("logEntries")
         .withIndex("by_game_line", (q) => q.eq("gameId", g.gameId))
-        .first()
+        .first();
       const last = await ctx.db
         .query("logEntries")
         .withIndex("by_game_line", (q) => q.eq("gameId", g.gameId))
         .order("desc")
-        .first()
+        .first();
       // Collect unique sessions (scan first 50 entries)
       const sample = await ctx.db
         .query("logEntries")
         .withIndex("by_game_line", (q) => q.eq("gameId", g.gameId))
-        .take(50)
-      const sessions = [...new Set(sample.map((e) => e.session))]
+        .take(50);
+      const sessions = [...new Set(sample.map((e) => e.session))];
       const turns = sample
         .map((e) => e.turn)
-        .filter((t): t is number => t != null)
+        .filter((t): t is number => t != null);
       result.push({
         game: g.gameId,
         civ: g.civ,
@@ -42,11 +42,11 @@ export const listGameLogs = query({
         min_turn: turns.length > 0 ? Math.min(...turns) : null,
         max_turn: turns.length > 0 ? Math.max(...turns) : null,
         sessions,
-      })
+      });
     }
-    return result
+    return result;
   },
-})
+});
 
 /** Get log entries for a game, optionally filtered by session and after a line */
 export const getLogEntries = query({
@@ -56,27 +56,27 @@ export const getLogEntries = query({
     session: v.optional(v.string()),
   },
   handler: async (ctx, { gameId, afterLine, session }) => {
-    let entries
+    let entries;
     if (session) {
       entries = await ctx.db
         .query("logEntries")
         .withIndex("by_game_session", (q) =>
-          q.eq("gameId", gameId).eq("session", session)
+          q.eq("gameId", gameId).eq("session", session),
         )
-        .collect()
+        .collect();
       if (afterLine) {
-        entries = entries.filter((e) => e.line > afterLine)
+        entries = entries.filter((e) => e.line > afterLine);
       }
     } else {
       // Use line index for efficient range query
       const q = ctx.db
         .query("logEntries")
-        .withIndex("by_game_line", (q) => q.eq("gameId", gameId))
-      entries = await q.collect()
+        .withIndex("by_game_line", (q) => q.eq("gameId", gameId));
+      entries = await q.collect();
       if (afterLine) {
-        entries = entries.filter((e) => e.line > afterLine)
+        entries = entries.filter((e) => e.line > afterLine);
       }
     }
-    return entries
+    return entries;
   },
-})
+});

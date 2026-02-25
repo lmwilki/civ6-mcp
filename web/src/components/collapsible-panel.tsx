@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface CollapsiblePanelProps {
-  icon: React.ReactNode
-  title: string
-  defaultOpen?: boolean
-  summary?: React.ReactNode
-  children: React.ReactNode
+  icon: React.ReactNode;
+  title: string;
+  defaultOpen?: boolean;
+  summary?: React.ReactNode;
+  children: React.ReactNode;
 }
 
 export function CollapsiblePanel({
@@ -18,7 +18,7 @@ export function CollapsiblePanel({
   summary,
   children,
 }: CollapsiblePanelProps) {
-  const [expanded, setExpanded] = useState(defaultOpen)
+  const [expanded, setExpanded] = useState(defaultOpen);
 
   return (
     <div className="mx-auto mb-4 w-full max-w-2xl rounded-sm border border-marble-300/50 bg-marble-50">
@@ -43,5 +43,5 @@ export function CollapsiblePanel({
         </div>
       )}
     </div>
-  )
+  );
 }

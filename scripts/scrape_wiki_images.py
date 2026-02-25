@@ -173,13 +173,17 @@ def to_kebab(name: str) -> str:
 
 def get_image_url(file_title: str) -> str | None:
     """Get the full-size CDN URL for a wiki File: page via the API."""
-    resp = requests.get(API_URL, params={
-        "action": "query",
-        "titles": file_title,
-        "prop": "imageinfo",
-        "iiprop": "url",
-        "format": "json",
-    }, timeout=30)
+    resp = requests.get(
+        API_URL,
+        params={
+            "action": "query",
+            "titles": file_title,
+            "prop": "imageinfo",
+            "iiprop": "url",
+            "format": "json",
+        },
+        timeout=30,
+    )
     resp.raise_for_status()
     data = resp.json()
     pages = data.get("query", {}).get("pages", {})
@@ -216,7 +220,7 @@ def main():
 
     total = len(LEADERS)
     for i, (wiki_name, display_name, civ_adj) in enumerate(LEADERS):
-        print(f"\n[{i+1}/{total}] {display_name}")
+        print(f"\n[{i + 1}/{total}] {display_name}")
 
         # --- Leader portrait ---
         file_title = f"File:{wiki_name} (Civ6).png"
@@ -270,7 +274,7 @@ def main():
     MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print(f"Leaders: {len(manifest['leaders'])} portraits")
     print(f"Civs:    {len(manifest['civs'])} symbols")
     print(f"Manifest: {MANIFEST_PATH}")

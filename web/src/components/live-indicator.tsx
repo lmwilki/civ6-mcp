@@ -1,12 +1,16 @@
-"use client"
+"use client";
 
 interface LiveIndicatorProps {
-  live: boolean
-  connected: boolean
-  onToggle: () => void
+  live: boolean;
+  connected: boolean;
+  onToggle: () => void;
 }
 
-export function LiveIndicator({ live, connected, onToggle }: LiveIndicatorProps) {
+export function LiveIndicator({
+  live,
+  connected,
+  onToggle,
+}: LiveIndicatorProps) {
   return (
     <button
       onClick={onToggle}
@@ -28,5 +32,5 @@ export function LiveIndicator({ live, connected, onToggle }: LiveIndicatorProps)
       </span>
       {live ? (connected ? "Live" : "Disconnected") : "Paused"}
     </button>
-  )
+  );
 }

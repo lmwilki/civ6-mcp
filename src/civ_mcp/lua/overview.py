@@ -735,7 +735,7 @@ def build_diary_full_query() -> str:
         "      if amt and amt > 0 then "
         '        local rShort = string.gsub(row.ResourceType, "RESOURCE_", "") '
         '        luxStr = luxStr .. (luxStr ~= "" and "," or "") '
-        "          .. rShort .. \":\" .. amt "
+        '          .. rShort .. ":" .. amt '
         "      end "
         "    end "
         "  end "
@@ -749,7 +749,7 @@ def build_diary_full_query() -> str:
         "      if amt and amt > 0 then "
         '        local rShort = string.gsub(row.ResourceType, "RESOURCE_", "") '
         '        stockStr = stockStr .. (stockStr ~= "" and "," or "") '
-        "          .. rShort .. \":\" .. amt "
+        '          .. rShort .. ":" .. amt '
         "      end "
         "    end "
         "  end "
@@ -779,7 +779,7 @@ def build_diary_full_query() -> str:
         '  local compStr = "" '
         "  for k, v in pairs(comp) do "
         '    compStr = compStr .. (compStr ~= "" and "," or "") '
-        "      .. k .. \":\" .. v "
+        '      .. k .. ":" .. v '
         "  end "
         '  print("PUNITS|" .. i .. "|" .. nTotal .. "|" .. nMil '
         '    .. "|" .. nCiv .. "|" .. nSup .. "|" .. compStr) '
@@ -886,7 +886,7 @@ def build_diary_full_query() -> str:
         "        PlayerConfigurations[i]:GetCivilizationShortDescription()) "
         "      local suffix = (suzID == me) and '*' or '' "
         '      envoyStr = envoyStr .. (envoyStr ~= "" and "," or "") '
-        "        .. csName .. suffix .. \":\" .. envoys "
+        '        .. csName .. suffix .. ":" .. envoys '
         "    end "
         "  end "
         "end "
@@ -961,7 +961,7 @@ def build_diary_full_query() -> str:
         "    if pts and pts > 0 then "
         "      local cName = Locale.Lookup(cls.Name) "
         '      gpStr = gpStr .. (gpStr ~= "" and "," or "") '
-        "        .. cName .. \":\" .. pts "
+        '        .. cName .. ":" .. pts '
         "    end "
         "  end "
         "end "
@@ -1063,18 +1063,14 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
             if len(p) >= 3:
                 pid = int(p[1])
                 if pid in player_map:
-                    player_map[pid].policies = [
-                        pol for pol in p[2].split(",") if pol
-                    ]
+                    player_map[pid].policies = [pol for pol in p[2].split(",") if pol]
 
         elif line.startswith("PBELIEFS|"):
             p = line.split("|", 3)
             if len(p) >= 3:
                 pid = int(p[1])
                 if pid in player_map:
-                    player_map[pid].religion_beliefs = [
-                        b for b in p[2].split(",") if b
-                    ]
+                    player_map[pid].religion_beliefs = [b for b in p[2].split(",") if b]
 
         elif line.startswith("PLUXURIES|"):
             p = line.split("|", 3)
@@ -1104,25 +1100,27 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
         elif line.startswith("PCITY|"):
             p = line.split("|")
             if len(p) >= 18:
-                cities.append(CityRow(
-                    pid=int(p[1]),
-                    city_id=int(p[2]),
-                    city=p[3],
-                    pop=int(float(p[4])),
-                    food=round(float(p[5]), 1),
-                    production=round(float(p[6]), 1),
-                    gold=round(float(p[7]), 1),
-                    science=round(float(p[8]), 1),
-                    culture=round(float(p[9]), 1),
-                    faith=round(float(p[10]), 1),
-                    housing=round(float(p[11]), 1),
-                    amenities=int(float(p[12])),
-                    amenities_needed=int(float(p[13])),
-                    districts=p[14],
-                    producing=p[15],
-                    loyalty=round(float(p[16]), 1),
-                    loyalty_per_turn=round(float(p[17]), 1),
-                ))
+                cities.append(
+                    CityRow(
+                        pid=int(p[1]),
+                        city_id=int(p[2]),
+                        city=p[3],
+                        pop=int(float(p[4])),
+                        food=round(float(p[5]), 1),
+                        production=round(float(p[6]), 1),
+                        gold=round(float(p[7]), 1),
+                        science=round(float(p[8]), 1),
+                        culture=round(float(p[9]), 1),
+                        faith=round(float(p[10]), 1),
+                        housing=round(float(p[11]), 1),
+                        amenities=int(float(p[12])),
+                        amenities_needed=int(float(p[13])),
+                        districts=p[14],
+                        producing=p[15],
+                        loyalty=round(float(p[16]), 1),
+                        loyalty_per_turn=round(float(p[17]), 1),
+                    )
+                )
 
         # --- Agent-only lines ---
         elif line.startswith("ADIPLO|"):
@@ -1145,12 +1143,14 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
         elif line.startswith("AGOV|"):
             p = line.split("|")
             if len(p) >= 5:
-                agent.governors.append({
-                    "type": p[1],
-                    "city": p[2],
-                    "established": p[3] == "true",
-                    "promotions": [pr for pr in p[4].split(",") if pr],
-                })
+                agent.governors.append(
+                    {
+                        "type": p[1],
+                        "city": p[2],
+                        "established": p[3] == "true",
+                        "promotions": [pr for pr in p[4].split(",") if pr],
+                    }
+                )
 
         elif line.startswith("ATRADE|"):
             p = line.split("|")

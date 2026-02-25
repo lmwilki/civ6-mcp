@@ -1,24 +1,28 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { EventChip } from "./event-chip"
-import { getToolCategory } from "@/lib/types"
-import type { LogEntry as LogEntryType } from "@/lib/types"
+import { useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { EventChip } from "./event-chip";
+import { getToolCategory } from "@/lib/types";
+import type { LogEntry as LogEntryType } from "@/lib/types";
 
 const borderStyles: Record<string, string> = {
   query: "border-l-marble-300",
   action: "border-l-gold",
   turn: "border-l-gold-dark",
   error: "border-l-terracotta",
-}
+};
 
 const badgeStyles: Record<string, string> = {
   query: "text-marble-700",
   action: "text-gold-dark bg-gold/10",
   turn: "text-gold-dark bg-gold/15 font-semibold",
   error: "text-terracotta bg-terracotta/10",
-}
+};
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleTimeString("en-US", {
@@ -26,31 +30,33 @@ function formatTime(ts: number): string {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  })
+  });
 }
 
 function formatToolName(tool?: string): string {
-  if (!tool) return "unknown"
-  return tool
+  if (!tool) return "unknown";
+  return tool;
 }
 
 function truncate(s: string, max: number): string {
-  if (s.length <= max) return s
-  return s.slice(0, max) + "\u2026"
+  if (s.length <= max) return s;
+  return s.slice(0, max) + "\u2026";
 }
 
 interface LogEntryProps {
-  entry: LogEntryType
+  entry: LogEntryType;
 }
 
 export function LogEntry({ entry }: LogEntryProps) {
-  const [open, setOpen] = useState(false)
-  const cat = entry.category ?? (entry.type === "error" ? "error" : getToolCategory(entry.tool))
+  const [open, setOpen] = useState(false);
+  const cat =
+    entry.category ??
+    (entry.type === "error" ? "error" : getToolCategory(entry.tool));
 
   const hasDetails =
     entry.result ||
     (entry.params && Object.keys(entry.params).length > 0) ||
-    (entry.events && entry.events.length > 0)
+    (entry.events && entry.events.length > 0);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -72,7 +78,8 @@ export function LogEntry({ entry }: LogEntryProps) {
 
           {/* Result summary */}
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-marble-700">
-            {entry.result_summary ?? (entry.result ? truncate(entry.result, 120) : "")}
+            {entry.result_summary ??
+              (entry.result ? truncate(entry.result, 120) : "")}
           </span>
 
           {/* Duration */}
@@ -135,5 +142,5 @@ export function LogEntry({ entry }: LogEntryProps) {
         </CollapsibleContent>
       )}
     </Collapsible>
-  )
+  );
 }

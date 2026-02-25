@@ -1,4 +1,4 @@
-import { NavBar } from "@/components/nav-bar"
+import { NavBar } from "@/components/nav-bar";
 
 export default function AboutPage() {
   return (
@@ -38,5 +38,5 @@ export default function AboutPage() {
         <p className="font-mono text-xs text-marble-500">MIT License</p>
       </footer>
     </div>
-  )
+  );
 }

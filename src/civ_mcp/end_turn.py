@@ -680,9 +680,7 @@ async def execute_end_turn(gs: GameState) -> str:
     # Pre-turn threat scan (for fog-of-war direction tracking)
     threats_before: list[lq.ThreatInfo] = []
     try:
-        pre_threat_lines = await gs.conn.execute_read(
-            lq.build_threat_scan_query()
-        )
+        pre_threat_lines = await gs.conn.execute_read(lq.build_threat_scan_query())
         threats_before = lq.parse_threat_scan_response(pre_threat_lines)
     except Exception:
         log.debug("Pre-turn threat scan failed", exc_info=True)
@@ -835,11 +833,15 @@ async def execute_end_turn(gs: GameState) -> str:
                     )
                     for s in mid_sessions:
                         if s.dialogue_text:
-                            lines.append(f'{s.other_civ_name} says: "{s.dialogue_text}"')
+                            lines.append(
+                                f'{s.other_civ_name} says: "{s.dialogue_text}"'
+                            )
                         if s.reason_text:
                             lines.append(f"Reason: {s.reason_text}")
                         if s.deal_summary:
-                            lines.append(f"Deal from {s.other_civ_name}: {s.deal_summary}")
+                            lines.append(
+                                f"Deal from {s.other_civ_name}: {s.deal_summary}"
+                            )
                     if has_deal:
                         lines.append(
                             "Use respond_to_trade(other_player_id=X, accept=True/False) to handle it, then end_turn again."

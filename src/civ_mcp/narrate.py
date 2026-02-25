@@ -71,7 +71,9 @@ def narrate_spies(spies: list[lq.SpyInfo]) -> str:
             owner_tag = " [own]" if s.city_owner == 0 else ""
             loc = f"{s.city_name}{owner_tag} ({s.x},{s.y})"
         ops = ", ".join(s.available_ops) if s.available_ops else "none"
-        mission_tag = f" | mission: {s.current_mission}" if s.current_mission != "none" else ""
+        mission_tag = (
+            f" | mission: {s.current_mission}" if s.current_mission != "none" else ""
+        )
         lines.append(
             f"  id:{s.unit_id} [{rank_name}] {s.name} — at {loc} | moves:{s.moves}"
             f" | xp:{s.xp}{mission_tag} | ops: {ops}"
@@ -392,7 +394,9 @@ def narrate_map(tiles: list[lq.TileInfo]) -> str:
         own_str = ""
         if t.own_units:
             own_str = f" [my: {', '.join(t.own_units)}]"
-        lines.append(f"  ({t.x},{t.y}): {' '.join(parts)}{owner}{vis_tag}{own_str}{unit_str}")
+        lines.append(
+            f"  ({t.x},{t.y}): {' '.join(parts)}{owner}{vis_tag}{own_str}{unit_str}"
+        )
     return "\n".join(lines)
 
 
@@ -1053,12 +1057,10 @@ def narrate_wonder_advisor(
             f" — score:{p.displacement_score}{warn_str}"
         )
     best = placements[0]
+    lines.append(f"\nRecommended: ({best.x},{best.y}) — lowest displacement")
     lines.append(
-        f"\nRecommended: ({best.x},{best.y}) — lowest displacement"
-    )
-    lines.append(
-        f"Use: set_city_production(city_id=<id>, item_type=\"BUILDING\","
-        f" item_name=\"{wonder_name}\", target_x={best.x}, target_y={best.y})"
+        f'Use: set_city_production(city_id=<id>, item_type="BUILDING",'
+        f' item_name="{wonder_name}", target_x={best.x}, target_y={best.y})'
     )
     return "\n".join(lines)
 

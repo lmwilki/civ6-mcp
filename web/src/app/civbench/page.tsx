@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { NavBar } from "@/components/nav-bar"
-import { FullLeaderboard } from "@/components/model-leaderboard"
-import { CivIcon } from "@/components/civ-icon"
-import { CIV6_COLORS } from "@/lib/civ-colors"
-import { Swords, ScrollText, BarChart3 } from "lucide-react"
+import Link from "next/link";
+import { NavBar } from "@/components/nav-bar";
+import { FullLeaderboard } from "@/components/model-leaderboard";
+import { CivIcon } from "@/components/civ-icon";
+import { CIV6_COLORS } from "@/lib/civ-colors";
+import { Swords, ScrollText, BarChart3 } from "lucide-react";
 
 export default function CivBenchPage() {
   return (
@@ -35,7 +35,11 @@ export default function CivBenchPage() {
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-sm border border-marble-300/50 bg-marble-50 p-3">
                 <div className="flex items-center gap-2">
-                  <CivIcon icon={Swords} color={CIV6_COLORS.military} size="sm" />
+                  <CivIcon
+                    icon={Swords}
+                    color={CIV6_COLORS.military}
+                    size="sm"
+                  />
                   <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
                     Play
                   </h3>
@@ -47,7 +51,11 @@ export default function CivBenchPage() {
               </div>
               <div className="rounded-sm border border-marble-300/50 bg-marble-50 p-3">
                 <div className="flex items-center gap-2">
-                  <CivIcon icon={ScrollText} color={CIV6_COLORS.goldMetal} size="sm" />
+                  <CivIcon
+                    icon={ScrollText}
+                    color={CIV6_COLORS.goldMetal}
+                    size="sm"
+                  />
                   <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
                     Record
                   </h3>
@@ -59,7 +67,11 @@ export default function CivBenchPage() {
               </div>
               <div className="rounded-sm border border-marble-300/50 bg-marble-50 p-3">
                 <div className="flex items-center gap-2">
-                  <CivIcon icon={BarChart3} color={CIV6_COLORS.science} size="sm" />
+                  <CivIcon
+                    icon={BarChart3}
+                    color={CIV6_COLORS.science}
+                    size="sm"
+                  />
                   <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
                     Rate
                   </h3>
@@ -78,7 +90,11 @@ export default function CivBenchPage() {
               href="/games"
               className="inline-flex items-center gap-2 rounded-sm border border-marble-400 bg-marble-100 px-4 py-2 text-sm font-medium text-marble-700 transition-colors hover:border-marble-500 hover:bg-marble-200"
             >
-              <CivIcon icon={ScrollText} color={CIV6_COLORS.goldMetal} size="sm" />
+              <CivIcon
+                icon={ScrollText}
+                color={CIV6_COLORS.goldMetal}
+                size="sm"
+              />
               Browse Games
             </Link>
           </div>
@@ -94,5 +110,5 @@ export default function CivBenchPage() {
         <p className="font-mono text-xs text-marble-500">MIT License</p>
       </footer>
     </div>
-  )
+  );
 }

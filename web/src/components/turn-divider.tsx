@@ -1,5 +1,5 @@
 interface TurnDividerProps {
-  turn: number | null
+  turn: number | null;
 }
 
 export function TurnDivider({ turn }: TurnDividerProps) {
@@ -11,5 +11,5 @@ export function TurnDivider({ turn }: TurnDividerProps) {
       </span>
       <div className="h-px flex-1 bg-gradient-to-r from-transparent via-marble-400/60 to-transparent" />
     </div>
-  )
+  );
 }

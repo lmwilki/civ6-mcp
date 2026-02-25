@@ -26,9 +26,18 @@ from pathlib import Path
 # Group 1: 9 contiguous timelines per player
 # Group 2: 3 contiguous timelines per player (later in the file)
 TIMELINE_NAMES = [
-    "Gold", "Culture", "Science", "Faith", "Score",
-    "BarbariansKilled", "BarbarianCampsCleared", "CivicsAcquired", "TechsAcquired",
-    "Favor", "ScienceVP", "DiploVP",
+    "Gold",
+    "Culture",
+    "Science",
+    "Faith",
+    "Score",
+    "BarbariansKilled",
+    "BarbarianCampsCleared",
+    "CivicsAcquired",
+    "TechsAcquired",
+    "Favor",
+    "ScienceVP",
+    "DiploVP",
 ]
 
 # Map timeline names → diary PlayerRow field names
@@ -39,18 +48,18 @@ TIMELINE_NAMES = [
 #   - Faith: save stores per-turn YIELD, diary "faith" is treasury BALANCE;
 #     we map to faith_per_turn to match correctly
 TIMELINE_TO_DIARY = {
-    "Score": "score",               # exact match (cumulative)
-    "Gold": "gold",                 # treasury balance (approximate, ±10%)
-    "Science": "science",           # yield per turn (approximate, int vs float)
-    "Culture": "culture",           # yield per turn (approximate, int vs float)
-    "Faith": "faith_per_turn",      # per-turn yield (NOT faith balance)
-    "Favor": "favor",               # cumulative (exact)
-    "TechsAcquired": "techs_completed",   # cumulative (exact)
-    "CivicsAcquired": "civics_completed", # cumulative (exact)
-    "BarbariansKilled": "barbarians_killed",       # cumulative (exact)
-    "BarbarianCampsCleared": "barbarian_camps_cleared", # cumulative (exact)
-    "DiploVP": "diplo_vp",         # cumulative (exact)
-    "ScienceVP": "sci_vp",         # cumulative (exact)
+    "Score": "score",  # exact match (cumulative)
+    "Gold": "gold",  # treasury balance (approximate, ±10%)
+    "Science": "science",  # yield per turn (approximate, int vs float)
+    "Culture": "culture",  # yield per turn (approximate, int vs float)
+    "Faith": "faith_per_turn",  # per-turn yield (NOT faith balance)
+    "Favor": "favor",  # cumulative (exact)
+    "TechsAcquired": "techs_completed",  # cumulative (exact)
+    "CivicsAcquired": "civics_completed",  # cumulative (exact)
+    "BarbariansKilled": "barbarians_killed",  # cumulative (exact)
+    "BarbarianCampsCleared": "barbarian_camps_cleared",  # cumulative (exact)
+    "DiploVP": "diplo_vp",  # cumulative (exact)
+    "ScienceVP": "sci_vp",  # cumulative (exact)
 }
 
 # Unique units/districts → civilization name
@@ -131,7 +140,11 @@ UNIQUE_ITEMS: dict[str, str] = {
 CITY_NAME_POOLS: dict[str, list[str]] = {
     "India": ["LOC_CITY_NAME_PATNA", "LOC_CITY_NAME_MUMBAI", "LOC_CITY_NAME_AGRA"],
     "Maya": ["LOC_CITY_NAME_TIKAL", "LOC_CITY_NAME_PALENQUE", "LOC_CITY_NAME_UXMAL"],
-    "Ottomans": ["LOC_CITY_NAME_ISTANBUL", "LOC_CITY_NAME_IZMIR", "LOC_CITY_NAME_EDIRNE"],
+    "Ottomans": [
+        "LOC_CITY_NAME_ISTANBUL",
+        "LOC_CITY_NAME_IZMIR",
+        "LOC_CITY_NAME_EDIRNE",
+    ],
     "Egypt": ["LOC_CITY_NAME_THEBES", "LOC_CITY_NAME_RA_KEDET", "LOC_CITY_NAME_SAIS"],
     "Persia": ["LOC_CITY_NAME_PASARGADAE", "LOC_CITY_NAME_SUSA"],
     "Vietnam": ["LOC_CITY_NAME_THANG_LONG", "LOC_CITY_NAME_HUE"],
@@ -156,6 +169,7 @@ CITY_NAME_POOLS: dict[str, list[str]] = {
 
 # ── Data types ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class TimelineEntry:
     turn: int
@@ -165,6 +179,7 @@ class TimelineEntry:
 @dataclass
 class PlayerTimelines:
     """All 12 timelines for one player."""
+
     player_index: int  # 0-based
     civ_name: str = "Unknown"
     timelines: dict[str, list[TimelineEntry]] = field(default_factory=dict)
@@ -180,6 +195,7 @@ class SaveMetadata:
 
 
 # ── Decompression ─────────────────────────────────────────────────────────
+
 
 def decompress_save(save_data: bytes) -> bytes:
     """Decompress the zlib-compressed game data from a .Civ6Save file.
@@ -215,6 +231,7 @@ def decompress_save(save_data: bytes) -> bytes:
 
 # ── Header parsing (lightweight) ──────────────────────────────────────────
 
+
 def parse_header_strings(save_data: bytes) -> SaveMetadata:
     """Extract game speed and map size from the header via string search."""
     meta = SaveMetadata()
@@ -236,7 +253,10 @@ def parse_header_strings(save_data: bytes) -> SaveMetadata:
 
 # ── Timeline extraction ──────────────────────────────────────────────────
 
-def find_timeline_blocks(data: bytes, name: str, search_start: int = 15_000_000) -> list[int]:
+
+def find_timeline_blocks(
+    data: bytes, name: str, search_start: int = 15_000_000
+) -> list[int]:
     """Find all timeline blocks for a given name. Returns list of offsets to the name string."""
     positions = []
     pos = search_start
@@ -325,8 +345,10 @@ def extract_timelines(data: bytes) -> list[PlayerTimelines]:
 
 # ── Civ identification ────────────────────────────────────────────────────
 
+
 def _scan_production_records(
-    data: bytes, category: bytes,
+    data: bytes,
+    category: bytes,
 ) -> dict[int, set[str]]:
     """Scan production records for a category, returning {player_id: {entity_names}}.
 
@@ -348,7 +370,9 @@ def _scan_production_records(
         entity_len = struct.unpack_from("<I", data, base + 17)[0]
 
         if 0 < entity_len < 200 and base + 21 + entity_len <= len(data):
-            entity = data[base + 21 : base + 21 + entity_len].decode("ascii", errors="replace")
+            entity = data[base + 21 : base + 21 + entity_len].decode(
+                "ascii", errors="replace"
+            )
             result.setdefault(player_id, set()).add(entity)
 
         pos += 1
@@ -400,7 +424,10 @@ def identify_civs(data: bytes, num_players: int) -> dict[int, str]:
                 continue
             name = data[search_pos:end].decode("ascii", errors="replace")
             # Skip names with control chars (active city instances, not pool entries)
-            if all(c.isascii() and (c.isalnum() or c in "_") for c in name[len("LOC_CITY_NAME_"):]):
+            if all(
+                c.isascii() and (c.isalnum() or c in "_")
+                for c in name[len("LOC_CITY_NAME_") :]
+            ):
                 city_locs.append((search_pos, name))
             search_pos = end
 
@@ -428,6 +455,7 @@ def identify_civs(data: bytes, num_players: int) -> dict[int, str]:
 
 
 # ── JSONL output ──────────────────────────────────────────────────────────
+
 
 def timelines_to_diary_rows(
     players: list[PlayerTimelines],
@@ -472,6 +500,7 @@ def timelines_to_diary_rows(
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
+
 def parse_save(path: Path) -> tuple[SaveMetadata, list[PlayerTimelines]]:
     """Parse a .Civ6Save file and return metadata + player timelines."""
     save_data = path.read_bytes()
@@ -511,14 +540,24 @@ def parse_save(path: Path) -> tuple[SaveMetadata, list[PlayerTimelines]]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract Civ 6 save file timelines to JSONL")
+    parser = argparse.ArgumentParser(
+        description="Extract Civ 6 save file timelines to JSONL"
+    )
     parser.add_argument("save_file", type=Path, help="Path to .Civ6Save file")
-    parser.add_argument("-o", "--output", type=Path, help="Output file (default: stdout)")
-    parser.add_argument("--csv", action="store_true", help="Output CSV instead of JSONL")
+    parser.add_argument(
+        "-o", "--output", type=Path, help="Output file (default: stdout)"
+    )
+    parser.add_argument(
+        "--csv", action="store_true", help="Output CSV instead of JSONL"
+    )
     parser.add_argument(
         "--player", type=int, default=None, help="Extract only this player (0-based)"
     )
-    parser.add_argument("--raw", action="store_true", help="Output raw timeline names instead of diary fields")
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Output raw timeline names instead of diary fields",
+    )
     args = parser.parse_args()
 
     if not args.save_file.exists():
@@ -553,10 +592,14 @@ def main():
     n_turns = len(set(r.get("turn", 0) for r in rows))
     fmt = "CSV" if args.csv else "JSONL"
     dest = args.output or "stdout"
-    print(f"\nWrote {n_rows} rows ({n_players} players × {n_turns} turns) as {fmt} to {dest}", file=sys.stderr)
+    print(
+        f"\nWrote {n_rows} rows ({n_players} players × {n_turns} turns) as {fmt} to {dest}",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":
     import signal
+
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     main()

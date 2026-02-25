@@ -76,7 +76,9 @@ def _resolve_config(prod: bool) -> tuple[str, str]:
     file_env = _load_env_file(env_file)
 
     convex_url = os.environ.get("CONVEX_URL") or file_env.get("CONVEX_URL", "")
-    deploy_key = os.environ.get("CONVEX_DEPLOY_KEY") or file_env.get("CONVEX_DEPLOY_KEY", "")
+    deploy_key = os.environ.get("CONVEX_DEPLOY_KEY") or file_env.get(
+        "CONVEX_DEPLOY_KEY", ""
+    )
 
     # .env.local uses NEXT_PUBLIC_CONVEX_URL, .env.prod uses CONVEX_URL
     if not convex_url:
@@ -234,7 +236,9 @@ async def sync_diary(
         return
 
     # Extract civ/leader from first agent row
-    agent_row = next((r for r in rows_to_upsert if r.get("is_agent")), rows_to_upsert[0])
+    agent_row = next(
+        (r for r in rows_to_upsert if r.get("is_agent")), rows_to_upsert[0]
+    )
     civ = agent_row.get("civ", "")
     leader = agent_row.get("leader", "")
     seed = game_id.rsplit("_", 1)[-1] if "_" in game_id else ""
@@ -244,7 +248,13 @@ async def sync_diary(
         batch = rows_to_upsert[i : i + BATCH_SIZE]
         await client.mutation(
             "ingest:ingestPlayerRows",
-            {"gameId": game_id, "civ": civ, "leader": leader, "seed": seed, "rows": batch},
+            {
+                "gameId": game_id,
+                "civ": civ,
+                "leader": leader,
+                "seed": seed,
+                "rows": batch,
+            },
         )
 
     log.info(
@@ -293,9 +303,7 @@ async def sync_cities(
     state["game_last_seen"][game_id] = time.time()
 
 
-async def sync_log(
-    path: Path, game_id: str, state: dict, client: ConvexClient
-) -> None:
+async def sync_log(path: Path, game_id: str, state: dict, client: ConvexClient) -> None:
     """Sync a log JSONL file. Append-only — use byte offset."""
     name = path.name
     file_state = state["files"].get(name, {"byte_offset": 0, "line_count": 0})
@@ -375,7 +383,11 @@ async def check_idle_games(state: dict, client: ConvexClient) -> None:
     for game_id, last_seen in list(state.get("game_last_seen", {}).items()):
         if now - last_seen > IDLE_TIMEOUT:
             await client.mutation("ingest:markGameCompleted", {"gameId": game_id})
-            log.info("Marked game %s as completed (idle %dm)", game_id, (now - last_seen) // 60)
+            log.info(
+                "Marked game %s as completed (idle %dm)",
+                game_id,
+                (now - last_seen) // 60,
+            )
             del state["game_last_seen"][game_id]
 
 
@@ -387,7 +399,8 @@ async def check_idle_games(state: dict, client: ConvexClient) -> None:
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Sync civ-mcp JSONL files to Convex")
     parser.add_argument(
-        "--prod", action="store_true",
+        "--prod",
+        action="store_true",
         help="Target production deployment (reads web/.env.prod instead of web/.env.dev)",
     )
     args = parser.parse_args()
@@ -396,10 +409,18 @@ async def main() -> None:
     env_label = "PROD" if args.prod else "DEV"
 
     if not convex_url:
-        log.error("CONVEX_URL not set — check web/.env.prod" if args.prod else "CONVEX_URL not set — check web/.env.dev")
+        log.error(
+            "CONVEX_URL not set — check web/.env.prod"
+            if args.prod
+            else "CONVEX_URL not set — check web/.env.dev"
+        )
         sys.exit(1)
     if not deploy_key:
-        log.error("CONVEX_DEPLOY_KEY not set — check web/.env.prod" if args.prod else "CONVEX_DEPLOY_KEY not set — check web/.env.dev")
+        log.error(
+            "CONVEX_DEPLOY_KEY not set — check web/.env.prod"
+            if args.prod
+            else "CONVEX_DEPLOY_KEY not set — check web/.env.dev"
+        )
         sys.exit(1)
 
     log.info("[%s] Watching %s → %s", env_label, DIARY_DIR, convex_url)

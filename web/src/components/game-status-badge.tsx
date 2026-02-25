@@ -1,15 +1,19 @@
-"use client"
+"use client";
 
-import { Trophy, Skull } from "lucide-react"
-import type { GameOutcome } from "@/lib/diary-types"
+import { Trophy, Skull } from "lucide-react";
+import type { GameOutcome } from "@/lib/diary-types";
 
 interface GameStatusBadgeProps {
-  status?: "live" | "completed"
-  outcome?: GameOutcome | null
-  turnCount: number
+  status?: "live" | "completed";
+  outcome?: GameOutcome | null;
+  turnCount: number;
 }
 
-export function GameStatusBadge({ status, outcome, turnCount }: GameStatusBadgeProps) {
+export function GameStatusBadge({
+  status,
+  outcome,
+  turnCount,
+}: GameStatusBadgeProps) {
   if (status === "live") {
     return (
       <div className="text-right">
@@ -26,11 +30,11 @@ export function GameStatusBadge({ status, outcome, turnCount }: GameStatusBadgeP
           </span>
         </div>
       </div>
-    )
+    );
   }
 
   if (outcome) {
-    const isVictory = outcome.result === "victory"
+    const isVictory = outcome.result === "victory";
     return (
       <div className="text-right">
         <div className="flex items-center justify-end gap-1">
@@ -39,18 +43,19 @@ export function GameStatusBadge({ status, outcome, turnCount }: GameStatusBadgeP
           ) : (
             <Skull className="h-3 w-3" style={{ color: "#C0503A" }} />
           )}
-          <span className="font-display text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color: isVictory ? "#3D8B6E" : "#C0503A" }}>
+          <span
+            className="font-display text-[10px] font-bold uppercase tracking-[0.08em]"
+            style={{ color: isVictory ? "#3D8B6E" : "#C0503A" }}
+          >
             {isVictory ? "Victory" : "Defeated"}
           </span>
           <span className="font-mono text-[10px] tabular-nums text-marble-500">
             T{outcome.turn}
           </span>
         </div>
-        <p className="text-[10px] text-marble-400">
-          {outcome.victoryType}
-        </p>
+        <p className="text-[10px] text-marble-400">{outcome.victoryType}</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -59,5 +64,5 @@ export function GameStatusBadge({ status, outcome, turnCount }: GameStatusBadgeP
         T{turnCount}
       </span>
     </div>
-  )
+  );
 }

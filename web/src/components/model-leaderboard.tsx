@@ -1,23 +1,36 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useElo } from "@/lib/use-elo"
-import { getModelMeta, formatModelName } from "@/lib/model-registry"
-import { CivIcon } from "@/components/civ-icon"
-import { CIV6_COLORS } from "@/lib/civ-colors"
-import type { EloEntry } from "@/lib/elo"
-import { Bot, Trophy, Medal, ArrowRight, Swords, TrendingUp } from "lucide-react"
+import Link from "next/link";
+import { useElo } from "@/lib/use-elo";
+import { getModelMeta, formatModelName } from "@/lib/model-registry";
+import { CivIcon } from "@/components/civ-icon";
+import { CIV6_COLORS } from "@/lib/civ-colors";
+import type { EloEntry } from "@/lib/elo";
+import {
+  Bot,
+  Trophy,
+  Medal,
+  ArrowRight,
+  Swords,
+  TrendingUp,
+} from "lucide-react";
 
 // ─── Shared ─────────────────────────────────────────────────────────────────
 
-const MEDAL_COLORS = [CIV6_COLORS.goldMetal, "#C0C0C0", "#CD7F32"] as const
+const MEDAL_COLORS = [CIV6_COLORS.goldMetal, "#C0C0C0", "#CD7F32"] as const;
 
-function ModelAvatar({ entry, size = "md" }: { entry: EloEntry; size?: "sm" | "md" }) {
-  const px = size === "sm" ? "h-6 w-6" : "h-8 w-8"
-  const iconPx = size === "sm" ? "h-3 w-3" : "h-4 w-4"
-  const meta = getModelMeta(entry.name)
+function ModelAvatar({
+  entry,
+  size = "md",
+}: {
+  entry: EloEntry;
+  size?: "sm" | "md";
+}) {
+  const px = size === "sm" ? "h-6 w-6" : "h-8 w-8";
+  const iconPx = size === "sm" ? "h-3 w-3" : "h-4 w-4";
+  const meta = getModelMeta(entry.name);
 
-  const bgColor = meta.providerLogo ? `${meta.color}18` : undefined
+  const bgColor = meta.providerLogo ? `${meta.color}18` : undefined;
 
   if (meta.providerLogo) {
     return (
@@ -27,25 +40,27 @@ function ModelAvatar({ entry, size = "md" }: { entry: EloEntry; size?: "sm" | "m
       >
         <img src={meta.providerLogo} alt={meta.provider} className={iconPx} />
       </span>
-    )
+    );
   }
 
   return (
-    <span className={`flex ${px} shrink-0 items-center justify-center rounded-full bg-marble-200`}>
+    <span
+      className={`flex ${px} shrink-0 items-center justify-center rounded-full bg-marble-200`}
+    >
       <Bot className={`${iconPx} text-marble-600`} />
     </span>
-  )
+  );
 }
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank <= 3) {
-    return <CivIcon icon={Medal} color={MEDAL_COLORS[rank - 1]} size="sm" />
+    return <CivIcon icon={Medal} color={MEDAL_COLORS[rank - 1]} size="sm" />;
   }
   return (
     <span className="flex h-5 w-5 items-center justify-center font-mono text-xs tabular-nums text-marble-400">
       {rank}
     </span>
-  )
+  );
 }
 
 function EloBadge({ elo, color }: { elo: number; color?: string }) {
@@ -58,7 +73,7 @@ function EloBadge({ elo, color }: { elo: number; color?: string }) {
     >
       {elo}
     </span>
-  )
+  );
 }
 
 function WinRateBar({ pct }: { pct: number }) {
@@ -74,20 +89,20 @@ function WinRateBar({ pct }: { pct: number }) {
         {pct}%
       </span>
     </div>
-  )
+  );
 }
 
 // ─── Preview (landing page) ─────────────────────────────────────────────────
 
 export function LeaderboardPreview() {
-  const { ratings, gameCount, loading } = useElo()
+  const { ratings, gameCount, loading } = useElo();
 
-  if (loading) return null
+  if (loading) return null;
 
-  const models = ratings.filter((e) => e.type === "model")
-  if (models.length === 0) return null
+  const models = ratings.filter((e) => e.type === "model");
+  if (models.length === 0) return null;
 
-  const top3 = models.slice(0, 3)
+  const top3 = models.slice(0, 3);
 
   return (
     <section>
@@ -103,7 +118,7 @@ export function LeaderboardPreview() {
 
       <div className="mt-3 space-y-2">
         {top3.map((entry, i) => {
-          const meta = getModelMeta(entry.name)
+          const meta = getModelMeta(entry.name);
           return (
             <div
               key={entry.id}
@@ -131,7 +146,7 @@ export function LeaderboardPreview() {
                 </div>
               </div>
             </div>
-          )
+          );
         })}
       </div>
 
@@ -143,36 +158,36 @@ export function LeaderboardPreview() {
         <ArrowRight className="h-3.5 w-3.5" />
       </Link>
     </section>
-  )
+  );
 }
 
 // ─── Full Leaderboard (dedicated page) ──────────────────────────────────────
 
 export function FullLeaderboard() {
-  const { ratings, gameCount, loading } = useElo()
+  const { ratings, gameCount, loading } = useElo();
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-sm text-marble-400">
         Loading ratings...
       </div>
-    )
+    );
   }
 
-  const models = ratings.filter((e) => e.type === "model")
+  const models = ratings.filter((e) => e.type === "model");
 
   if (models.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 text-sm text-marble-400">
         No completed games yet. Play some games to see ELO ratings.
       </div>
-    )
+    );
   }
 
   // ELO range for proportional bars
-  const eloMin = Math.min(...models.map((e) => e.elo))
-  const eloMax = Math.max(...models.map((e) => e.elo))
-  const eloRange = eloMax - eloMin || 1
+  const eloMin = Math.min(...models.map((e) => e.elo));
+  const eloMax = Math.max(...models.map((e) => e.elo));
+  const eloRange = eloMax - eloMin || 1;
 
   return (
     <div className="space-y-10">
@@ -180,7 +195,11 @@ export function FullLeaderboard() {
       <section>
         <div className="flex items-baseline justify-between">
           <h2 className="flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
-            <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
+            <CivIcon
+              icon={TrendingUp}
+              color={CIV6_COLORS.goldMetal}
+              size="sm"
+            />
             Rankings
           </h2>
           <span className="text-[10px] tabular-nums text-marble-400">
@@ -197,18 +216,22 @@ export function FullLeaderboard() {
                 <th className="hidden px-3 py-2.5 sm:table-cell">Provider</th>
                 <th className="px-3 py-2.5 text-right">ELO</th>
                 <th className="px-3 py-2.5 text-right">W-L</th>
-                <th className="hidden px-3 py-2.5 text-right sm:table-cell">Win Rate</th>
-                <th className="hidden px-3 py-2.5 text-right sm:table-cell">Games</th>
+                <th className="hidden px-3 py-2.5 text-right sm:table-cell">
+                  Win Rate
+                </th>
+                <th className="hidden px-3 py-2.5 text-right sm:table-cell">
+                  Games
+                </th>
               </tr>
             </thead>
             <tbody>
               {models.map((entry, i) => {
-                const meta = getModelMeta(entry.name)
+                const meta = getModelMeta(entry.name);
                 const winPct =
                   entry.games > 0
                     ? Math.round((entry.wins / entry.games) * 100)
-                    : 0
-                const eloBarWidth = ((entry.elo - eloMin) / eloRange) * 100
+                    : 0;
+                const eloBarWidth = ((entry.elo - eloMin) / eloRange) * 100;
 
                 return (
                   <tr
@@ -230,7 +253,11 @@ export function FullLeaderboard() {
                     <td className="hidden px-3 py-2.5 sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         {meta.providerLogo && (
-                          <img src={meta.providerLogo} alt="" className="h-3.5 w-3.5" />
+                          <img
+                            src={meta.providerLogo}
+                            alt=""
+                            className="h-3.5 w-3.5"
+                          />
                         )}
                         <span className="text-xs text-marble-500">
                           {meta.provider}
@@ -263,7 +290,7 @@ export function FullLeaderboard() {
                       {entry.games}
                     </td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
@@ -278,11 +305,11 @@ export function FullLeaderboard() {
         </h2>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {models.map((entry) => {
-            const meta = getModelMeta(entry.name)
+            const meta = getModelMeta(entry.name);
             const winPct =
               entry.games > 0
                 ? Math.round((entry.wins / entry.games) * 100)
-                : 0
+                : 0;
             return (
               <div
                 key={entry.id}
@@ -299,7 +326,9 @@ export function FullLeaderboard() {
                       <div className="font-display text-xs font-bold uppercase tracking-wide text-marble-800">
                         {meta.name}
                       </div>
-                      <div className="text-[10px] text-marble-500">{meta.provider}</div>
+                      <div className="text-[10px] text-marble-500">
+                        {meta.provider}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2">
@@ -307,7 +336,9 @@ export function FullLeaderboard() {
                       <div className="font-mono text-lg font-bold tabular-nums">
                         <EloBadge elo={entry.elo} />
                       </div>
-                      <div className="text-[9px] uppercase tracking-wider text-marble-500">ELO</div>
+                      <div className="text-[9px] uppercase tracking-wider text-marble-500">
+                        ELO
+                      </div>
                     </div>
                     <div className="text-center">
                       <div className="font-mono text-sm font-semibold tabular-nums text-marble-700">
@@ -315,7 +346,9 @@ export function FullLeaderboard() {
                         <span className="text-marble-400">-</span>
                         <span className="text-terracotta">{entry.losses}</span>
                       </div>
-                      <div className="text-[9px] uppercase tracking-wider text-marble-500">W-L</div>
+                      <div className="text-[9px] uppercase tracking-wider text-marble-500">
+                        W-L
+                      </div>
                     </div>
                     <div className="text-center">
                       <div className="font-mono text-sm font-semibold tabular-nums text-marble-700">
@@ -327,15 +360,17 @@ export function FullLeaderboard() {
                           style={{ width: `${winPct}%` }}
                         />
                       </div>
-                      <div className="mt-0.5 text-[9px] uppercase tracking-wider text-marble-500">Win</div>
+                      <div className="mt-0.5 text-[9px] uppercase tracking-wider text-marble-500">
+                        Win
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            )
+            );
           })}
         </div>
       </section>
     </div>
-  )
+  );
 }

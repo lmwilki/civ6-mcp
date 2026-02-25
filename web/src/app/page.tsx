@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { NavBar } from "@/components/nav-bar"
-import { RecentGames } from "@/components/recent-games"
-import { CivIcon } from "@/components/civ-icon"
-import { CIV6_COLORS } from "@/lib/civ-colors"
-import { LeaderboardPreview } from "@/components/model-leaderboard"
+import Link from "next/link";
+import { NavBar } from "@/components/nav-bar";
+import { RecentGames } from "@/components/recent-games";
+import { CivIcon } from "@/components/civ-icon";
+import { CIV6_COLORS } from "@/lib/civ-colors";
+import { LeaderboardPreview } from "@/components/model-leaderboard";
 import {
   Github,
   Swords,
@@ -15,7 +15,7 @@ import {
   Flame,
   Trophy,
   ScrollText,
-} from "lucide-react"
+} from "lucide-react";
 
 const CAPABILITIES = [
   {
@@ -26,19 +26,22 @@ const CAPABILITIES = [
   },
   {
     title: "Cities & Production",
-    description: "Inspect yields, set builds, purchase with gold, manage citizen focus",
+    description:
+      "Inspect yields, set builds, purchase with gold, manage citizen focus",
     icon: Building2,
     color: CIV6_COLORS.production,
   },
   {
     title: "Diplomacy & Trade",
-    description: "Friendships, alliances, peace deals, trade routes, World Congress",
+    description:
+      "Friendships, alliances, peace deals, trade routes, World Congress",
     icon: Handshake,
     color: CIV6_COLORS.favor,
   },
   {
     title: "Research & Civics",
-    description: "Tech and civic trees, eureka tracking, policy cards, governments",
+    description:
+      "Tech and civic trees, eureka tracking, policy cards, governments",
     icon: FlaskConical,
     color: CIV6_COLORS.science,
   },
@@ -50,11 +53,12 @@ const CAPABILITIES = [
   },
   {
     title: "Strategy & Victory",
-    description: "All six victory conditions tracked, advisors, strategic overview",
+    description:
+      "All six victory conditions tracked, advisors, strategic overview",
     icon: Trophy,
     color: CIV6_COLORS.goldMetal,
   },
-]
+];
 
 export default function LandingPage() {
   return (
@@ -151,7 +155,8 @@ export default function LandingPage() {
                 CivBench
               </h3>
               <p className="mt-1 text-xs text-marble-500">
-                ELO rankings for LLM models playing Civilization VI against the built-in AI.
+                ELO rankings for LLM models playing Civilization VI against the
+                built-in AI.
               </p>
             </div>
 
@@ -164,7 +169,11 @@ export default function LandingPage() {
             {/* Recent Games */}
             <div>
               <h3 className="mb-3 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
-                <CivIcon icon={ScrollText} color={CIV6_COLORS.goldMetal} size="sm" />
+                <CivIcon
+                  icon={ScrollText}
+                  color={CIV6_COLORS.goldMetal}
+                  size="sm"
+                />
                 Recent Games
               </h3>
               <RecentGames />
@@ -178,5 +187,5 @@ export default function LandingPage() {
         <p className="font-mono text-xs text-marble-500">MIT License</p>
       </footer>
     </div>
-  )
+  );
 }

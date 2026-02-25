@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import { useMemo, useState } from "react"
-import { Timeline } from "@/components/timeline"
-import { LiveIndicator } from "@/components/live-indicator"
-import { useGameLog, useGameLogs } from "@/lib/use-game-log"
-import { getToolCategory } from "@/lib/types"
-import type { LogEntry } from "@/lib/types"
+import { useMemo, useState } from "react";
+import { Timeline } from "@/components/timeline";
+import { LiveIndicator } from "@/components/live-indicator";
+import { useGameLog, useGameLogs } from "@/lib/use-game-log";
+import { getToolCategory } from "@/lib/types";
+import type { LogEntry } from "@/lib/types";
 
-type ToolCategory = "query" | "action" | "turn" | "error"
+type ToolCategory = "query" | "action" | "turn" | "error";
 
 const CATEGORY_LABELS: Record<ToolCategory, string> = {
   query: "Queries",
   action: "Actions",
   turn: "Turns",
   error: "Errors",
-}
+};
 
 const CATEGORY_STYLES: Record<ToolCategory, { on: string; off: string }> = {
   query: {
@@ -33,75 +33,77 @@ const CATEGORY_STYLES: Record<ToolCategory, { on: string; off: string }> = {
     on: "bg-terracotta/10 text-terracotta border-terracotta/30",
     off: "bg-marble-50 text-marble-400 border-marble-200",
   },
-}
+};
 
 interface GameLogViewProps {
   /** Game slug, e.g. "mali_-37953408" */
-  gameSlug: string
+  gameSlug: string;
 }
 
 export function GameLogView({ gameSlug }: GameLogViewProps) {
-  const [live, setLive] = useState(true)
-  const [selectedSession, setSelectedSession] = useState<string | null>(null)
-  const [hiddenCategories, setHiddenCategories] = useState<Set<ToolCategory>>(new Set())
-  const [hiddenTools, setHiddenTools] = useState<Set<string>>(new Set())
-  const [showToolFilter, setShowToolFilter] = useState(false)
+  const [live, setLive] = useState(true);
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [hiddenCategories, setHiddenCategories] = useState<Set<ToolCategory>>(
+    new Set(),
+  );
+  const [hiddenTools, setHiddenTools] = useState<Set<string>>(new Set());
+  const [showToolFilter, setShowToolFilter] = useState(false);
 
-  const games = useGameLogs()
+  const games = useGameLogs();
 
   // Find the matching game info for session list
   const selectedGameInfo = useMemo(
     () => games.find((g) => g.game === gameSlug),
-    [games, gameSlug]
-  )
+    [games, gameSlug],
+  );
 
-  const { entries, connected } = useGameLog(live, gameSlug, selectedSession)
+  const { entries, connected } = useGameLog(live, gameSlug, selectedSession);
 
   // Compute tool counts for the filter panel
   const toolCounts = useMemo(() => {
-    const counts = new Map<string, number>()
+    const counts = new Map<string, number>();
     for (const e of entries) {
-      const t = e.tool ?? "unknown"
-      counts.set(t, (counts.get(t) ?? 0) + 1)
+      const t = e.tool ?? "unknown";
+      counts.set(t, (counts.get(t) ?? 0) + 1);
     }
-    return counts
-  }, [entries])
+    return counts;
+  }, [entries]);
 
   // Get category for an entry (use pre-computed field, fallback for safety)
   const entryCategory = (e: LogEntry): ToolCategory => {
-    if (e.category) return e.category
-    if (e.type === "error") return "error"
-    return getToolCategory(e.tool)
-  }
+    if (e.category) return e.category;
+    if (e.type === "error") return "error";
+    return getToolCategory(e.tool);
+  };
 
   // Filter entries by category and specific tools
   const filtered = useMemo(() => {
-    if (hiddenCategories.size === 0 && hiddenTools.size === 0) return entries
+    if (hiddenCategories.size === 0 && hiddenTools.size === 0) return entries;
     return entries.filter((e) => {
-      const cat = entryCategory(e)
-      if (hiddenCategories.has(cat)) return false
-      if (e.tool && hiddenTools.has(e.tool)) return false
-      return true
-    })
-  }, [entries, hiddenCategories, hiddenTools])
+      const cat = entryCategory(e);
+      if (hiddenCategories.has(cat)) return false;
+      if (e.tool && hiddenTools.has(e.tool)) return false;
+      return true;
+    });
+  }, [entries, hiddenCategories, hiddenTools]);
 
   const toggleCategory = (cat: ToolCategory) => {
     setHiddenCategories((prev) => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
 
   const toggleTool = (tool: string) => {
     setHiddenTools((prev) => {
-      const next = new Set(prev)
-      if (next.has(tool)) next.delete(tool)
-      else next.add(tool)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (next.has(tool)) next.delete(tool);
+      else next.add(tool);
+      return next;
+    });
+  };
 
   // Group tools by category for the filter panel
   const toolsByCategory = useMemo(() => {
@@ -110,16 +112,16 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
       action: [],
       turn: [],
       error: [],
-    }
+    };
     for (const [tool, count] of toolCounts) {
-      const cat = tool === "unknown" ? "error" : getToolCategory(tool)
-      groups[cat].push({ tool, count })
+      const cat = tool === "unknown" ? "error" : getToolCategory(tool);
+      groups[cat].push({ tool, count });
     }
     for (const cat of Object.keys(groups) as ToolCategory[]) {
-      groups[cat].sort((a, b) => b.count - a.count)
+      groups[cat].sort((a, b) => b.count - a.count);
     }
-    return groups
-  }, [toolCounts])
+    return groups;
+  }, [toolCounts]);
 
   return (
     <>
@@ -145,7 +147,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
           {/* Category toggles */}
           <div className="flex items-center gap-1">
             {(Object.keys(CATEGORY_LABELS) as ToolCategory[]).map((cat) => {
-              const active = !hiddenCategories.has(cat)
+              const active = !hiddenCategories.has(cat);
               return (
                 <button
                   key={cat}
@@ -156,7 +158,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                 >
                   {CATEGORY_LABELS[cat]}
                 </button>
-              )
+              );
             })}
           </div>
 
@@ -207,14 +209,16 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
             </div>
             <div className="mt-2 space-y-2">
               {(Object.keys(CATEGORY_LABELS) as ToolCategory[]).map((cat) => {
-                const tools = toolsByCategory[cat]
-                if (tools.length === 0) return null
+                const tools = toolsByCategory[cat];
+                if (tools.length === 0) return null;
                 return (
                   <div key={cat}>
-                    <span className="font-mono text-[10px] text-marble-500">{CATEGORY_LABELS[cat]}</span>
+                    <span className="font-mono text-[10px] text-marble-500">
+                      {CATEGORY_LABELS[cat]}
+                    </span>
                     <div className="mt-0.5 flex flex-wrap gap-1">
                       {tools.map(({ tool, count }) => {
-                        const hidden = hiddenTools.has(tool)
+                        const hidden = hiddenTools.has(tool);
                         return (
                           <button
                             key={tool}
@@ -225,13 +229,14 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                                 : "border-marble-300 bg-marble-100 text-marble-700"
                             }`}
                           >
-                            {tool} <span className="text-marble-400">{count}</span>
+                            {tool}{" "}
+                            <span className="text-marble-400">{count}</span>
                           </button>
-                        )
+                        );
                       })}
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
           </div>
@@ -241,5 +246,5 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
       {/* Timeline */}
       <Timeline entries={filtered} live={live} />
     </>
-  )
+  );
 }

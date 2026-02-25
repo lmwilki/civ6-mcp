@@ -223,7 +223,10 @@ class PopupWatcher:
                     if first_seen is None:
                         first_seen = now
                     elif now - first_seen >= POPUP_DISMISS_DELAY:
-                        log.debug("PopupWatcher: dismissing popup after %.1fs", now - first_seen)
+                        log.debug(
+                            "PopupWatcher: dismissing popup after %.1fs",
+                            now - first_seen,
+                        )
                         await dismiss_popup(self._conn)
                         first_seen = None
                 else:

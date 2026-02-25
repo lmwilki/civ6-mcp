@@ -1,25 +1,25 @@
-"use client"
+"use client";
 
-import { useParams, useSearchParams, useRouter } from "next/navigation"
-import { NavBar } from "@/components/nav-bar"
-import { GameDiaryView } from "@/components/game-diary-view"
-import { GameLogView } from "@/components/game-log-view"
+import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { NavBar } from "@/components/nav-bar";
+import { GameDiaryView } from "@/components/game-diary-view";
+import { GameLogView } from "@/components/game-log-view";
 
-type Tab = "diary" | "log"
+type Tab = "diary" | "log";
 
 export default function GameDetailPage() {
-  const params = useParams<{ slug: string }>()
-  const searchParams = useSearchParams()
-  const router = useRouter()
+  const params = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  const slug = params.slug
-  const filename = `diary_${slug}.jsonl`
-  const tab: Tab = searchParams.get("tab") === "log" ? "log" : "diary"
+  const slug = params.slug;
+  const filename = `diary_${slug}.jsonl`;
+  const tab: Tab = searchParams.get("tab") === "log" ? "log" : "diary";
 
   const setTab = (t: Tab) => {
-    const url = t === "log" ? `/games/${slug}?tab=log` : `/games/${slug}`
-    router.replace(url)
-  }
+    const url = t === "log" ? `/games/${slug}?tab=log` : `/games/${slug}`;
+    router.replace(url);
+  };
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -58,5 +58,5 @@ export default function GameDetailPage() {
         <GameLogView gameSlug={slug} />
       )}
     </div>
-  )
+  );
 }

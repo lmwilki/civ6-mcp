@@ -1,35 +1,35 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useDiaryList } from "@/lib/use-diary"
-import { getCivColors } from "@/lib/civ-colors"
-import { getCivSymbol } from "@/lib/civ-images"
-import { LeaderPortrait } from "@/components/leader-portrait"
-import { GameStatusBadge } from "@/components/game-status-badge"
-import { formatModelName } from "@/lib/model-registry"
+import Link from "next/link";
+import { useDiaryList } from "@/lib/use-diary";
+import { getCivColors } from "@/lib/civ-colors";
+import { getCivSymbol } from "@/lib/civ-images";
+import { LeaderPortrait } from "@/components/leader-portrait";
+import { GameStatusBadge } from "@/components/game-status-badge";
+import { formatModelName } from "@/lib/model-registry";
 
 export function RecentGames() {
-  const games = useDiaryList()
+  const games = useDiaryList();
 
   if (games.length === 0) {
     return (
       <div className="flex h-32 items-center justify-center rounded-sm border border-marble-300/50 bg-marble-50">
         <p className="text-sm text-marble-500">No games yet</p>
       </div>
-    )
+    );
   }
 
   // Live games first, then by turn count descending
   const sorted = [...games].sort((a, b) => {
-    if (a.status === "live" && b.status !== "live") return -1
-    if (b.status === "live" && a.status !== "live") return 1
-    return b.count - a.count
-  })
+    if (a.status === "live" && b.status !== "live") return -1;
+    if (b.status === "live" && a.status !== "live") return 1;
+    return b.count - a.count;
+  });
 
   return (
     <div className="space-y-1.5">
       {sorted.map((game) => {
-        const colors = getCivColors(game.label, game.leader)
+        const colors = getCivColors(game.label, game.leader);
 
         return (
           <Link
@@ -54,10 +54,14 @@ export function RecentGames() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1">
                     {(() => {
-                      const sym = getCivSymbol(game.label)
+                      const sym = getCivSymbol(game.label);
                       return sym ? (
-                        <img src={sym} alt="" className="h-3.5 w-3.5 shrink-0 rounded-full object-cover" />
-                      ) : null
+                        <img
+                          src={sym}
+                          alt=""
+                          className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                        />
+                      ) : null;
                     })()}
                     <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
                       {game.label}
@@ -83,8 +87,8 @@ export function RecentGames() {
               />
             </div>
           </Link>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

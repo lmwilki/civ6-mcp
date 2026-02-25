@@ -1,17 +1,21 @@
-"use client"
+"use client";
 
-import { useTheme } from "next-themes"
-import { useSyncExternalStore } from "react"
-import { Moon, Sun } from "lucide-react"
+import { useTheme } from "next-themes";
+import { useSyncExternalStore } from "react";
+import { Moon, Sun } from "lucide-react";
 
-const emptySubscribe = () => () => {}
+const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
-  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false)
+  const { theme, setTheme } = useTheme();
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   if (!mounted) {
-    return <div className="h-7 w-7" /> // placeholder to avoid layout shift
+    return <div className="h-7 w-7" />; // placeholder to avoid layout shift
   }
 
   return (
@@ -26,5 +30,5 @@ export function ThemeToggle() {
         <Moon className="h-3.5 w-3.5" />
       )}
     </button>
-  )
+  );
 }

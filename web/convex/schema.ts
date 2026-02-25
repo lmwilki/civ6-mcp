@@ -1,5 +1,5 @@
-import { defineSchema, defineTable } from "convex/server"
-import { v } from "convex/values"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 
 export default defineSchema({
   // One doc per game session — used for listing and lifecycle
@@ -14,14 +14,16 @@ export default defineSchema({
     turnCount: v.number(),
     hasCities: v.boolean(),
     hasLogs: v.boolean(),
-    outcome: v.optional(v.object({
-      result: v.union(v.literal("victory"), v.literal("defeat")),
-      winnerCiv: v.string(),
-      winnerLeader: v.string(),
-      victoryType: v.string(),
-      turn: v.number(),
-      playerAlive: v.boolean(),
-    })),
+    outcome: v.optional(
+      v.object({
+        result: v.union(v.literal("victory"), v.literal("defeat")),
+        winnerCiv: v.string(),
+        winnerLeader: v.string(),
+        victoryType: v.string(),
+        turn: v.number(),
+        playerAlive: v.boolean(),
+      }),
+    ),
   })
     .index("by_gameId", ["gameId"])
     .index("by_status", ["status", "lastUpdated"]),
@@ -128,8 +130,7 @@ export default defineSchema({
     producing: v.string(),
     loyalty: v.number(),
     loyalty_per_turn: v.number(),
-  })
-    .index("by_game_turn", ["gameId", "turn"]),
+  }).index("by_game_turn", ["gameId", "turn"]),
 
   // One doc per tool call log line — mirrors LogEntry from types.ts
   logEntries: defineTable({
@@ -155,4 +156,4 @@ export default defineSchema({
   })
     .index("by_game_line", ["gameId", "line"])
     .index("by_game_session", ["gameId", "session"]),
-})
+});

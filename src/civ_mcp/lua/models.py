@@ -288,11 +288,15 @@ class TileInfo:
     is_fresh_water: bool = False
     yields: tuple[int, ...] | None = None  # (food, prod, gold, science, culture, faith)
     units: list[str] | None = None  # visible foreign units, e.g. ["Barbarian WARRIOR"]
-    own_units: list[str] | None = None  # player's own units on this tile, e.g. ["WARRIOR", "BUILDER"]
+    own_units: list[str] | None = (
+        None  # player's own units on this tile, e.g. ["WARRIOR", "BUILDER"]
+    )
     resource_class: str | None = None  # "strategic", "luxury", "bonus"
     is_pillaged: bool = False
     district: str | None = None  # e.g. "DISTRICT_CAMPUS", None if no district
-    owner_name: str | None = None  # resolved name, e.g. "Vatican City" (with :CS suffix for city-states)
+    owner_name: str | None = (
+        None  # resolved name, e.g. "Vatican City" (with :CS suffix for city-states)
+    )
 
 
 @dataclass
@@ -406,7 +410,9 @@ class DiplomacySession:
         ""  # semicolon-separated visible button labels; "GOODBYE" if goodbye phase
     )
     deal_summary: str = ""  # human-readable deal content when AI proposes a deal (e.g. "They offer: Research Alliance (25 turns)")
-    is_at_war: bool = False  # True if this player declared war (session is war declaration)
+    is_at_war: bool = (
+        False  # True if this player declared war (session is war declaration)
+    )
 
 
 @dataclass
@@ -884,13 +890,15 @@ class WonderPlacement:
 
     x: int
     y: int
-    terrain: str          # e.g. "TERRAIN_GRASS_HILLS"
-    feature: str          # e.g. "FEATURE_JUNGLE" or "none"
+    terrain: str  # e.g. "TERRAIN_GRASS_HILLS"
+    feature: str  # e.g. "FEATURE_JUNGLE" or "none"
     has_river: bool
     is_coastal: bool
-    resource: str         # e.g. "RESOURCE_IRON" or "none"
-    improvement: str      # e.g. "IMPROVEMENT_FARM" or "none"
-    displacement_score: int  # 0 = empty bare tile (best), higher = more valuable yields lost
+    resource: str  # e.g. "RESOURCE_IRON" or "none"
+    improvement: str  # e.g. "IMPROVEMENT_FARM" or "none"
+    displacement_score: (
+        int  # 0 = empty bare tile (best), higher = more valuable yields lost
+    )
 
 
 @dataclass

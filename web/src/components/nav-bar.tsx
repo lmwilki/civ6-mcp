@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { ThemeToggle } from "./theme-toggle"
+import Link from "next/link";
+import { ThemeToggle } from "./theme-toggle";
 
 interface NavBarProps {
-  active: "home" | "about" | "docs" | "games" | "leaderboard"
-  connected?: boolean
-  turn?: number | null
+  active: "home" | "about" | "docs" | "games" | "leaderboard";
+  connected?: boolean;
+  turn?: number | null;
 }
 
 export function NavBar({ active, connected, turn }: NavBarProps) {
@@ -16,9 +16,11 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
         {/* Left — civ6-mcp brand + project nav */}
         <div className="flex items-baseline gap-3 sm:gap-6 lg:pr-12">
           <Link href="/">
-            <h1 className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
-              active === "home" ? "text-gold-dark" : "text-marble-800"
-            }`}>
+            <h1
+              className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
+                active === "home" ? "text-gold-dark" : "text-marble-800"
+              }`}
+            >
               civ6-mcp
             </h1>
           </Link>
@@ -72,9 +74,11 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
         {/* Right — CivBench brand + bench nav */}
         <div className="hidden lg:flex items-center gap-3 sm:gap-6 pl-12">
           <Link href="/civbench">
-            <span className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
-              active === "leaderboard" ? "text-gold-dark" : "text-marble-800"
-            }`}>
+            <span
+              className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
+                active === "leaderboard" ? "text-gold-dark" : "text-marble-800"
+              }`}
+            >
               CivBench
             </span>
           </Link>
@@ -117,5 +121,5 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
         </div>
       </div>
     </header>
-  )
+  );
 }

@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useReducer, useState } from "react"
-import { AgentOverview } from "@/components/agent-overview"
-import { LeaderboardTable } from "@/components/leaderboard-table"
-import { CitiesPanel } from "@/components/cities-panel"
-import { MilitaryPanel } from "@/components/military-panel"
-import { DiplomacyPanel } from "@/components/diplomacy-panel"
-import { ProgressPanel } from "@/components/progress-panel"
-import { ReflectionsPanel } from "@/components/reflections-panel"
-import { ScoreSparkline } from "@/components/score-sparkline"
-import { MultiCivChart } from "@/components/multi-civ-chart"
-import { useDiary } from "@/lib/use-diary"
-import { CIV6_COLORS } from "@/lib/civ-colors"
-import { CivIcon } from "@/components/civ-icon"
+import { useCallback, useEffect, useReducer, useState } from "react";
+import { AgentOverview } from "@/components/agent-overview";
+import { LeaderboardTable } from "@/components/leaderboard-table";
+import { CitiesPanel } from "@/components/cities-panel";
+import { MilitaryPanel } from "@/components/military-panel";
+import { DiplomacyPanel } from "@/components/diplomacy-panel";
+import { ProgressPanel } from "@/components/progress-panel";
+import { ReflectionsPanel } from "@/components/reflections-panel";
+import { ScoreSparkline } from "@/components/score-sparkline";
+import { MultiCivChart } from "@/components/multi-civ-chart";
+import { useDiary } from "@/lib/use-diary";
+import { CIV6_COLORS } from "@/lib/civ-colors";
+import { CivIcon } from "@/components/civ-icon";
 import {
   ChevronLeft,
   ChevronRight,
@@ -30,70 +30,82 @@ import {
   Users,
   X,
   BarChart3,
-} from "lucide-react"
+} from "lucide-react";
 
 interface GameDiaryViewProps {
-  filename: string
+  filename: string;
 }
 
 export function GameDiaryView({ filename }: GameDiaryViewProps) {
-  const { turns, loading } = useDiary(filename)
-  const [showSidebar, setShowSidebar] = useState(false)
+  const { turns, loading } = useDiary(filename);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   // Navigation state: useReducer keeps userIndex + following in sync atomically
   const [nav, dispatch] = useReducer(
-    (state: { userIndex: number; following: boolean }, action: { type: string; max?: number; index?: number }) => {
+    (
+      state: { userIndex: number; following: boolean },
+      action: { type: string; max?: number; index?: number },
+    ) => {
       switch (action.type) {
         case "prev":
-          return { userIndex: Math.max(0, state.userIndex - 1), following: false }
+          return {
+            userIndex: Math.max(0, state.userIndex - 1),
+            following: false,
+          };
         case "next": {
-          const next = Math.min(action.max!, state.userIndex + 1)
-          return { userIndex: next, following: next >= action.max! }
+          const next = Math.min(action.max!, state.userIndex + 1);
+          return { userIndex: next, following: next >= action.max! };
         }
         case "first":
-          return { userIndex: 0, following: false }
+          return { userIndex: 0, following: false };
         case "last":
-          return { userIndex: action.max!, following: true }
+          return { userIndex: action.max!, following: true };
         case "seek":
-          return { userIndex: action.index!, following: false }
+          return { userIndex: action.index!, following: false };
         default:
-          return state
+          return state;
       }
     },
-    { userIndex: 0, following: true }
-  )
+    { userIndex: 0, following: true },
+  );
   const index = nav.following
     ? Math.max(0, turns.length - 1)
-    : Math.min(nav.userIndex, Math.max(0, turns.length - 1))
+    : Math.min(nav.userIndex, Math.max(0, turns.length - 1));
 
   // Navigation callbacks
-  const goPrev = useCallback(() => dispatch({ type: "prev" }), [])
-  const goNext = useCallback(() => dispatch({ type: "next", max: turns.length - 1 }), [turns.length])
-  const goFirst = useCallback(() => dispatch({ type: "first" }), [])
-  const goLast = useCallback(() => dispatch({ type: "last", max: turns.length - 1 }), [turns.length])
+  const goPrev = useCallback(() => dispatch({ type: "prev" }), []);
+  const goNext = useCallback(
+    () => dispatch({ type: "next", max: turns.length - 1 }),
+    [turns.length],
+  );
+  const goFirst = useCallback(() => dispatch({ type: "first" }), []);
+  const goLast = useCallback(
+    () => dispatch({ type: "last", max: turns.length - 1 }),
+    [turns.length],
+  );
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        e.preventDefault()
-        goPrev()
+        e.preventDefault();
+        goPrev();
       } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-        e.preventDefault()
-        goNext()
+        e.preventDefault();
+        goNext();
       } else if (e.key === "Home") {
-        e.preventDefault()
-        goFirst()
+        e.preventDefault();
+        goFirst();
       } else if (e.key === "End") {
-        e.preventDefault()
-        goLast()
+        e.preventDefault();
+        goLast();
       }
     }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [goPrev, goNext, goFirst, goLast])
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [goPrev, goNext, goFirst, goLast]);
 
-  const currentTurn = turns[index]
-  const prevTurn = index > 0 ? turns[index - 1] : undefined
+  const currentTurn = turns[index];
+  const prevTurn = index > 0 ? turns[index - 1] : undefined;
 
   return (
     <>
@@ -123,7 +135,9 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
               min={0}
               max={turns.length - 1}
               value={index}
-              onChange={(e) => dispatch({ type: "seek", index: parseInt(e.target.value, 10) })}
+              onChange={(e) =>
+                dispatch({ type: "seek", index: parseInt(e.target.value, 10) })
+              }
               className="mx-2 w-24 accent-gold sm:w-48"
             />
           )}
@@ -209,19 +223,86 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
         {turns.length > 1 && (
           <div className="hidden w-96 shrink-0 overflow-y-auto border-l border-marble-300 bg-marble-50 p-4 lg:block">
             <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
-              <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
+              <CivIcon
+                icon={TrendingUp}
+                color={CIV6_COLORS.goldMetal}
+                size="sm"
+              />
               Trends
             </h3>
             <div className="space-y-2">
-              <ScoreSparkline turns={turns} currentIndex={index} field="score" label="Score" color={CIV6_COLORS.goldMetal} icon={Trophy} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="science" label="Science" color={CIV6_COLORS.science} icon={FlaskConical} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="culture" label="Culture" color={CIV6_COLORS.culture} icon={BookOpen} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="gold" label="Gold" color={CIV6_COLORS.goldDark} icon={Coins} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color={CIV6_COLORS.military} icon={Shield} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color={CIV6_COLORS.faith} icon={Flame} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color={CIV6_COLORS.marine} icon={MapPin} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="exploration_pct" label="Explored" color={CIV6_COLORS.favor} icon={Compass} />
-              <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color={CIV6_COLORS.growth} icon={Users} />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="score"
+                label="Score"
+                color={CIV6_COLORS.goldMetal}
+                icon={Trophy}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="science"
+                label="Science"
+                color={CIV6_COLORS.science}
+                icon={FlaskConical}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="culture"
+                label="Culture"
+                color={CIV6_COLORS.culture}
+                icon={BookOpen}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="gold"
+                label="Gold"
+                color={CIV6_COLORS.goldDark}
+                icon={Coins}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="military"
+                label="Military"
+                color={CIV6_COLORS.military}
+                icon={Shield}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="faith"
+                label="Faith"
+                color={CIV6_COLORS.faith}
+                icon={Flame}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="territory"
+                label="Territory"
+                color={CIV6_COLORS.marine}
+                icon={MapPin}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="exploration_pct"
+                label="Explored"
+                color={CIV6_COLORS.favor}
+                icon={Compass}
+              />
+              <ScoreSparkline
+                turns={turns}
+                currentIndex={index}
+                field="pop"
+                label="Pop"
+                color={CIV6_COLORS.growth}
+                icon={Users}
+              />
             </div>
 
             {turns.some((t) => t.rivals.length > 0) && (
@@ -235,7 +316,10 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
         {/* Sparkline sidebar — mobile overlay */}
         {turns.length > 1 && showSidebar && (
           <div className="fixed inset-0 z-40 flex lg:hidden">
-            <div className="absolute inset-0 bg-black/30" onClick={() => setShowSidebar(false)} />
+            <div
+              className="absolute inset-0 bg-black/30"
+              onClick={() => setShowSidebar(false)}
+            />
             <div className="relative ml-auto h-full w-80 max-w-[85vw] overflow-y-auto bg-marble-50 p-4 shadow-lg">
               <button
                 onClick={() => setShowSidebar(false)}
@@ -244,19 +328,86 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
                 <X className="h-4 w-4" />
               </button>
               <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
-                <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
+                <CivIcon
+                  icon={TrendingUp}
+                  color={CIV6_COLORS.goldMetal}
+                  size="sm"
+                />
                 Trends
               </h3>
               <div className="space-y-2">
-                <ScoreSparkline turns={turns} currentIndex={index} field="score" label="Score" color={CIV6_COLORS.goldMetal} icon={Trophy} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="science" label="Science" color={CIV6_COLORS.science} icon={FlaskConical} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="culture" label="Culture" color={CIV6_COLORS.culture} icon={BookOpen} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="gold" label="Gold" color={CIV6_COLORS.goldDark} icon={Coins} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="military" label="Military" color={CIV6_COLORS.military} icon={Shield} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="faith" label="Faith" color={CIV6_COLORS.faith} icon={Flame} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="territory" label="Territory" color={CIV6_COLORS.marine} icon={MapPin} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="exploration_pct" label="Explored" color={CIV6_COLORS.favor} icon={Compass} />
-                <ScoreSparkline turns={turns} currentIndex={index} field="pop" label="Pop" color={CIV6_COLORS.growth} icon={Users} />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="score"
+                  label="Score"
+                  color={CIV6_COLORS.goldMetal}
+                  icon={Trophy}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="science"
+                  label="Science"
+                  color={CIV6_COLORS.science}
+                  icon={FlaskConical}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="culture"
+                  label="Culture"
+                  color={CIV6_COLORS.culture}
+                  icon={BookOpen}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="gold"
+                  label="Gold"
+                  color={CIV6_COLORS.goldDark}
+                  icon={Coins}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="military"
+                  label="Military"
+                  color={CIV6_COLORS.military}
+                  icon={Shield}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="faith"
+                  label="Faith"
+                  color={CIV6_COLORS.faith}
+                  icon={Flame}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="territory"
+                  label="Territory"
+                  color={CIV6_COLORS.marine}
+                  icon={MapPin}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="exploration_pct"
+                  label="Explored"
+                  color={CIV6_COLORS.favor}
+                  icon={Compass}
+                />
+                <ScoreSparkline
+                  turns={turns}
+                  currentIndex={index}
+                  field="pop"
+                  label="Pop"
+                  color={CIV6_COLORS.growth}
+                  icon={Users}
+                />
               </div>
 
               {turns.some((t) => t.rivals.length > 0) && (
@@ -280,5 +431,5 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
         )}
       </div>
     </>
-  )
+  );
 }

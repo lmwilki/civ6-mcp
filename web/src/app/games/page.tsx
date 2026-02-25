@@ -1,28 +1,28 @@
-"use client"
+"use client";
 
-import { useRouter } from "next/navigation"
-import { NavBar } from "@/components/nav-bar"
-import { useDiaryList } from "@/lib/use-diary"
-import { getCivColors } from "@/lib/civ-colors"
-import { getCivSymbol } from "@/lib/civ-images"
-import { getModelMeta, formatModelName } from "@/lib/model-registry"
-import { LeaderPortrait } from "@/components/leader-portrait"
-import { GameStatusBadge } from "@/components/game-status-badge"
+import { useRouter } from "next/navigation";
+import { NavBar } from "@/components/nav-bar";
+import { useDiaryList } from "@/lib/use-diary";
+import { getCivColors } from "@/lib/civ-colors";
+import { getCivSymbol } from "@/lib/civ-images";
+import { getModelMeta, formatModelName } from "@/lib/model-registry";
+import { LeaderPortrait } from "@/components/leader-portrait";
+import { GameStatusBadge } from "@/components/game-status-badge";
 
 function slugFromFilename(filename: string): string {
-  return filename.replace(/^diary_/, "").replace(/\.jsonl$/, "")
+  return filename.replace(/^diary_/, "").replace(/\.jsonl$/, "");
 }
 
 export default function GamesPage() {
-  const router = useRouter()
-  const games = useDiaryList()
+  const router = useRouter();
+  const games = useDiaryList();
 
   // Live games first, then by turn count descending
   const sorted = [...games].sort((a, b) => {
-    if (a.status === "live" && b.status !== "live") return -1
-    if (b.status === "live" && a.status !== "live") return 1
-    return b.count - a.count
-  })
+    if (a.status === "live" && b.status !== "live") return -1;
+    if (b.status === "live" && a.status !== "live") return 1;
+    return b.count - a.count;
+  });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -55,17 +55,24 @@ export default function GamesPage() {
                 </thead>
                 <tbody>
                   {sorted.map((game) => {
-                    const slug = slugFromFilename(game.filename)
-                    const colors = getCivColors(game.label, game.leader)
-                    const symbol = getCivSymbol(game.label)
-                    const modelMeta = game.agentModel ? getModelMeta(game.agentModel) : null
+                    const slug = slugFromFilename(game.filename);
+                    const colors = getCivColors(game.label, game.leader);
+                    const symbol = getCivSymbol(game.label);
+                    const modelMeta = game.agentModel
+                      ? getModelMeta(game.agentModel)
+                      : null;
 
                     return (
                       <tr
                         key={game.filename}
                         className="border-b border-marble-300/30 last:border-0 transition-colors hover:bg-marble-100/50 cursor-pointer"
-                        style={{ borderLeftWidth: 5, borderLeftColor: colors.primary }}
-                        onClick={() => { router.push(`/games/${slug}`) }}
+                        style={{
+                          borderLeftWidth: 5,
+                          borderLeftColor: colors.primary,
+                        }}
+                        onClick={() => {
+                          router.push(`/games/${slug}`);
+                        }}
                       >
                         {/* Game — portrait + civ info */}
                         <td className="px-3 py-2">
@@ -79,7 +86,11 @@ export default function GamesPage() {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 {symbol && (
-                                  <img src={symbol} alt="" className="h-3.5 w-3.5 shrink-0 rounded-full object-cover" />
+                                  <img
+                                    src={symbol}
+                                    alt=""
+                                    className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+                                  />
                                 )}
                                 <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
                                   {game.label}
@@ -99,14 +110,20 @@ export default function GamesPage() {
                           {modelMeta ? (
                             <div className="flex items-center gap-1.5">
                               {modelMeta.providerLogo && (
-                                <img src={modelMeta.providerLogo} alt="" className="h-3.5 w-3.5" />
+                                <img
+                                  src={modelMeta.providerLogo}
+                                  alt=""
+                                  className="h-3.5 w-3.5"
+                                />
                               )}
                               <span className="text-xs text-marble-600">
                                 {formatModelName(game.agentModel!)}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-xs text-marble-400">&mdash;</span>
+                            <span className="text-xs text-marble-400">
+                              &mdash;
+                            </span>
                           )}
                         </td>
 
@@ -124,7 +141,7 @@ export default function GamesPage() {
                           )}
                         </td>
                       </tr>
-                    )
+                    );
                   })}
                 </tbody>
               </table>
@@ -133,5 +150,5 @@ export default function GamesPage() {
         </div>
       </main>
     </div>
-  )
+  );
 }

@@ -71,7 +71,9 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     log.info("Web API starting on http://0.0.0.0:8000")
 
     try:
-        yield AppContext(game=gs, logger=logger, camera=camera, popup_watcher=popup_watcher)
+        yield AppContext(
+            game=gs, logger=logger, camera=camera, popup_watcher=popup_watcher
+        )
     finally:
         await camera.stop()
         await popup_watcher.stop()
@@ -254,7 +256,12 @@ async def spy_action(
     """
     gs = _get_game(ctx)
     unit_index = unit_id % 65536
-    params = {"unit_id": unit_id, "action": action, "target_x": target_x, "target_y": target_y}
+    params = {
+        "unit_id": unit_id,
+        "action": action,
+        "target_x": target_x,
+        "target_y": target_y,
+    }
 
     async def _run():
         if action.lower() == "travel":
@@ -1181,8 +1188,11 @@ async def unit_action(
                 return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion"
 
     result = await _logged(ctx, "unit_action", params, _run)
-    if action.lower() in ("move", "attack", "trade_route", "teleport") \
-            and target_x is not None and target_y is not None:
+    if (
+        action.lower() in ("move", "attack", "trade_route", "teleport")
+        and target_x is not None
+        and target_y is not None
+    ):
         _get_camera(ctx).push(target_x, target_y, f"{action}→({target_x},{target_y})")
     return result
 
@@ -1374,9 +1384,7 @@ async def end_turn(
         # same-turn retries and turn-advanced-during-blocker cases.
         try:
             path = _diary_path(_diary_civ_type, _diary_seed)
-            merged = _merge_agent_reflections(
-                path, gs._diary_written_turn, reflections
-            )
+            merged = _merge_agent_reflections(path, gs._diary_written_turn, reflections)
             if merged:
                 log.info(
                     "Diary: merged retry reflections into turn %s",
@@ -1469,7 +1477,11 @@ async def end_turn(
         try:
             gameover = await gs.check_game_over()
             if gameover is not None:
-                vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
+                vtype = (
+                    gameover.victory_type.replace("VICTORY_", "")
+                    .replace("_", " ")
+                    .title()
+                )
                 await _get_logger(ctx).log_game_over(
                     is_defeat=gameover.is_defeat,
                     winner_civ=gameover.winner_name,
@@ -2171,6 +2183,8 @@ def main():
     # conn.disconnect() closes the FireTuner TCP connection cleanly).
     # Without this, SIGTERM kills the process immediately, leaving the game
     # with an abrupt TCP RST which can cause it to crash.
-    signal.signal(signal.SIGTERM, lambda sig, frame: os.kill(os.getpid(), signal.SIGINT))
+    signal.signal(
+        signal.SIGTERM, lambda sig, frame: os.kill(os.getpid(), signal.SIGINT)
+    )
 
     mcp.run(transport="stdio")

@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { useMemo } from "react"
-import type { TurnData, NumericPlayerField } from "@/lib/diary-types"
-import { AnimatedNumber } from "./animated-number"
-import { CivIcon } from "./civ-icon"
+import { useMemo } from "react";
+import type { TurnData, NumericPlayerField } from "@/lib/diary-types";
+import { AnimatedNumber } from "./animated-number";
+import { CivIcon } from "./civ-icon";
 
 interface ScoreSparklineProps {
-  turns: TurnData[]
-  currentIndex: number
-  field: NumericPlayerField
-  label: string
-  color: string
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
-  height?: number
+  turns: TurnData[];
+  currentIndex: number;
+  field: NumericPlayerField;
+  label: string;
+  color: string;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  height?: number;
 }
 
 export function ScoreSparkline({
@@ -24,31 +24,31 @@ export function ScoreSparkline({
   icon,
   height = 40,
 }: ScoreSparklineProps) {
-  const w = 300
-  const padding = 2
+  const w = 300;
+  const padding = 2;
 
   const { values, points, min, range } = useMemo(() => {
-    const vals = turns.map((t) => (t.agent[field] as number) ?? 0)
-    const mn = Math.min(...vals)
-    const mx = Math.max(...vals)
-    const rng = mx - mn || 1
+    const vals = turns.map((t) => (t.agent[field] as number) ?? 0);
+    const mn = Math.min(...vals);
+    const mx = Math.max(...vals);
+    const rng = mx - mn || 1;
     const pts = vals
       .map((v, i) => {
-        const x = padding + (i / (vals.length - 1)) * (w - 2 * padding)
-        const y = height - padding - ((v - mn) / rng) * (height - 2 * padding)
-        return `${x},${y}`
+        const x = padding + (i / (vals.length - 1)) * (w - 2 * padding);
+        const y = height - padding - ((v - mn) / rng) * (height - 2 * padding);
+        return `${x},${y}`;
       })
-      .join(" ")
-    return { values: vals, points: pts, min: mn, range: rng }
-  }, [turns, field, height])
+      .join(" ");
+    return { values: vals, points: pts, min: mn, range: rng };
+  }, [turns, field, height]);
 
-  if (turns.length < 2) return null
+  if (turns.length < 2) return null;
 
-  const cx = padding + (currentIndex / (values.length - 1)) * (w - 2 * padding)
+  const cx = padding + (currentIndex / (values.length - 1)) * (w - 2 * padding);
   const cy =
     height -
     padding -
-    ((values[currentIndex] - min) / range) * (height - 2 * padding)
+    ((values[currentIndex] - min) / range) * (height - 2 * padding);
 
   return (
     <div className="flex items-center gap-2">
@@ -71,10 +71,12 @@ export function ScoreSparkline({
           strokeLinejoin="round"
           opacity="0.7"
         />
-        <g style={{
-          transform: `translate(${cx}px, ${cy}px)`,
-          transition: "transform 400ms cubic-bezier(0.33, 1, 0.68, 1)",
-        }}>
+        <g
+          style={{
+            transform: `translate(${cx}px, ${cy}px)`,
+            transition: "transform 400ms cubic-bezier(0.33, 1, 0.68, 1)",
+          }}
+        >
           <circle r="4" fill={color} />
         </g>
       </svg>
@@ -82,5 +84,5 @@ export function ScoreSparkline({
         <AnimatedNumber value={values[currentIndex]} />
       </span>
     </div>
-  )
+  );
 }
