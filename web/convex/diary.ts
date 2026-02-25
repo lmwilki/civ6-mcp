@@ -38,7 +38,7 @@ export const listGames = query({
           leader: g.leader,
           lastUpdated: g.lastUpdated,
           outcome: g.outcome ?? null,
-          agentModel,
+          agentModel: g.agentModelOverride ?? agentModel,
           score,
         };
       }),
@@ -89,6 +89,7 @@ export const getEloData = query({
 
       if (playerRows.length < 2) continue;
 
+      const override = game.agentModelOverride ?? null;
       results.push({
         gameId: game.gameId,
         winnerCiv: game.outcome.winnerCiv,
@@ -97,7 +98,7 @@ export const getEloData = query({
           civ: p.civ,
           leader: p.leader,
           is_agent: p.is_agent,
-          agent_model: p.agent_model ?? null,
+          agent_model: (p.is_agent && override) ? override : (p.agent_model ?? null),
         })),
       });
     }
@@ -128,6 +129,7 @@ export const getGameTurns = query({
       cityRows,
       status: game?.status ?? null,
       outcome: game?.outcome ?? null,
+      agentModelOverride: game?.agentModelOverride ?? null,
     };
   },
 });

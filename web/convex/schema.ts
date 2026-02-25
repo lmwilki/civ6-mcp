@@ -14,6 +14,7 @@ export default defineSchema({
     turnCount: v.number(),
     hasCities: v.boolean(),
     hasLogs: v.boolean(),
+    agentModelOverride: v.optional(v.string()),
     outcome: v.optional(
       v.object({
         result: v.union(v.literal("victory"), v.literal("defeat")),

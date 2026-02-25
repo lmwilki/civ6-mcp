@@ -232,6 +232,19 @@ export const patchGameOutcome = mutation({
   },
 });
 
+export const setModelOverride = mutation({
+  args: { gameId: v.string(), model: v.optional(v.string()) },
+  handler: async (ctx, { gameId, model }) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .unique();
+    if (!game) throw new Error(`Game not found: ${gameId}`);
+    await ctx.db.patch(game._id, { agentModelOverride: model });
+    return { gameId, agentModelOverride: model ?? null };
+  },
+});
+
 export const deleteGame = mutation({
   args: { gameId: v.string() },
   handler: async (ctx, { gameId }) => {

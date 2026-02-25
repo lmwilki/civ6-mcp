@@ -40,9 +40,12 @@ export function useDiaryConvex(filename: string | null) {
 
   const turns = useMemo(() => {
     if (!data) return [];
-    const players = data.playerRows.map(
-      (row: Doc<"playerRows">) => stripConvexFields(row) as PlayerRow,
-    );
+    const override = data.agentModelOverride;
+    const players = data.playerRows.map((row: Doc<"playerRows">) => {
+      const p = stripConvexFields(row) as PlayerRow;
+      if (p.is_agent && override) p.agent_model = override;
+      return p;
+    });
     const cities = data.cityRows.map(
       (row: Doc<"cityRows">) => stripConvexFields(row) as CityRow,
     );
