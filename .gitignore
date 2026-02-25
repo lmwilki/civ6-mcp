@@ -14,6 +14,7 @@ wheels/
 
 # OS files
 .DS_Store
+**/.DS_Store
 
 # Logs
 *.log
@@ -25,13 +26,11 @@ web/.env.local
 web/.env.dev
 web/.env.prod
 
-# LaTeX build artifacts
-docs/paper/build/
-*.aux
-*.bbl
-*.blg
-*.out
-*.synctex.gz
+# Paper (LaTeX source, figures, build artifacts — kept locally)
+docs/paper/
+
+# Save files
+saves/
 
 # CivBench eval artifacts
 evals/saves/*.Civ6Save
