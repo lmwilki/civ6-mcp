@@ -543,6 +543,11 @@ async def execute_end_turn(gs: GameState) -> str:
                             f'print("{lq.SENTINEL}")'
                         )
                         needs_promo = any("NEEDS_PROMO" in l for l in check_lines)
+                        log.debug(
+                            "Promotion blocker: needs_promo=%s (check=%s)",
+                            needs_promo,
+                            [l for l in check_lines if "PROMO" in l],
+                        )
                         if not needs_promo:
                             # Step 2: InGame dismiss — NotificationManager is InGame-only.
                             await gs.conn.execute_write(

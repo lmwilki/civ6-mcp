@@ -254,6 +254,23 @@ if g:HasPromotion(promo.Index) then {_bail(f"ERR:ALREADY_PROMOTED|{promotion_typ
 local pts = pGovs:GetGovernorPoints() - pGovs:GetGovernorPointsSpent()
 if pts <= 0 then {_bail("ERR:CANNOT_PROMOTE|No governor points available (0 remaining)")} end
 if not pGovs:CanPromoteGovernor(gov.Hash) then {_bail("ERR:CANNOT_PROMOTE|Governor has no available promotions")} end
+-- Check prerequisites (OR-based: need at least one satisfied)
+local prereqs = {{}}
+for row in GameInfo.GovernorPromotionPrereqs() do
+    if row.GovernorPromotionType == "{promotion_type}" then
+        table.insert(prereqs, row.PrereqGovernorPromotion)
+    end
+end
+if #prereqs > 0 then
+    local anyMet = false
+    local names = {{}}
+    for _, reqType in ipairs(prereqs) do
+        local reqRow = GameInfo.GovernorPromotions[reqType]
+        if reqRow and g:HasPromotion(reqRow.Index) then anyMet = true; break end
+        if reqRow then table.insert(names, Locale.Lookup(reqRow.Name)) end
+    end
+    if not anyMet then print("ERR:PREREQ_NOT_MET|{promotion_type} requires one of: " .. table.concat(names, ", ")); print("{SENTINEL}"); return end
+end
 local params = {{}}
 params[PlayerOperations.PARAM_GOVERNOR_TYPE] = gov.Index
 params[PlayerOperations.PARAM_GOVERNOR_PROMOTION_TYPE] = promo.Index

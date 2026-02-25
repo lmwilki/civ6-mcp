@@ -492,7 +492,7 @@ class GameState:
         lua = lq.build_set_research(tech_name)
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
-        if "OK:RESEARCHING" in result:
+        if "RESEARCHING" in result:
             # Verify InGame actually accepted it by comparing tech INDEX.
             # RequestPlayerOperation is fire-and-forget — it can silently no-op
             # while GetResearchingTech() still returns the OLD tech's index (!= -1).
@@ -518,7 +518,7 @@ class GameState:
         lua = lq.build_set_civic(civic_name)
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
-        if "OK:PROGRESSING" in result:
+        if "PROGRESSING" in result:
             # Verify InGame actually accepted it by comparing civic INDEX.
             verify = await self.conn.execute_read(
                 f"local me = Game.GetLocalPlayer(); "
@@ -724,7 +724,29 @@ class GameState:
     async def promote_governor(self, governor_type: str, promotion_type: str) -> str:
         lua = lq.build_promote_governor(governor_type, promotion_type)
         lines = await self.conn.execute_write(lua)
-        return _action_result(lines)
+        result = _action_result(lines)
+        if "PROMOTED" in result:
+            # Verify promotion actually applied (RequestPlayerOperation is async)
+            verify = await self.conn.execute_write(
+                f"local me = Game.GetLocalPlayer(); "
+                f"local pGovs = Players[me]:GetGovernors(); "
+                f'local gov = GameInfo.Governors["{governor_type}"]; '
+                f'local promo = GameInfo.GovernorPromotions["{promotion_type}"]; '
+                f"if gov and promo then "
+                f"  local g = pGovs:GetGovernor(gov.Hash); "
+                f"  if g and g:HasPromotion(promo.Index) then "
+                f'    print("VERIFIED") '
+                f"  else "
+                f'    print("ERR:PROMOTION_FAILED|{promotion_type} was not applied") '
+                f"  end "
+                f"else "
+                f'  print("ERR:LOOKUP_FAILED") '
+                f"end; "
+                f'print("{lq.SENTINEL}")'
+            )
+            if any("ERR:" in l for l in verify):
+                return _action_result(verify)
+        return result
 
     # ------------------------------------------------------------------
     # Promotion methods
