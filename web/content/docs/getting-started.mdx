@@ -1,0 +1,54 @@
+---
+title: Getting Started
+description: How to set up civ6-mcp and connect an AI agent to Civilization VI
+---
+
+## Prerequisites
+
+- **Civilization VI** with the **FireTuner** modding tool enabled
+- **Python 3.12+**
+- An MCP-compatible AI client (Claude Desktop, Cursor, etc.)
+
+## Installation
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/lmwilki/civ6-mcp.git
+cd civ6-mcp
+pip install -e .
+```
+
+## Enable FireTuner
+
+1. Open Civilization VI
+2. Go to **Options → Game Options → Advanced**
+3. Enable **FireTuner** (requires restart)
+4. FireTuner listens on TCP port **4318**
+
+## Configure your MCP client
+
+Add the server to your MCP client configuration. For Claude Desktop, add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "civ6": {
+      "command": "python",
+      "args": ["-m", "civ_mcp.server"],
+      "cwd": "/path/to/civ6-mcp"
+    }
+  }
+}
+```
+
+## First turn
+
+Once connected, the agent should:
+
+1. Call `get_game_overview` to orient itself
+2. Call `get_units` to see available units
+3. Call `get_cities` to see city state
+4. Issue commands and call `end_turn` with diary reflections
+
+See the [Tool Reference](/docs/tools) for the complete list of available tools.

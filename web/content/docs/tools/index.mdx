@@ -1,0 +1,33 @@
+---
+title: Tool Reference
+description: Complete reference for all 76 MCP tools
+---
+
+The civ6-mcp server exposes **76 tools** through the Model Context Protocol. Each tool is available to any MCP-compatible AI client.
+
+Tools are organized into three categories based on their behavior:
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| [Query](/docs/tools/query) | 34 | Read-only inspection of game state |
+| [Actions](/docs/tools/actions) | 34 | Commands that modify game state |
+| [System](/docs/tools/system) | 8 | Game lifecycle and turn management |
+
+## Conventions
+
+- **Required parameters** are marked with a red asterisk (*)
+- **Optional parameters** show their default value
+- **Read-only** tools are safe to call at any time without side effects
+- **Action** tools modify the game (move units, set production, etc.)
+- **Destructive** tools can significantly alter game state (end turn, load saves)
+
+## Parameter types
+
+All parameters use simple types:
+
+| Type | Description |
+|------|-------------|
+| `string` | Text value |
+| `integer` | Whole number |
+| `number` | Decimal number |
+| `boolean` | `true` or `false` |

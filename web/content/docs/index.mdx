@@ -1,0 +1,27 @@
+---
+title: civ6-mcp
+description: An MCP server connecting AI agents to Civilization VI
+---
+
+**civ6-mcp** is a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI agents full read/write access to a running Civilization VI game via FireTuner.
+
+The agent can query game state (cities, units, diplomacy, tech trees), issue commands (move units, set production, negotiate deals), and maintain a persistent diary of strategic reasoning across turns.
+
+## What's here
+
+- **[Getting Started](/docs/getting-started)** — Setup guide for running the MCP server
+- **[Tool Reference](/docs/tools)** — Complete reference for all 76 MCP tools
+
+## How it works
+
+The MCP server communicates with Civilization VI through the **FireTuner** debugging interface (TCP port 4318). It translates high-level tool calls into Lua scripts executed inside the game engine, then parses the structured output back into tool responses.
+
+```
+AI Agent ↔ MCP Protocol ↔ civ6-mcp server ↔ FireTuner (TCP) ↔ Civ VI Lua Engine
+```
+
+The server exposes 76 tools across three categories:
+
+- **Query tools** (34) — Read game state without side effects
+- **Action tools** (34) — Modify game state (unit commands, production, diplomacy)
+- **System tools** (8) — Game lifecycle (save/load, end turn)

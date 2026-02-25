@@ -19,7 +19,10 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@content/*": ["./content/*"],
+      "fumadocs-mdx:collections/server": ["./.source/server.ts"],
+      "fumadocs-mdx:collections/browser": ["./.source/browser.ts"]
     }
   },
   "include": [
@@ -28,7 +31,9 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    ".source/**/*.ts",
+    ".source/**/*.mts"
   ],
   "exclude": ["node_modules", "convex/_generated", "convex/*.ts", "**/*.test.ts", "vitest.config.ts"]
 }
