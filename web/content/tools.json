@@ -1600,6 +1600,26 @@
     "category": "action"
   },
   {
+    "name": "concede_game",
+    "description": "Concede the current game, recording it as a defeat.\n\n    Use when the position is untenable and continuing would be futile.\n    The highest-scoring rival is recorded as the winner.\n\n    Args:\n        reason: Brief explanation of why you are conceding\n    ",
+    "parameters": {
+      "properties": {
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "title": "concede_gameArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true
+    },
+    "category": "system"
+  },
+  {
     "name": "end_turn",
     "description": "End the current turn.\n\n    Make sure you've moved all units, set production, and chosen research\n    before ending the turn.\n\n    All 5 reflection parameters are required and must be non-empty.\n    These form the per-turn diary \u2014 your persistent memory across sessions:\n        tactical: What happened this turn \u2014 combat, movements, improvements.\n        strategic: Current standing vs rivals \u2014 yields, city count, victory path.\n        tooling: Tool issues or observations. Write \"No issues\" if none.\n        planning: Concrete actions for the next 5-10 turns.\n        hypothesis: Predictions \u2014 enemy behavior, resource needs, timelines.\n\n    agent_model: Your model identifier (e.g. \"claude-opus-4-6\", \"gpt-5\",\n        \"o3\"). This is recorded in the game diary and used for ELO rankings\n        across games. Always pass your exact model ID string every turn.\n\n    IMPORTANT: Reflections are recorded BEFORE the AI processes its turn.\n    Anything that surfaces after end_turn (diplomacy proposals, AI movements,\n    events reported in the turn result) belongs in the NEXT turn's diary.\n    If end_turn is blocked and you call it again after resolving the blocker,\n    the diary entry from the first call is kept \u2014 do not repeat reflections.\n    ",
     "parameters": {

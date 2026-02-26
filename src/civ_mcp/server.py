@@ -1495,6 +1495,49 @@ async def end_turn(
     return result
 
 
+@mcp.tool(annotations={"destructiveHint": True})
+async def concede_game(ctx: Context, reason: str = "") -> str:
+    """Concede the current game, recording it as a defeat.
+
+    Use when the position is untenable and continuing would be futile.
+    The highest-scoring rival is recorded as the winner.
+
+    Args:
+        reason: Brief explanation of why you are conceding
+    """
+    gs = _get_game(ctx)
+    logger = _get_logger(ctx)
+
+    ov = await gs.get_game_overview()
+    logger.set_turn(ov.turn)
+    try:
+        civ, seed = await gs.get_game_identity()
+        logger.bind_game(civ, seed)
+    except Exception:
+        pass
+
+    # Find the highest-scoring rival
+    winner_civ = "Unknown"
+    if ov.rankings:
+        for entry in ov.rankings:
+            if entry.player_id != ov.player_id:
+                winner_civ = entry.civ_name
+                break
+
+    await logger.log_game_over(
+        is_defeat=True,
+        winner_civ=winner_civ,
+        winner_leader="Unknown",
+        victory_type="Concession",
+        player_alive=True,
+    )
+
+    msg = f"Game conceded at turn {ov.turn}. Recorded as defeat (leader: {winner_civ})."
+    if reason:
+        msg += f" Reason: {reason}"
+    return msg
+
+
 # ---------------------------------------------------------------------------
 # Diary
 # ---------------------------------------------------------------------------
