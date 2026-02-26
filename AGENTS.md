@@ -4,7 +4,9 @@ An MCP server connecting to a live Civilization VI game via FireTuner. You can r
 
 ## Sensorium Awareness
 
-**You only know what you explicitly query.** A human player passively absorbs the minimap, score ticker, religion lens, unit health bars — you have none of that. Information you don't ask for simply doesn't enter your world model. The checkpoints and patterns below exist to compensate for this.
+**You only know what you explicitly query.** A human player passively absorbs the score ticker, religion lens, unit health bars — you have none of that. Information you don't ask for simply doesn't enter your world model. The checkpoints and patterns below exist to compensate for this.
+
+`end_turn` now runs **empire warnings** automatically — alerts for loyalty crises, idle trade routes, gold deficits, resource caps, scoreboard position, and military imbalance. These compensate for the most common blind spots, but don't replace periodic deep checks (victory progress, religion spread, diplomacy).
 
 ## Coordinate System
 
@@ -25,7 +27,7 @@ Early choices compound. What you build first shapes what's available at T20, T40
 ## Turn Loop
 
 Each turn in order:
-1. `get_game_overview` — turn, yields, research, score, era score. If resuming after context compaction, call `get_diary` first.
+1. `get_game_overview` — turn, yields, research, score, era score, difficulty. If resuming after context compaction, call `get_diary` first.
 2. `get_units` — positions, HP, moves, charges, nearby threats
 3. `get_map_area` around cities/units — terrain, resources, enemy units
 4. Move/action each unit
@@ -69,7 +71,6 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 - `get_diplomacy` — delegations to new civs, friendships with Friendly civs, alliances if eligible
 - `get_victory_progress` — check all 6 victory types, not just your own path
 - `get_religion_spread` — religious victory is invisible without active checking; a rival with majority in most civs is a serious threat
-- `get_minimap` — map shape, territory, fog boundaries
 
 ### Around every 30 turns:
 - `get_strategic_map` — fog per city + unclaimed resources
@@ -84,6 +85,8 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 Before moving a builder, settler, or trader to a new tile, `get_map_area` (radius 2) around the destination is worth the query. Civilians have zero combat strength — a single barbarian scout captures them. The cost of losing a builder (5-7 turns of production + charges) is almost always worse than taking one extra turn to check or escort.
 
 Hills cost 2 movement, forests/jungles cost 2, and they stack (forest-hills = 3+). A settler or builder with 2 base moves arriving on forest-hills uses all movement and can't act until next turn. Route through flat terrain when possible, or plan to arrive one turn early.
+
+`get_pathing_estimate(unit_id, target_x, target_y)` estimates how many turns a unit needs to reach a destination, using the game's actual pathfinding. Use it before committing units to long marches.
 
 ### Gold
 Gold sitting above 500 with no specific plan is usually better deployed. A builder, a luxury tile, a building that skips 5+ turns of production — these compound. Saving for a specific purchase is fine, but it helps to name the item and the turn.
@@ -147,6 +150,7 @@ Some paths close. It's worth checking periodically:
 - Ranged attacks don't take damage; melee attacks do
 - Forests/mountains block ranged LOS → `ERR:NO_LOS`
 - Fortified units: +4 defense, heal each turn
+- Combat estimates include promotion CS bonuses, flanking (+2 per adjacent friendly to defender), support (+2 per defender's adjacent friendly), and forest/jungle defense (+3)
 
 ## Unit Actions Reference
 
@@ -175,6 +179,8 @@ Feature removal: Forest, jungle, and marsh tiles block most improvements (e.g. F
 
 Builders repair tile improvements. Pillaged **district buildings** (Workshop, Arena, etc.) are repaired via `set_city_production`.
 
+`get_cities` shows unimproved resource tiles and pillaged improvements/districts per city — use this to prioritize builder work without needing to scan `get_map_area` manually.
+
 ## End Turn Blockers
 
 `end_turn` resolves blockers before advancing. If it returns a blocker:
@@ -201,6 +207,7 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 - `propose_trade(player_id, ...)` — trade gold/GPT/resources/favor/open borders
 - `propose_peace(player_id)` — white peace; 10t war cooldown required
 - Check `get_diplomacy` for defensive pacts before declaring war
+- `get_diplomacy` shows leader agendas — historical agendas are always visible; random agendas require Secret diplomatic visibility (spy in their capital or alliance). Use agendas to predict AI behavior and avoid relationship penalties.
 
 **City-states:** `get_city_states` → `send_envoy`. Suzerainty = +1 favor/turn. Types: Scientific/Industrial/Trade/Cultural/Religious/Militaristic.
 

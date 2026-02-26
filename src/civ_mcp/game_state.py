@@ -122,6 +122,14 @@ class GameState:
         lines = await self.conn.execute_read(lq.build_threat_scan_query())
         return lq.parse_threat_scan_response(lines)
 
+    async def get_pathing_estimate(
+        self, unit_index: int, target_x: int, target_y: int
+    ) -> lq.PathingEstimate:
+        lines = await self.conn.execute_write(
+            lq.build_pathing_estimate_query(unit_index, target_x, target_y)
+        )
+        return lq.parse_pathing_estimate(lines)
+
     async def get_victory_progress(self) -> lq.VictoryProgress:
         lines = await self.conn.execute_write(lq.build_victory_progress_query())
         return lq.parse_victory_progress_response(lines)
@@ -371,11 +379,6 @@ class GameState:
         lua = lq.build_global_settle_scan()
         lines = await self.conn.execute_read(lua)
         return lq.parse_settle_advisor_response(lines)
-
-    async def get_minimap(self) -> lq.MinimapData:
-        lua = lq.build_minimap_query()
-        lines = await self.conn.execute_read(lua)
-        return lq.parse_minimap_response(lines)
 
     async def fortify_unit(self, unit_index: int) -> str:
         lua = lq.build_fortify_unit(unit_index)
@@ -771,9 +774,8 @@ class GameState:
         result = _action_result(lines)
         # GameCore SetPromotion doesn't clear the InGame NEEDS_PROMOTION
         # notification, which blocks end_turn until dismissed.
-        # Must use SendActivated + Dismiss (not just Dismiss) and skip
-        # the CanUserDismiss() check which returns false for these.
-        # Only dismiss if NO units still have pending promotions.
+        # Use XP-threshold formula (matching end_turn handler) to decide
+        # whether any unit still genuinely needs a promotion before dismissing.
         if not result.startswith("Error"):
             try:
                 await self.conn.execute_write(
@@ -783,16 +785,19 @@ class GameState:
                     f"  if u:GetX() ~= -9999 then "
                     f"    local ok, exp = pcall(function() return u:GetExperience() end); "
                     f"    if ok and exp then "
-                    f"      local xp = exp:GetExperiencePoints(); "
-                    f"      local threshold = exp:GetExperienceForNextLevel(); "
-                    f"      if xp >= threshold then "
+                    f"      local ui = GameInfo.Units[u:GetType()]; "
+                    f'      local promClass = ui and ui.PromotionClass or ""; '
+                    f'      if promClass ~= "" then '
                     f"        local promoCount = 0; "
-                    f"        local ok2, pl = pcall(function() return exp:GetPromotions() end); "
-                    f"        if ok2 and pl then promoCount = #pl end; "
-                    f"        local lvl = 1; "
-                    f"        local ok3, l = pcall(function() return exp:GetLevel() end); "
-                    f"        if ok3 and l then lvl = l end; "
-                    f"        if promoCount < lvl then anyNeed = true end "
+                    f"        for p in GameInfo.UnitPromotions() do "
+                    f"          if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then "
+                    f"            promoCount = promoCount + 1 "
+                    f"          end "
+                    f"        end; "
+                    f"        local t1 = exp:GetExperienceForNextLevel(); "
+                    f"        local xp = exp:GetExperiencePoints(); "
+                    f"        local needed = t1 * (promoCount + 1) * (promoCount + 2) / 2; "
+                    f"        if xp >= needed then anyNeed = true end "
                     f"      end "
                     f"    end "
                     f"  end "
@@ -1110,6 +1115,8 @@ class GameState:
                     currently_building=c.currently_building,
                     food_surplus=c.food_surplus,
                     turns_to_grow=c.turns_to_grow,
+                    loyalty=c.loyalty,
+                    loyalty_per_turn=c.loyalty_per_turn,
                 )
                 for c in cities
             },

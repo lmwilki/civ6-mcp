@@ -293,6 +293,25 @@ local ut = info and info.UnitType or "UNKNOWN"
 local promClass = info and info.PromotionClass or ""
 print("UNIT|" .. {unit_index} .. "|" .. (unit:GetID() % 65536) .. "|" .. ut)
 local exp = unit:GetExperience()
+-- XP-threshold gate: SetPromotion doesn't consume XP/advance level, so
+-- GetExperienceForNextLevel() is stuck at T1 (level 1->2 threshold).
+-- Correct threshold for (n+1)th promotion = T1 * (n+1) * (n+2) / 2.
+local xpPromoCount = 0
+if promClass ~= "" then
+    for p in GameInfo.UnitPromotions() do
+        if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then
+            xpPromoCount = xpPromoCount + 1
+        end
+    end
+end
+local t1 = exp:GetExperienceForNextLevel()
+local xp = exp:GetExperiencePoints()
+local xpNeeded = t1 * (xpPromoCount + 1) * (xpPromoCount + 2) / 2
+print("XP|" .. xp .. "|" .. xpNeeded .. "|" .. xpPromoCount)
+if xp < xpNeeded then
+    print("{SENTINEL}")
+    return
+end
 local prereqMap = {{}}
 for row in GameInfo.UnitPromotionPrereqs() do
     local pt = row.UnitPromotion
@@ -344,27 +363,32 @@ local promo = GameInfo.UnitPromotions["{promotion_type}"]
 if promo == nil then {_bail(f"ERR:PROMOTION_NOT_FOUND|{promotion_type}")} end
 local exp = unit:GetExperience()
 if exp == nil then {_bail("ERR:NO_EXPERIENCE|Unit has no experience object")} end
+-- XP-threshold gate: prevent infinite promotions from SetPromotion desync.
+-- Count existing promotions, compute correct threshold for next one.
+local ui = GameInfo.Units[unit:GetType()]
+local promClass = ui and ui.PromotionClass or ""
+local promoCount = 0
+if promClass ~= "" then
+    for p in GameInfo.UnitPromotions() do
+        if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then
+            promoCount = promoCount + 1
+        end
+    end
+end
+local t1 = exp:GetExperienceForNextLevel()
+local xp = exp:GetExperiencePoints()
+local needed = t1 * (promoCount + 1) * (promoCount + 2) / 2
+if xp < needed then {_bail_lua('"ERR:INSUFFICIENT_XP|Have " .. xp .. " XP, need " .. needed .. " for promotion " .. (promoCount + 1) .. " (have " .. promoCount .. " already)"')} end
 local canPromote = false
 pcall(function() canPromote = exp:CanPromote(promo.Index) end)
 if not canPromote then {_bail("ERR:CANNOT_PROMOTE|Unit cannot receive this promotion (wrong class, missing prereq, or insufficient XP)")} end
 if exp:HasPromotion(promo.Index) then {_bail(f"ERR:ALREADY_HAS_PROMOTION|{promotion_type}")} end
 exp:SetPromotion(promo.Index)
 if not exp:HasPromotion(promo.Index) then {_bail("ERR:PROMOTION_FAILED|SetPromotion did not apply")} end
--- Consume the stored promotion so CanPromote returns false after this call.
--- ChangeStoredPromotions(-1) is the only available API; if it fails, end_turn's
--- CanPromote check will still see a promotion available and fire again (double-promo).
-local stored_before = -1
-pcall(function() stored_before = exp:GetStoredPromotions() end)
-exp:ChangeStoredPromotions(-1)
-local stored_after = -1
-pcall(function() stored_after = exp:GetStoredPromotions() end)
+pcall(function() exp:ChangeStoredPromotions(-1) end)
 pcall(function() unit:SetDamage(0) end)
 local promoName = Locale.Lookup(promo.Name)
-local warn = ""
-if stored_before >= 0 and stored_after >= 0 and stored_after >= stored_before then
-    warn = "|WARN:STORED_PROMO_NOT_CONSUMED(before=" .. stored_before .. ",after=" .. stored_after .. ")"
-end
-print("OK:PROMOTED|" .. promoName .. warn)
+print("OK:PROMOTED|" .. promoName)
 print("{SENTINEL}")
 """
 
@@ -726,11 +750,14 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
 
 
 def parse_unit_promotions_response(lines: list[str]) -> UnitPromotionStatus:
-    """Parse UNIT| and PROMO| lines from build_unit_promotions_query."""
+    """Parse UNIT|, XP|, and PROMO| lines from build_unit_promotions_query."""
     unit_id = 0
     unit_index = 0
     unit_type = "UNKNOWN"
     promotions: list[PromotionOption] = []
+    xp = 0
+    xp_needed = 0
+    promotion_count = 0
 
     for line in lines:
         if line.startswith("ERR:"):
@@ -741,6 +768,12 @@ def parse_unit_promotions_response(lines: list[str]) -> UnitPromotionStatus:
                 unit_id = int(parts[1])
                 unit_index = int(parts[2])
                 unit_type = parts[3]
+        elif line.startswith("XP|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                xp = int(float(parts[1]))
+                xp_needed = int(float(parts[2]))
+                promotion_count = int(parts[3])
         elif line.startswith("PROMO|"):
             parts = line.split("|")
             if len(parts) >= 4:
@@ -757,6 +790,9 @@ def parse_unit_promotions_response(lines: list[str]) -> UnitPromotionStatus:
         unit_index=unit_index,
         unit_type=unit_type,
         promotions=promotions,
+        xp=xp,
+        xp_needed=xp_needed,
+        promotion_count=promotion_count,
     )
 
 

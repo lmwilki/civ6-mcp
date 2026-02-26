@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_close_diplo_session
 from civ_mcp.lua.models import (
+    AgendaInfo,
     CivInfo,
     DealItem,
     DealOptions,
@@ -90,6 +91,32 @@ for i = 0, 62 do
                 if ok2 and valid then table.insert(avail, (aName:gsub("DIPLOACTION_", ""))) end
             end
             if #avail > 0 then print("ACTIONS|" .. i .. "|" .. table.concat(avail, ",")) end
+            -- Agendas (visibility-gated: historical always, random only at SECRET+)
+            local okAg, agendas = pcall(function() return Players[i]:GetAgendaTypes() end)
+            if okAg and agendas then
+                local histSet = {{}}
+                local leaderType = cfg:GetLeaderTypeName()
+                for ha in GameInfo.HistoricalAgendas() do
+                    if ha.LeaderType == leaderType then
+                        local aDef = GameInfo.Agendas[ha.AgendaType]
+                        if aDef then histSet[aDef.Index] = true end
+                    end
+                end
+                local vis = pDiplo:GetVisibilityOn(i)
+                for _, agIdx in ipairs(agendas) do
+                    local aDef = GameInfo.Agendas[agIdx]
+                    if aDef then
+                        local isHist = histSet[agIdx] or false
+                        if isHist then
+                            print("AGENDA|" .. i .. "|HISTORICAL|" .. Locale.Lookup(aDef.Name) .. "|" .. Locale.Lookup(aDef.Description))
+                        elseif vis >= 3 then
+                            print("AGENDA|" .. i .. "|HIDDEN|" .. Locale.Lookup(aDef.Name) .. "|" .. Locale.Lookup(aDef.Description))
+                        else
+                            print("AGENDA|" .. i .. "|HIDDEN|???|Requires Secret diplomatic visibility (spy or alliance)")
+                        end
+                    end
+                end
+            end
             local okPact, hasPact = pcall(function() return Players[i]:GetDiplomacy():HasDefensivePact(me) end)
             if okPact and hasPact then print("PACT|" .. i .. "|DEFENSIVE") end
         else
@@ -863,6 +890,18 @@ def parse_diplomacy_response(lines: list[str]) -> list[CivInfo]:
                 pid = int(parts[1])
                 if pid in civs:
                     civs[pid].available_actions = parts[2].split(",")
+        elif line.startswith("AGENDA|"):
+            parts = line.split("|")
+            if len(parts) >= 5:
+                pid = int(parts[1])
+                if pid in civs:
+                    civs[pid].agendas.append(
+                        AgendaInfo(
+                            category=parts[2],
+                            name=parts[3],
+                            description=parts[4],
+                        )
+                    )
         elif line.startswith("PACT|"):
             parts = line.split("|")
             if len(parts) == 3:

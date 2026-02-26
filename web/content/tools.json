@@ -249,20 +249,6 @@
     "category": "query"
   },
   {
-    "name": "get_minimap",
-    "description": "Get an ASCII minimap of the entire game world.\n\n    Shows territory ownership, cities, terrain, and resources at a glance.\n    Legend: O=your city, X=enemy city, !=barbarian, +=luxury, *=strategic,\n    UPPER=your territory, lower=enemy territory, ~=water, ^=mountain,\n    #=hills, T=forest/jungle, .=flat land, space=unexplored.\n    ",
-    "parameters": {
-      "properties": {},
-      "title": "get_minimapArguments",
-      "type": "object"
-    },
-    "annotations": {
-      "readOnlyHint": true,
-      "destructiveHint": false
-    },
-    "category": "query"
-  },
-  {
     "name": "get_notifications",
     "description": "Get all active game notifications.\n\n    Shows action-required items (need your decision) and informational\n    notifications. Action-required items include which MCP tool to use\n    to resolve them. Call this to check what needs attention without\n    ending the turn.\n    ",
     "parameters": {

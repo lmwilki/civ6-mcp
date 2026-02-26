@@ -9,7 +9,7 @@ from civ_mcp.lua._helpers import (
     _lua_get_unit,
     _lua_get_unit_gamecore,
 )
-from civ_mcp.lua.models import CombatEstimate, ThreatInfo, UnitInfo
+from civ_mcp.lua.models import CombatEstimate, PathingEstimate, ThreatInfo, UnitInfo
 
 
 def build_units_query() -> str:
@@ -302,7 +302,11 @@ print("{SENTINEL}")
 
 
 def build_combat_estimate_query(unit_index: int, target_x: int, target_y: int) -> str:
-    """InGame context: gather combat stats for damage estimation (no attack executed)."""
+    """InGame context: gather combat stats for damage estimation (no attack executed).
+
+    Includes: base CS, promotions, fortification, terrain (hills, forest/jungle),
+    river crossing, flanking bonus, and support bonus.
+    """
     return f"""
 {_lua_get_unit(unit_index)}
 local ux, uy = unit:GetX(), unit:GetY()
@@ -332,31 +336,151 @@ local defType = eInfo and eInfo.UnitType or "UNKNOWN"
 local defCS = eInfo and eInfo.Combat or 0
 local enemyHP = enemy:GetMaxDamage() - enemy:GetDamage()
 local myHP = unit:GetMaxDamage() - unit:GetDamage()
+-- Build promotion -> CS bonus lookup table
+local promoBonuses = {{}}
+pcall(function()
+    for pm in GameInfo.UnitPromotionModifiers() do
+        local mod = GameInfo.Modifiers[pm.ModifierId]
+        if mod and mod.ModifierType == "MODIFIER_UNIT_ADJUST_COMBAT_STRENGTH" then
+            for arg in GameInfo.ModifierArguments() do
+                if arg.ModifierId == pm.ModifierId and arg.Name == "Amount" then
+                    local val = tonumber(arg.Value) or 0
+                    if val ~= 0 then
+                        if not promoBonuses[pm.UnitPromotionType] then
+                            promoBonuses[pm.UnitPromotionType] = {{}}
+                        end
+                        table.insert(promoBonuses[pm.UnitPromotionType], {{
+                            amount = val,
+                            name = pm.ModifierId
+                        }})
+                    end
+                end
+            end
+        end
+    end
+end)
+-- Sum promotion bonuses for a unit
+local function getPromoBonuses(u)
+    local total = 0
+    local parts = {{}}
+    local exp = u:GetExperience()
+    for promoType, infos in pairs(promoBonuses) do
+        local promoRow = GameInfo.UnitPromotions[promoType]
+        if promoRow then
+            local ok, has = pcall(function() return exp:HasPromotion(promoRow.Index) end)
+            if ok and has then
+                for _, info in ipairs(infos) do
+                    total = total + info.amount
+                    local short = info.name:gsub("MODIFIER_", "")
+                    table.insert(parts, short .. " " .. (info.amount > 0 and "+" or "") .. info.amount)
+                end
+            end
+        end
+    end
+    return total, parts
+end
 -- Gather modifiers
 local mods = {{}}
-local modTotal = 0
+local defModTotal = 0
+local attModTotal = 0
+-- Attacker promotion bonuses
+local attPromoBonus, attPromoMods = getPromoBonuses(unit)
+if attPromoBonus ~= 0 then
+    attModTotal = attModTotal + attPromoBonus
+    for _, m in ipairs(attPromoMods) do table.insert(mods, "att " .. m) end
+end
+-- Defender promotion bonuses
+local defPromoBonus, defPromoMods = getPromoBonuses(enemy)
+if defPromoBonus ~= 0 then
+    defModTotal = defModTotal + defPromoBonus
+    for _, m in ipairs(defPromoMods) do table.insert(mods, "def " .. m) end
+end
 -- Defender fortified?
 local ok1, ft = pcall(function() return enemy:GetFortifyTurns() end)
 if ok1 and ft and ft > 0 then
     local bonus = math.min(ft * 3, 6)
     table.insert(mods, "fortified +" .. bonus)
-    modTotal = modTotal + bonus
+    defModTotal = defModTotal + bonus
 end
 -- Defender on hills?
 local tgtPlot = Map.GetPlot({target_x}, {target_y})
 if tgtPlot and tgtPlot:IsHills() then
     table.insert(mods, "hills +3")
-    modTotal = modTotal + 3
+    defModTotal = defModTotal + 3
+end
+-- Forest/jungle defense bonus
+if tgtPlot then
+    local feat = tgtPlot:GetFeatureType()
+    if feat >= 0 then
+        local fInfo = GameInfo.Features[feat]
+        if fInfo and (fInfo.FeatureType == "FEATURE_FOREST" or fInfo.FeatureType == "FEATURE_JUNGLE") then
+            table.insert(mods, fInfo.FeatureType:gsub("FEATURE_",""):lower() .. " +3")
+            defModTotal = defModTotal + 3
+        end
+    end
 end
 -- River crossing penalty (attacker crosses river for melee)
 if not isRanged and tgtPlot then
     local attPlot = Map.GetPlot(ux, uy)
     if attPlot and tgtPlot:IsRiverCrossingToPlot(attPlot) then
         table.insert(mods, "river -2")
-        modTotal = modTotal - 2
+        attModTotal = attModTotal - 2
     end
 end
-local effDefCS = defCS + modTotal
+-- Flanking: count our units adjacent to defender (excluding attacker)
+local flankBonus = 0
+if not isRanged then
+    local enemyOwner = enemy:GetOwner()
+    for dy = -1, 1 do for dx = -1, 1 do
+        if dx ~= 0 or dy ~= 0 then
+            local fx, fy = {target_x} + dx, {target_y} + dy
+            if not (fx == ux and fy == uy) then
+                local adjUnits = Map.GetUnitsAt(fx, fy)
+                if adjUnits then
+                    for adjU in adjUnits:Units() do
+                        if adjU:GetOwner() == me then
+                            local adjInfo = GameInfo.Units[adjU:GetType()]
+                            if adjInfo and (adjInfo.Combat or 0) > 0 then
+                                flankBonus = flankBonus + 2
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end end
+    if flankBonus > 0 then
+        table.insert(mods, "flank +" .. flankBonus)
+        attModTotal = attModTotal + flankBonus
+    end
+end
+-- Support: count defender's adjacent friendlies
+local supportBonus = 0
+if not isRanged then
+    local enemyOwner = enemy:GetOwner()
+    for dy = -1, 1 do for dx = -1, 1 do
+        if dx ~= 0 or dy ~= 0 then
+            local sx, sy = {target_x} + dx, {target_y} + dy
+            local adjUnits = Map.GetUnitsAt(sx, sy)
+            if adjUnits then
+                for adjU in adjUnits:Units() do
+                    if adjU:GetOwner() == enemyOwner and adjU ~= enemy then
+                        local adjInfo = GameInfo.Units[adjU:GetType()]
+                        if adjInfo and (adjInfo.Combat or 0) > 0 then
+                            supportBonus = supportBonus + 2
+                        end
+                    end
+                end
+            end
+        end
+    end end
+    if supportBonus > 0 then
+        table.insert(mods, "support +" .. supportBonus)
+        defModTotal = defModTotal + supportBonus
+    end
+end
+local effDefCS = defCS + defModTotal
+effAttCS = effAttCS + attModTotal
 print("ESTIMATE|" .. attType .. "|" .. defType .. "|" .. effAttCS .. "|" .. effDefCS .. "|" .. (isRanged and "1" or "0") .. "|" .. table.concat(mods, ";") .. "|" .. myHP .. "|" .. enemyHP)
 print("{SENTINEL}")
 """
@@ -971,3 +1095,60 @@ def diff_threats(
 
     new_threats = [t for i, t in enumerate(after) if i not in after_matched]
     return disappeared, new_threats, moved
+
+
+def build_pathing_estimate_query(
+    unit_index: int, target_x: int, target_y: int
+) -> str:
+    """InGame context: estimate turns for a unit to reach a destination.
+
+    Uses UnitManager.GetMoveToPath for the full path and
+    UnitManager.GetReachableMovement for this-turn reachable tiles.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+local path = UnitManager.GetMoveToPath(unit, {target_x}, {target_y})
+if not path or #path == 0 then {_bail("ERR:NO_PATH|No path found to target")} end
+local reach = UnitManager.GetReachableMovement(unit)
+local reachSet = {{}}
+if reach then
+    for _, pIdx in ipairs(reach) do reachSet[pIdx] = true end
+end
+-- Count how many path tiles are reachable this turn
+local reachCount = 0
+for _, pIdx in ipairs(path) do
+    if reachSet[pIdx] then reachCount = reachCount + 1 end
+end
+local totalTiles = #path
+local tilesPerTurn = math.max(reachCount, 1)
+local turnsNeeded
+if reachCount >= totalTiles then
+    turnsNeeded = 0
+else
+    turnsNeeded = math.ceil((totalTiles - reachCount) / tilesPerTurn)
+end
+print("PATH|" .. turnsNeeded .. "|" .. totalTiles .. "|" .. reachCount)
+-- Emit waypoints for context (first tile, last reachable, destination)
+local waypoints = {{}}
+for i, pIdx in ipairs(path) do
+    local plot = Map.GetPlotByIndex(pIdx)
+    waypoints[#waypoints + 1] = "(" .. plot:GetX() .. "," .. plot:GetY() .. ")"
+end
+print("WAYPOINTS|" .. table.concat(waypoints, ";"))
+print("{SENTINEL}")
+"""
+
+
+def parse_pathing_estimate(lines: list[str]) -> PathingEstimate:
+    """Parse PATH| and WAYPOINTS| output."""
+    est = PathingEstimate(turns=0, total_tiles=0, reachable_this_turn=0, waypoints=[])
+    for line in lines:
+        if line.startswith("PATH|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                est.turns = int(parts[1])
+                est.total_tiles = int(parts[2])
+                est.reachable_this_turn = int(parts[3])
+        elif line.startswith("WAYPOINTS|"):
+            est.waypoints = line.split("|", 1)[1].split(";")
+    return est

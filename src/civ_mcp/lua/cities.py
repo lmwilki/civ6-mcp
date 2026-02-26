@@ -89,6 +89,33 @@ for i, c in Players[me]:GetCities():Members() do
             table.insert(pillBuildings, bldg.BuildingType)
         end
     end
+    -- Scan owned tiles for unimproved resources and pillaged improvements
+    local unimproved = {{}}
+    local pillImprov = {{}}
+    local cx2, cy2 = c:GetX(), c:GetY()
+    for dy = -3, 3 do for dx = -3, 3 do
+        local px, py = cx2 + dx, cy2 + dy
+        local plot = Map.GetPlot(px, py)
+        if plot and plot:GetOwner() == me then
+            local res = plot:GetResourceType()
+            local imp = plot:GetImprovementType()
+            if res >= 0 and imp < 0 then
+                local resInfo = GameInfo.Resources[res]
+                if resInfo then
+                    table.insert(unimproved, resInfo.ResourceType:gsub("RESOURCE_","") .. "@" .. px .. "," .. py)
+                end
+            end
+            if imp >= 0 then
+                local okP, pil = pcall(function() return plot:IsImprovementPillaged() end)
+                if okP and pil then
+                    local impInfo = GameInfo.Improvements[imp]
+                    if impInfo then
+                        table.insert(pillImprov, impInfo.ImprovementType:gsub("IMPROVEMENT_","") .. "@" .. px .. "," .. py)
+                    end
+                end
+            end
+        end
+    end end
     table.insert(cityCoords, {{name=nm, x=c:GetX(), y=c:GetY()}})
     local loy, loyMax, loyPT, loyFlip = 100, 100, 0, 0
     local cult = c:GetCulturalIdentity()
@@ -116,6 +143,9 @@ for i, c in Players[me]:GetCities():Members() do
         end
     end
     print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax .. "|" .. table.concat(cityTargets, ";") .. "|" .. table.concat(pillDistricts, ";") .. "|" .. table.concat(distLocs, ";") .. "|" .. string.format("%.1f|%.1f|%.1f|%d", loy, loyMax, loyPT, loyFlip) .. "|" .. string.format("%.1f|%.1f|%d", g:GetFoodSurplus(), g:GetFood(), g:GetGrowthThreshold()) .. "|" .. table.concat(pillBuildings, ";") .. "|" .. garrisonUnit)
+    if #unimproved > 0 or #pillImprov > 0 then
+        print("CITYTILES|" .. c:GetID() .. "|" .. table.concat(unimproved, ",") .. "|" .. table.concat(pillImprov, ","))
+    end
 end
 for i = 1, #cityCoords do for j = i + 1, #cityCoords do
     local d = Map.GetPlotDistance(cityCoords[i].x, cityCoords[i].y, cityCoords[j].x, cityCoords[j].y)
@@ -489,11 +519,24 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
     """Returns (cities, distance_lines) where distance_lines are 'A|B|N' strings."""
     cities = []
     distances: list[str] = []
+    city_by_id: dict[int, CityInfo] = {}
     for line in lines:
         if line.startswith("DIST|"):
             p = line.split("|")
             if len(p) >= 4:
                 distances.append(f"{p[1]} <-> {p[2]}: {p[3]} tiles")
+            continue
+        if line.startswith("CITYTILES|"):
+            p = line.split("|")
+            if len(p) >= 4:
+                cid = int(p[1])
+                if cid in city_by_id:
+                    city_by_id[cid].unimproved_resources = [
+                        r for r in p[2].split(",") if r
+                    ]
+                    city_by_id[cid].pillaged_improvements = [
+                        r for r in p[3].split(",") if r
+                    ]
             continue
         parts = line.split("|")
         if len(parts) < 14:
@@ -554,6 +597,7 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
                 garrison_unit=parts[29] if len(parts) > 29 else "",
             )
         )
+        city_by_id[cities[-1].city_id] = cities[-1]
     return cities, distances
 
 

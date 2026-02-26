@@ -12,7 +12,6 @@ from civ_mcp.lua._helpers import (
 from civ_mcp.lua.models import (
     DistrictPlacement,
     FogBoundary,
-    MinimapData,
     WonderPlacement,
     NearbyResource,
     OwnedResource,
@@ -356,22 +355,6 @@ def parse_strategic_map_response(lines: list[str]) -> StrategicMapData:
     )
 
 
-def parse_minimap_response(lines: list[str]) -> MinimapData:
-    """Parse SIZE| and ROW| lines from minimap query."""
-    width, height = 0, 0
-    rows: dict[int, str] = {}
-    for line in lines:
-        if line.startswith("SIZE|"):
-            parts = line.split("|")
-            width = int(parts[1])
-            height = int(parts[2])
-        elif line.startswith("ROW|"):
-            parts = line.split("|", 2)
-            if len(parts) >= 3:
-                rows[int(parts[1])] = parts[2]
-    return MinimapData(width=width, height=height, rows=rows)
-
-
 def build_found_city(unit_index: int) -> str:
     return f"""
 {_lua_get_unit(unit_index)}
@@ -451,80 +434,6 @@ for dy = -5, 5 do
     end
 end
 {_settle_output(5)}
-"""
-
-
-def build_minimap_query() -> str:
-    """GameCore context: minimal per-tile data for ASCII minimap rendering.
-
-    For each tile on the map, outputs one compact line:
-    x,y|owner|terrain_char|visibility
-    terrain_char: ~ water, ^ mountain, # hills, T forest/jungle, . flat, * resource
-    visibility: V=visible, R=revealed(fog), U=unexplored
-    """
-    return f"""
-local me = Game.GetLocalPlayer()
-local vis = PlayersVisibility[me]
-local pTech = Players[me]:GetTechs()
-local w, h = Map.GetGridSize()
-print("SIZE|" .. w .. "|" .. h)
-for y = 0, h - 1 do
-    local row = {{}}
-    for x = 0, w - 1 do
-        local plot = Map.GetPlot(x, y)
-        if not plot then
-            table.insert(row, "?")
-        elseif not vis:IsRevealed(plot:GetIndex()) then
-            table.insert(row, " ")
-        else
-            local ch = "."
-            if plot:IsWater() then ch = "~"
-            elseif plot:IsMountain() then ch = "^"
-            elseif plot:IsHills() then ch = "#"
-            else
-                local feat = plot:GetFeatureType()
-                if feat >= 0 then
-                    local f = GameInfo.Features[feat]
-                    if f and (f.FeatureType == "FEATURE_FOREST" or f.FeatureType == "FEATURE_JUNGLE") then ch = "T" end
-                end
-            end
-            local owner = plot:GetOwner()
-            if owner == me then
-                -- Our city on this tile?
-                local isCity = plot:IsCity()
-                if isCity then ch = "O"
-                else ch = string.upper(ch) end
-            elseif owner >= 0 and owner ~= 63 then
-                local isCity = plot:IsCity()
-                if isCity then ch = "X"
-                else ch = string.lower(ch) end
-            elseif owner == 63 then
-                ch = "!"
-            end
-            -- Resource marker (only if not already a special char, and tech-visible)
-            if ch == "." or ch == "#" then
-                local resIdx = plot:GetResourceType()
-                if resIdx >= 0 then
-                    local res = GameInfo.Resources[resIdx]
-                    if res then
-                        local techOk = true
-                        if res.PrereqTech then
-                            local t = GameInfo.Technologies[res.PrereqTech]
-                            if t and not pTech:HasTech(t.Index) then techOk = false end
-                        end
-                        if techOk then
-                            if res.ResourceClassType == "RESOURCECLASS_LUXURY" then ch = "+"
-                            elseif res.ResourceClassType == "RESOURCECLASS_STRATEGIC" then ch = "*" end
-                        end
-                    end
-                end
-            end
-            table.insert(row, ch)
-        end
-    end
-    print("ROW|" .. y .. "|" .. table.concat(row, ""))
-end
-print("{SENTINEL}")
 """
 
 

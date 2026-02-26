@@ -184,6 +184,7 @@ class GameOverview:
     era_dark_threshold: int = 0
     era_golden_threshold: int = 0
     max_turns: int = 0  # 0 = unlimited / not set
+    difficulty: str = ""  # e.g. "King", "Emperor"
 
 
 @dataclass
@@ -261,6 +262,10 @@ class CityInfo:
     loyalty_per_turn: float = 0.0
     turns_to_loyalty_flip: int = 0
     garrison_unit: str = ""
+    unimproved_resources: list[str] = field(
+        default_factory=list
+    )  # e.g. ["HORSES@5,10"]
+    pillaged_improvements: list[str] = field(default_factory=list)  # e.g. ["MINE@6,11"]
 
 
 @dataclass
@@ -318,6 +323,15 @@ class VisibleCity:
 
 
 @dataclass
+class AgendaInfo:
+    """Leader agenda (historical or hidden random)."""
+
+    category: str  # "HISTORICAL" or "HIDDEN"
+    name: str  # localized name, or "???" if hidden
+    description: str  # localized description
+
+
+@dataclass
 class CivInfo:
     player_id: int
     civ_name: str
@@ -342,6 +356,7 @@ class CivInfo:
     military_strength: int = 0  # their military strength
     num_cities: int = 0  # number of cities they own
     visible_cities: list[VisibleCity] = field(default_factory=list)
+    agendas: list[AgendaInfo] = field(default_factory=list)
 
 
 @dataclass
@@ -425,6 +440,8 @@ class CitySnapshot:
     currently_building: str
     food_surplus: float = 0.0
     turns_to_grow: int = 0
+    loyalty: float = 100.0
+    loyalty_per_turn: float = 0.0
 
 
 @dataclass
@@ -478,6 +495,16 @@ class CombatEstimate:
 
 
 @dataclass
+class PathingEstimate:
+    """Estimated turns for a unit to reach a destination."""
+
+    turns: int
+    total_tiles: int
+    reachable_this_turn: int
+    waypoints: list[str] = field(default_factory=list)  # ["(x,y)", ...]
+
+
+@dataclass
 class SettleCandidate:
     """A candidate location for founding a city."""
 
@@ -522,15 +549,6 @@ class StrategicMapData:
 
     fog_boundaries: list[FogBoundary]
     unclaimed_resources: list[UnclaimedResource]
-
-
-@dataclass
-class MinimapData:
-    """ASCII minimap data."""
-
-    width: int
-    height: int
-    rows: dict[int, str]  # y -> row string
 
 
 @dataclass
@@ -792,6 +810,9 @@ class UnitPromotionStatus:
     unit_index: int
     unit_type: str
     promotions: list[PromotionOption] = field(default_factory=list)
+    xp: int = 0
+    xp_needed: int = 0
+    promotion_count: int = 0
 
 
 @dataclass

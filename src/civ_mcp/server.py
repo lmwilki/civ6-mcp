@@ -36,6 +36,7 @@ from civ_mcp.diary import (
 )
 from civ_mcp.game_state import GameState
 from civ_mcp.logger import GameLogger
+from civ_mcp.spatial import SpatialTracker
 from civ_mcp.spectator import CameraController, PopupWatcher
 from civ_mcp.web_api import create_app
 
@@ -48,12 +49,14 @@ class AppContext:
     logger: GameLogger
     camera: CameraController
     popup_watcher: PopupWatcher
+    spatial: SpatialTracker
 
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     conn = GameConnection()
     logger = GameLogger()
+    spatial = SpatialTracker()
     gs = GameState(conn)
     log.info("Game logger session: %s", logger.session_id)
 
@@ -72,7 +75,11 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
     try:
         yield AppContext(
-            game=gs, logger=logger, camera=camera, popup_watcher=popup_watcher
+            game=gs,
+            logger=logger,
+            camera=camera,
+            popup_watcher=popup_watcher,
+            spatial=spatial,
         )
     finally:
         await camera.stop()
@@ -101,6 +108,10 @@ def _get_camera(ctx: Context) -> CameraController:
     return ctx.request_context.lifespan_context.camera
 
 
+def _get_spatial(ctx: Context) -> SpatialTracker:
+    return ctx.request_context.lifespan_context.spatial
+
+
 async def _logged(
     ctx: Context,
     tool_name: str,
@@ -122,6 +133,10 @@ async def _logged(
         return result
     ms = int((time.monotonic() - start) * 1000)
     await logger.log_tool_call(tool_name, params, result, ms)
+    try:
+        await _get_spatial(ctx).record(tool_name, params, result, ms)
+    except Exception:
+        pass
     return result
 
 
@@ -144,9 +159,12 @@ async def get_game_overview(ctx: Context) -> str:
         ov = await gs.get_game_overview()
         logger = _get_logger(ctx)
         logger.set_turn(ov.turn)
+        spatial = _get_spatial(ctx)
+        spatial.set_turn(ov.turn)
         try:
             civ, seed = await gs.get_game_identity()
             logger.bind_game(civ, seed)
+            spatial.bind_game(civ, seed)
         except Exception:
             pass
         text = nr.narrate_overview(ov)
@@ -357,17 +375,30 @@ async def get_settle_advisor(ctx: Context, unit_id: int) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-async def get_minimap(ctx: Context) -> str:
-    """Get an ASCII minimap of the entire game world.
+async def get_pathing_estimate(
+    ctx: Context, unit_id: int, target_x: int, target_y: int
+) -> str:
+    """Estimate how many turns a unit needs to reach a destination.
 
-    Shows territory ownership, cities, terrain, and resources at a glance.
-    Legend: O=your city, X=enemy city, !=barbarian, +=luxury, *=strategic,
-    UPPER=your territory, lower=enemy territory, ~=water, ^=mountain,
-    #=hills, T=forest/jungle, .=flat land, space=unexplored.
+    Args:
+        unit_id: The unit's composite ID (from get_units output)
+        target_x: Destination X coordinate
+        target_y: Destination Y coordinate
+
+    Returns estimated turns, path length, and reachable tiles this turn.
     """
     gs = _get_game(ctx)
+    unit_index = unit_id % 65536
+
+    async def _run():
+        est = await gs.get_pathing_estimate(unit_index, target_x, target_y)
+        return nr.narrate_pathing_estimate(est)
+
     return await _logged(
-        ctx, "get_minimap", {}, lambda: _narrate(gs.get_minimap, nr.narrate_minimap)
+        ctx,
+        "get_pathing_estimate",
+        {"unit_id": unit_id, "target_x": target_x, "target_y": target_y},
+        _run,
     )
 
 
@@ -1368,8 +1399,9 @@ async def end_turn(
         ov = await gs.get_game_overview()
         _diary_player_id = ov.player_id
         _diary_turn = ov.turn
-        # Keep logger turn in sync (agent may not call get_game_overview every turn)
+        # Keep logger/spatial turn in sync (agent may not call get_game_overview every turn)
         _get_logger(ctx).set_turn(ov.turn)
+        _get_spatial(ctx).set_turn(ov.turn)
     except Exception:
         log.warning("Diary: failed to capture overview", exc_info=True)
     try:
@@ -1465,10 +1497,12 @@ async def end_turn(
     if turn_advanced:
         _get_camera(ctx).clear()
         gs._end_turn_blocked = False
-        # Update logger turn from result ("Turn X -> Y")
+        # Update logger/spatial turn from result ("Turn X -> Y")
         m = re.search(r"Turn \d+ -> (\d+)", result)
         if m:
-            _get_logger(ctx).set_turn(int(m.group(1)))
+            new_turn = int(m.group(1))
+            _get_logger(ctx).set_turn(new_turn)
+            _get_spatial(ctx).set_turn(new_turn)
     elif "Turn paused" in result or "World Congress fires" in result:
         gs._end_turn_blocked = True
 
@@ -1507,12 +1541,15 @@ async def concede_game(ctx: Context, reason: str = "") -> str:
     """
     gs = _get_game(ctx)
     logger = _get_logger(ctx)
+    spatial = _get_spatial(ctx)
 
     ov = await gs.get_game_overview()
     logger.set_turn(ov.turn)
+    spatial.set_turn(ov.turn)
     try:
         civ, seed = await gs.get_game_identity()
         logger.bind_game(civ, seed)
+        spatial.bind_game(civ, seed)
     except Exception:
         pass
 

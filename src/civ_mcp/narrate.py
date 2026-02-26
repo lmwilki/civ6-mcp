@@ -9,12 +9,16 @@ from civ_mcp import lua as lq
 
 
 def narrate_overview(ov: lq.GameOverview) -> str:
-    lines = [
-        f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}",
-        f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn) | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor} ({ov.favor_per_turn:+d}/turn)",
-        f"Research: {ov.current_research} | Civic: {ov.current_civic}",
-        f"Cities: {ov.num_cities} | Population: {ov.total_population} | Units: {ov.num_units}",
-    ]
+    diff_str = f" | {ov.difficulty}" if ov.difficulty else ""
+    lines = []
+    lines.extend(
+        [
+            f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}{diff_str}",
+            f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn) | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor} ({ov.favor_per_turn:+d}/turn)",
+            f"Research: {ov.current_research} | Civic: {ov.current_civic}",
+            f"Cities: {ov.num_cities} | Population: {ov.total_population} | Units: {ov.num_units}",
+        ]
+    )
     if ov.total_land > 0:
         pct = ov.explored_land * 100 // ov.total_land
         lines.append(
@@ -273,12 +277,32 @@ def narrate_cities(
             pill_bldgs = [b.replace("BUILDING_", "") for b in c.pillaged_buildings]
             all_pillaged = pill_names + pill_bldgs
             lines.append(f"    !! PILLAGED: {', '.join(all_pillaged)}")
+        if c.pillaged_improvements:
+            pill_imps = [p.split("@")[0] for p in c.pillaged_improvements]
+            lines.append(
+                f"    !! PILLAGED TILES: {', '.join(pill_imps)} (send builder to repair)"
+            )
+        if c.unimproved_resources:
+            res_names = [r.split("@")[0] for r in c.unimproved_resources]
+            lines.append(f"    Needs builder: {', '.join(res_names)} (unimproved)")
     if distances:
         lines.append("")
         lines.append("City Distances:")
         for d in distances:
             lines.append(f"  {d}")
     return "\n".join(lines)
+
+
+def narrate_pathing_estimate(est: lq.PathingEstimate) -> str:
+    if est.turns == 0:
+        return f"Reachable this turn ({est.total_tiles} tiles in path, all within movement range)."
+    wp_str = ""
+    if est.waypoints and len(est.waypoints) > 2:
+        wp_str = f"\n  Path: {est.waypoints[0]} -> ... -> {est.waypoints[-1]}"
+    return (
+        f"~{est.turns} turns ({est.total_tiles} tiles total, "
+        f"{est.reachable_this_turn} reachable this turn){wp_str}"
+    )
 
 
 def narrate_combat_estimate(est: lq.CombatEstimate) -> str:
@@ -441,28 +465,6 @@ def narrate_strategic_map(data: lq.StrategicMapData) -> str:
     elif not data.fog_boundaries:
         lines.append("\nNo data available.")
 
-    return "\n".join(lines)
-
-
-def narrate_minimap(data: lq.MinimapData) -> str:
-    if not data.rows:
-        return "No minimap data available."
-    lines = [
-        "=== MINIMAP ===",
-        "Legend: O=our city, X=enemy city, !=barbarian",
-        "  UPPER=our territory, lower=enemy territory",
-        "  ~=water, ^=mountain, #=hills, T=forest/jungle, .=flat",
-        "  +=luxury resource, *=strategic resource, ' '=unexplored",
-        "",
-    ]
-    # Render rows with hex offset (even rows shift right)
-    for y in sorted(data.rows.keys()):
-        row_str = data.rows[y]
-        # Hex grid: offset even rows by half-cell
-        prefix = " " if y % 2 == 1 else ""
-        # Add spacing between characters for readability
-        spaced = " ".join(row_str)
-        lines.append(f"{y:3d}|{prefix}{spaced}")
     return "\n".join(lines)
 
 
@@ -646,6 +648,14 @@ def narrate_diplomacy(civs: list[lq.CivInfo]) -> str:
                 else:
                     pact_names.append(f"player {pid}")
             lines.append(f"    !! DEFENSIVE PACTS with: {', '.join(pact_names)}")
+        # Agendas
+        if c.agendas:
+            for a in c.agendas:
+                if a.name == "???":
+                    lines.append(f"    Agenda: [Hidden] — {a.description}")
+                else:
+                    prefix = "[Hidden] " if a.category == "HIDDEN" else ""
+                    lines.append(f"    Agenda: {prefix}{a.name} — {a.description}")
         # Available actions
         if c.available_actions:
             actions_str = ", ".join(

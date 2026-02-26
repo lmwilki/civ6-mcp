@@ -121,6 +121,17 @@ local goldenThresh = eraManager:GetPlayerGoldenAgeThreshold(id)
 print("ERA|" .. eraName .. "|" .. eraScore .. "|" .. darkThresh .. "|" .. goldenThresh)
 local maxTurns = GameConfiguration.GetValue("GAME_MAX_TURNS") or 0
 print("MAXTURNS|" .. maxTurns)
+local diffName = "Unknown"
+pcall(function()
+    local diffHash = PlayerConfigurations[id]:GetHandicapTypeID()
+    for d in GameInfo.Difficulties() do
+        if GameConfiguration.MakeHash(d.DifficultyType) == diffHash then
+            diffName = Locale.Lookup(d.Name)
+            break
+        end
+    end
+end)
+print("DIFFICULTY|" .. diffName)
 print("{SENTINEL}")
 """
 
@@ -253,6 +264,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     era_dark_threshold = 0
     era_golden_threshold = 0
     max_turns = 0
+    difficulty = ""
     player_id_parsed = int(parts[1])
     for line in lines[1:]:
         if line.startswith("RANK|"):
@@ -297,6 +309,8 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
             ep = line.split("|")
             if len(ep) >= 2:
                 max_turns = int(ep[1])
+        elif line.startswith("DIFFICULTY|"):
+            difficulty = line.split("|", 1)[1]
     return GameOverview(
         turn=int(parts[0]),
         player_id=int(parts[1]),
@@ -327,6 +341,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         era_dark_threshold=era_dark_threshold,
         era_golden_threshold=era_golden_threshold,
         max_turns=max_turns,
+        difficulty=difficulty,
     )
 
 
