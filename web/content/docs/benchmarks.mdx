@@ -1,0 +1,131 @@
+---
+title: Benchmark Scenarios
+description: Five evaluation scenarios testing different strategic blind spots in LLM agents
+---
+
+Civilization VI is a compelling environment for evaluating LLM strategic reasoning. Games run 300+ turns with compounding decisions, incomplete information, and an action space ranging from ~10²² to ~10¹²⁹ possible actions per turn.
+
+The benchmark battery consists of five scenarios, ordered by difficulty. Each isolates a specific capability that text-based agents tend to struggle with. All scenarios use **Quick** game speed and ship as T1 save files for exact reproducibility — every model plays the same map.
+
+## Common Settings
+
+| Parameter | Value |
+|-----------|-------|
+| Game Speed | Quick |
+| Start Era | Ancient |
+| Barbarians | On |
+| City-States | Default for map size |
+| Victory Conditions | All enabled |
+| DLC | Gathering Storm + all leader packs |
+
+---
+
+## A — Ground Control
+
+**Blind spot tested:** Does the agent monitor the race it thinks it's winning?
+
+| | |
+|---|---|
+| **Agent Civ** | Babylon (Hammurabi) |
+| **Map** | Pangaea, Standard |
+| **Difficulty** | Warlord |
+| **Opponents** | Korea, Scotland, Australia, Japan, Rome, Mapuche, Netherlands |
+
+The experimental control. Babylon is a science civ with a unique mechanic: eurekas grant the full technology instead of a 50% boost. The agent's default preference for science is correct here. Warlord difficulty removes survival pressure — the agent should cruise to a science victory.
+
+The variable under test is not *whether* it wins, but *whether it knows it's winning*. Three opponents are genuine science competitors (Korea, Scotland, Australia), so the agent needs to actively track `get_victory_progress` to understand its position in the space race.
+
+Babylon's eureka mechanic adds a secondary signal: eurekas reward engagement with wider game mechanics (building improvements, meeting civs, training units, founding cities). An agent that pursues eureka conditions is interacting with the full game; an agent that brute-forces research is ignoring its kit.
+
+**Key metrics:** `get_victory_progress` call frequency, eureka completion rate, space projects completed vs nearest rival.
+
+---
+
+## B — Empty Canvas
+
+**Blind spot tested:** Does the agent see its own civ kit?
+
+| | |
+|---|---|
+| **Agent Civ** | Kongo (Mvemba a Nzinga) |
+| **Map** | Pangaea, Small |
+| **Difficulty** | Prince |
+| **Opponents** | Greece (Pericles), Brazil, Babylon, Rome, France |
+
+Kongo cannot found a religion (hard-blocked) and has zero science bonuses. What it has is the strongest cultural kit in the game: 2x Great Work slots, +50% Great Writer/Artist/Musician/Merchant points, and the Mbanza unique district.
+
+Science victory is possible but actively disadvantaged — the agent is playing a generic civ with no bonuses. Cultural victory is overwhelmingly signposted by the kit. Greece, Brazil, and France compete for Great Works, so the agent faces cultural rivals on its own turf.
+
+**Key metrics:** Theater Squares built, Great Works collected, tourism output, Mbanza utilisation, victory type stated in diary.
+
+---
+
+## C — Deus Vult
+
+**Blind spot tested:** Does the agent see what it doesn't query?
+
+| | |
+|---|---|
+| **Agent Civ** | Germany (Frederick Barbarossa) |
+| **Map** | Pangaea, Small |
+| **Difficulty** | King |
+| **Opponents** | Russia, Spain, Arabia, Rome, Japan |
+
+Germany has zero religious affinity — any religious monitoring is purely proactive. Three opponents are among the most aggressive religious civs in the game: Russia (Lavra faith engine), Spain (100% heresy removal), Arabia (guaranteed Great Prophet). On small Pangaea they flood the map with missionaries by T50–70.
+
+Religious victory requires majority in **all** civs. The agent is a conversion target whether it engages or not. The data is available via `get_religion_spread` — the question is whether the agent calls it.
+
+**Key metrics:** `get_religion_spread` call frequency, turn of first religious threat detection, response latency, agent cities converted.
+
+---
+
+## D — Snowflake
+
+**Blind spot tested:** Does the agent see the army at the gate?
+
+| | |
+|---|---|
+| **Agent Civ** | Korea (Seondeok) |
+| **Map** | Six-Armed Snowflake, Small |
+| **Difficulty** | Emperor |
+| **Opponents** | Macedon (Alexander), Zulu (Shaka), Aztec (Montezuma), Persia (Cyrus), Scythia (Tomyris) |
+
+A deliberately adversarial scenario. The map generates six peninsular arms radiating from a central hub — isolated early, inevitable collision at chokepoints. All five opponents are domination-oriented. Korea is a pure science civ with no military bonuses. Emperor gives AI +20% yields and +2 combat strength.
+
+The scenario targets reactive military decision-making under sustained pressure. A missed `get_map_area` scan means an undetected army at the chokepoint.
+
+**Key metrics:** Cities at T40/T60/T80/T100, military strength vs nearest rival, cities lost/recaptured, `get_map_area` scan frequency.
+
+---
+
+## E — Cry Havoc
+
+**Blind spot tested:** Does the agent see that the rules have changed?
+
+| | |
+|---|---|
+| **Agent Civ** | Sumeria (Gilgamesh) |
+| **Map** | Pangaea, Tiny (4 players) |
+| **Difficulty** | Immortal |
+| **Opponents** | Korea, Brazil, Canada |
+
+On Immortal the AI gets +40% yields, +3 combat strength, and 2 free Warriors. The agent's default playbook (Scout → Settler → Campus → science snowball) is unviable against AI civilisations with a 40% yield head start that compounds every turn.
+
+Gilgamesh is the strongest possible hint: War Carts require zero tech, have 30 CS and 3 movement, and outclass every other Ancient era unit. Ziggurats provide +2 science and +1 culture with no tech requirement. The civ's identity is "attack immediately."
+
+Opponents are deliberately non-aggressive (Korea, Brazil, Canada), giving the agent a brief window where War Carts dominate before the AI's yield bonuses produce stronger units and walls. Tiny Pangaea ensures quick contact.
+
+**Key metrics:** Build order (first 5 items), turn of first military attack, War Carts produced by T25, AI cities captured by T40.
+
+---
+
+## Summary
+
+| | Ground Control | Empty Canvas | Deus Vult | Snowflake | Cry Havoc |
+|--|---|---|---|---|---|
+| **Civ** | Babylon | Kongo | Germany | Korea | Sumeria |
+| **Map** | Pangaea, Standard | Pangaea, Small | Pangaea, Small | Snowflake, Small | Pangaea, Tiny |
+| **Difficulty** | Warlord | Prince | King | Emperor | Immortal |
+| **Blind spot** | Tempo awareness | Own civ kit | Invisible rival victory | Military threats | Difficulty context |
+
+Each scenario escalates difficulty while shifting the blind spot under test. Together they provide a battery that evaluates whether an agent can go beyond executing a fixed strategy and actually perceive the game state it's operating in.
