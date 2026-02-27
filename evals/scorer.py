@@ -1,6 +1,9 @@
 """Multi-dimensional scorer for CivBench.
 
 Extracts metrics from the full tool-call transcript in TaskState.messages.
+Universal metrics (score, economy, tool fluency) apply to all scenarios.
+Scenario-specific metrics are dispatched via state.metadata["scenario_id"].
+
 Each dimension gets mean() and stderr() aggregation across samples.
 """
 
@@ -17,6 +20,8 @@ from inspect_ai.scorer import (
     stderr,
 )
 from inspect_ai.solver import TaskState
+
+from evals import metrics
 
 # ---------------------------------------------------------------------------
 # Internal: tool call extraction
@@ -163,7 +168,7 @@ def _count_attacks(calls: list[ToolCall]) -> int:
     return sum(
         1
         for c in calls
-        if c.name == "execute_unit_action" and c.arguments.get("action") == "attack"
+        if c.name == "unit_action" and c.arguments.get("action") == "attack"
     )
 
 
@@ -171,7 +176,7 @@ def _count_cities_founded(calls: list[ToolCall]) -> int:
     return sum(
         1
         for c in calls
-        if c.name == "execute_unit_action"
+        if c.name == "unit_action"
         and c.arguments.get("action") == "found_city"
         and not c.is_error
     )
@@ -203,7 +208,7 @@ def _count_civic_sets(calls: list[ToolCall]) -> int:
 
 def _count_diplomatic_actions(calls: list[ToolCall]) -> int:
     diplo_tools = {
-        "diplomacy_respond",
+        "respond_to_diplomacy",
         "send_diplomatic_action",
         "send_envoy",
     }
@@ -294,6 +299,20 @@ def civbench_scorer():
         else:
             turns_played = float(_count_end_turns(calls))
 
+        # --- Scenario-specific metrics ---
+        scenario_id = state.metadata.get("scenario_id", "")
+        scenario_metrics: dict[str, float] = {}
+        if scenario_id == "ground_control":
+            scenario_metrics = metrics.score_ground_control(calls)
+        elif scenario_id == "empty_canvas":
+            scenario_metrics = metrics.score_empty_canvas(calls)
+        elif scenario_id == "deus_vult":
+            scenario_metrics = metrics.score_deus_vult(calls)
+        elif scenario_id == "snowflake":
+            scenario_metrics = metrics.score_snowflake(calls)
+        elif scenario_id == "cry_havoc":
+            scenario_metrics = metrics.score_cry_havoc(calls)
+
         # Build summary
         turn_info = (
             f"Turn {last_overview.get('turn', '?')}"
@@ -306,18 +325,21 @@ def civbench_scorer():
             f"{total_calls} tool calls ({errors} errors)"
         )
 
+        value = {
+            "overall_score": overall,
+            "economic": economic,
+            "military": military,
+            "scientific": scientific,
+            "cultural": cultural,
+            "spatial": spatial,
+            "diplomatic": diplomatic,
+            "tool_fluency": tool_fluency,
+            "turns_played": turns_played,
+            **scenario_metrics,
+        }
+
         return Score(
-            value={
-                "overall_score": overall,
-                "economic": economic,
-                "military": military,
-                "scientific": scientific,
-                "cultural": cultural,
-                "spatial": spatial,
-                "diplomatic": diplomatic,
-                "tool_fluency": tool_fluency,
-                "turns_played": turns_played,
-            },
+            value=value,
             answer=summary,
             explanation=(
                 f"Extracted from {total_calls} tool calls over {turns_played:.0f} turns.\n"

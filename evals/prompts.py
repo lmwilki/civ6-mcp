@@ -1,8 +1,31 @@
-"""Fixed system prompts for the CivBench standardised baseline track.
+"""System prompts and scenario prompt builder for CivBench.
 
-The baseline prompt is intentionally generic — no civ-specific or
-scenario-specific strategy. The agent must reason from observed game state.
+Two system prompt tiers:
+- STANDARD_SYSTEM_PROMPT: Full AGENTS.md playbook (~15KB). Used by the
+  standard track to test whether models follow known-good guidance under
+  Sensorium constraints.
+- BASELINE_SYSTEM_PROMPT: Minimal ~75-line generic prompt. Used by the
+  open track as a default (teams can override with --solver).
 """
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from evals.scenarios import Scenario
+
+# ---------------------------------------------------------------------------
+# Standard track: full AGENTS.md playbook
+# ---------------------------------------------------------------------------
+
+_AGENTS_MD = Path(__file__).resolve().parent.parent / "AGENTS.md"
+STANDARD_SYSTEM_PROMPT = _AGENTS_MD.read_text()
+
+# ---------------------------------------------------------------------------
+# Baseline: minimal generic prompt (open track default)
+# ---------------------------------------------------------------------------
 
 BASELINE_SYSTEM_PROMPT = """\
 You are playing Civilization VI through MCP tools. You can read the full game \
@@ -25,7 +48,7 @@ Follow this pattern every turn:
 enemy units. This is your ONLY source of threat information.
 4. For each unit: decide action based on context (threats, resources, terrain)
 5. `get_cities` — check production queues
-6. `set_city_production` / `set_research` / `set_civic` if needed
+6. `set_city_production` / `set_research` if needed
 7. `end_turn` — auto-checks for blockers and reports events
 
 ## Blocker Resolution
@@ -67,7 +90,7 @@ Always resolve all blockers before calling `end_turn` again.
 3. **Exploit** — improve tiles (farms, mines), build districts (Campus, \
 Commercial Hub), establish trade routes
 4. **Defend** — keep military near cities, respond to barbarian threats fast
-5. **Research** — prioritize science and culture for compound growth
+5. **Research** — prioritise science and culture for compound growth
 6. **Diplomacy** — meet civs, send delegations, avoid unnecessary wars
 7. **Balance** — don't over-invest in military during peace, or economy during war
 
@@ -75,11 +98,28 @@ Think step by step each turn. Observe the full game state before acting.
 """
 
 
-def build_scenario_prompt(objective: str, turn_limit: int) -> str:
-    """Build the full user message for a scenario, combining objective + budget."""
+# ---------------------------------------------------------------------------
+# Scenario prompt builder
+# ---------------------------------------------------------------------------
+
+
+def build_scenario_prompt(scenario: Scenario, seed_index: int = 0) -> str:
+    """Build the user message for a scenario, including save loading instructions."""
+    save_name = scenario.save_files[seed_index].replace(".Civ6Save", "")
     return (
-        f"## Your Scenario\n\n"
-        f"{objective}\n\n"
-        f"You have a budget of **{turn_limit} turns**. Play efficiently and "
-        f"strategically. Begin by calling `get_game_overview` to orient yourself."
+        f"## Scenario: {scenario.name}\n\n"
+        f"**Civilisation:** {scenario.civilization}\n"
+        f"**Difficulty:** {scenario.difficulty}\n"
+        f"**Map:** {scenario.map_type}\n"
+        f"**Game Speed:** Quick\n"
+        f"**Turn Budget:** {scenario.turn_limit} turns\n\n"
+        f"### Objective\n\n"
+        f"{scenario.objective}\n\n"
+        f"### Getting Started\n\n"
+        f"The game is running. Call `get_game_overview` first — if you're "
+        f"already in the correct game (playing as {scenario.civilization}), "
+        f"continue from where you are. If the overview fails or shows a "
+        f"different civilisation, call `list_saves` to find `{save_name}` "
+        f"and `load_save` with its index, then `get_game_overview` to "
+        f"orient yourself."
     )

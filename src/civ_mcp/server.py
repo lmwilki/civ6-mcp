@@ -112,6 +112,25 @@ def _get_spatial(ctx: Context) -> SpatialTracker:
     return ctx.request_context.lifespan_context.spatial
 
 
+def _param_summary(params: dict[str, Any]) -> str:
+    """Compact one-line summary of tool params for console logging."""
+    if not params:
+        return ""
+    parts = []
+    for k, v in params.items():
+        s = str(v)
+        if len(s) > 40:
+            s = s[:37] + "..."
+        parts.append(f"{k}={s}")
+    return " ".join(parts)
+
+
+def _result_summary(result: str) -> str:
+    """First meaningful line of a result, truncated."""
+    line = result.split("\n", 1)[0].strip()
+    return line[:120] + "..." if len(line) > 120 else line
+
+
 async def _logged(
     ctx: Context,
     tool_name: str,
@@ -120,18 +139,24 @@ async def _logged(
 ) -> str:
     """Run a tool function with timing, error handling, and logging."""
     logger = _get_logger(ctx)
+    turn = logger._turn or "?"
     start = time.monotonic()
     try:
         result = await fn()
     except (LuaError, ValueError) as e:
         result = f"Error: {e}"
+        ms = int((time.monotonic() - start) * 1000)
+        log.info("[T%s] %s(%s) ERR %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
         await logger.log_error(tool_name, result)
         return result
     except ConnectionError as e:
         result = str(e)
+        ms = int((time.monotonic() - start) * 1000)
+        log.info("[T%s] %s(%s) ERR %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
         await logger.log_error(tool_name, result)
         return result
     ms = int((time.monotonic() - start) * 1000)
+    log.info("[T%s] %s(%s) OK %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
     await logger.log_tool_call(tool_name, params, result, ms)
     try:
         await _get_spatial(ctx).record(tool_name, params, result, ms)

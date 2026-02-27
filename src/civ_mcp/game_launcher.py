@@ -34,18 +34,23 @@ _ALLOWED_PROCESS_PATTERNS = ("Civ6",)  # pkill -f pattern — only matches Civ 6
 
 if sys.platform == "darwin":
     _PROCESS_NAMES = ("Civ6_Exe_Child", "Civ6_Exe", "Civ6")
-    SAVE_DIR = os.path.expanduser(
+    _SAVE_BASE = os.path.expanduser(
         "~/Library/Application Support/Sid Meier's Civilization VI/"
-        "Sid Meier's Civilization VI/Saves/Single/auto"
+        "Sid Meier's Civilization VI/Saves/Single"
     )
+    SAVE_DIR = os.path.join(_SAVE_BASE, "auto")  # autosaves
+    SINGLE_SAVE_DIR = _SAVE_BASE  # regular saves (including benchmark)
 elif sys.platform == "win32":
     _PROCESS_NAMES = ("Civ6_Exe_Child.exe", "Civ6_Exe.exe", "CivilizationVI.exe")
-    SAVE_DIR = os.path.expanduser(
-        "~/Documents/My Games/Sid Meier's Civilization VI/Saves/Single/auto"
+    _SAVE_BASE = os.path.expanduser(
+        "~/Documents/My Games/Sid Meier's Civilization VI/Saves/Single"
     )
+    SAVE_DIR = os.path.join(_SAVE_BASE, "auto")
+    SINGLE_SAVE_DIR = _SAVE_BASE
 else:
     _PROCESS_NAMES = ()
     SAVE_DIR = ""
+    SINGLE_SAVE_DIR = ""
 
 # How long to wait after kill for Steam to deregister the game
 _KILL_SETTLE_SECONDS = 10
@@ -131,8 +136,51 @@ def _kill_game_sync() -> str:
     return "Game killed. Steam deregistration wait complete."
 
 
+def _click_aspyr_launcher_sync() -> str | None:
+    """Click PLAY on the Aspyr launcher if it appears (macOS only).
+
+    On macOS, `steam://run/289070` opens the Aspyr LaunchPad — a splash
+    screen with a PLAY button — before the actual game binary starts.
+    This function detects that screen via OCR and clicks through it.
+
+    Returns None on success, error string on failure.
+    """
+    if sys.platform != "darwin":
+        return None  # no Aspyr launcher on other platforms
+
+    try:
+        _require_gui_deps()
+    except (RuntimeError, NotImplementedError):
+        log.warning("GUI deps not available — cannot auto-click Aspyr launcher")
+        return "GUI deps not available. Click PLAY on the Aspyr launcher manually."
+
+    log.info("Waiting for Aspyr launcher PLAY button...")
+    if _click_text("PLAY", timeout=30, exact=True, post_delay=3):
+        log.info("Clicked PLAY on Aspyr launcher")
+        return None
+
+    # Launcher may not appear if game was already past it
+    log.info("Aspyr launcher PLAY button not found — may have been skipped")
+    return None
+
+
+def _wait_for_game_process(timeout: int = _LAUNCH_TIMEOUT_SECONDS) -> int | None:
+    """Wait for the actual game process to appear. Returns seconds waited, or None."""
+    for i in range(timeout):
+        if is_game_running():
+            log.info("Game process detected after %ds", i)
+            return i
+        time.sleep(1)
+    return None
+
+
 def _launch_game_sync() -> str:
-    """Launch Civ 6 via Steam and wait for process. Blocking."""
+    """Launch Civ 6 via Steam and wait for process. Blocking.
+
+    On macOS, Steam opens the Aspyr LaunchPad first (a splash screen
+    with a PLAY button). This function auto-clicks through it if GUI
+    deps are available.
+    """
     if is_game_running():
         return "Game is already running."
 
@@ -144,15 +192,19 @@ def _launch_game_sync() -> str:
         raise NotImplementedError(f"launch not supported on {sys.platform}")
     log.info("Launched Civ 6 via Steam, waiting for process...")
 
-    for i in range(_LAUNCH_TIMEOUT_SECONDS):
-        if is_game_running():
-            log.info("Game process detected after %ds", i)
-            # Wait for main menu to be reachable
-            time.sleep(_MAIN_MENU_WAIT_SECONDS)
-            return f"Game launched. Process started after {i}s, waited {_MAIN_MENU_WAIT_SECONDS}s for main menu."
-        time.sleep(1)
+    # macOS: click through the Aspyr launcher if it appears
+    launcher_err = _click_aspyr_launcher_sync()
+    if launcher_err:
+        return f"WARNING: {launcher_err}"
 
-    return "WARNING: Game process not detected after launch. Check Steam."
+    # Wait for actual game process
+    waited = _wait_for_game_process()
+    if waited is None:
+        return "WARNING: Game process not detected after launch. Check Steam."
+
+    # Wait for main menu / FireTuner to become reachable
+    time.sleep(_MAIN_MENU_WAIT_SECONDS)
+    return f"Game launched. Process started after {waited}s, waited {_MAIN_MENU_WAIT_SECONDS}s for main menu."
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +413,13 @@ def list_autosaves(limit: int = 10) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _navigate_to_save_sync(save_name: str) -> str:
-    """Navigate: Main Menu → Single Player → Load Game → Autosaves → select → Load.
+def _navigate_to_save_sync(save_name: str, tab: str = "Autosaves") -> str:
+    """Navigate: Main Menu → Single Player → Load Game → tab → select → Load.
+
+    Args:
+        save_name: Display name of the save (no extension).
+        tab: Which tab to click in the Load Game screen.
+            "Autosaves" for autosaves, "Game Saves" for regular saves.
 
     Blocking operation — takes 30-90 seconds. Returns status message.
     """
@@ -379,16 +436,16 @@ def _navigate_to_save_sync(save_name: str) -> str:
         return "FAILED: Could not find 'Load Game' button."
     steps.append("Clicked Load Game")
 
-    log.info("[3/6] Clicking 'Autosaves' tab...")
-    if not _click_text("Autosaves", timeout=10, exact=True, post_delay=2):
-        log.info("Autosaves tab not found — may already be selected")
-        steps.append("Autosaves tab (may already be selected)")
+    log.info("[3/6] Clicking '%s' tab...", tab)
+    if not _click_text(tab, timeout=10, exact=True, post_delay=2):
+        log.info("%s tab not found — may already be selected", tab)
+        steps.append(f"{tab} tab (may already be selected)")
     else:
-        steps.append("Clicked Autosaves tab")
+        steps.append(f"Clicked {tab} tab")
 
     log.info("[4/6] Looking for save '%s'...", save_name)
     if not _click_text(save_name, timeout=15, post_delay=2):
-        return f"FAILED: Save '{save_name}' not found in autosaves list. Steps completed: {', '.join(steps)}"
+        return f"FAILED: Save '{save_name}' not found in {tab} list. Steps completed: {', '.join(steps)}"
     steps.append(f"Selected save {save_name}")
 
     log.info("[5/6] Clicking 'Load Game' button (bottom, not title)...")
@@ -431,7 +488,11 @@ async def load_save_from_menu(save_name: str | None = None) -> str:
     """Navigate the main menu to load a save via OCR.
 
     Args:
-        save_name: Autosave name (e.g. "AutoSave_0221"). If None, loads most recent.
+        save_name: Save name without extension (e.g. "AutoSave_0221" or
+            "GROUND_CONTROL_SA"). If None, loads most recent autosave.
+
+    Checks both regular saves and autosaves directories. Uses the
+    appropriate tab in the Load Game screen.
 
     Requires the game to be at the main menu (launched but no game loaded).
     """
@@ -440,14 +501,23 @@ async def load_save_from_menu(save_name: str | None = None) -> str:
         if save_name is None:
             return "No autosaves found in save directory."
 
-    # Validate save exists on disk
-    save_path = os.path.join(SAVE_DIR, f"{save_name}.Civ6Save")
-    if not os.path.exists(save_path):
+    # Check both save directories to determine which tab to use
+    auto_path = os.path.join(SAVE_DIR, f"{save_name}.Civ6Save")
+    single_path = os.path.join(SINGLE_SAVE_DIR, f"{save_name}.Civ6Save")
+
+    if os.path.exists(auto_path):
+        tab = "Autosaves"
+    elif os.path.exists(single_path):
+        tab = "Game Saves"
+    else:
         available = list_autosaves(5)
-        avail_str = ", ".join(available) if available else "none"
+        # Also list regular saves
+        regular = glob.glob(os.path.join(SINGLE_SAVE_DIR, "*.Civ6Save"))
+        regular = [os.path.basename(s).replace(".Civ6Save", "") for s in sorted(regular, key=os.path.getmtime, reverse=True)[:5]]
+        avail_str = ", ".join(available + regular) if (available or regular) else "none"
         return f"Save '{save_name}' not found. Available: {avail_str}"
 
-    return await asyncio.to_thread(_navigate_to_save_sync, save_name)
+    return await asyncio.to_thread(_navigate_to_save_sync, save_name, tab)
 
 
 async def restart_and_load(save_name: str | None = None) -> str:

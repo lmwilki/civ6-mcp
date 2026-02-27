@@ -25,6 +25,7 @@ web/.next/
 web/.env.local
 web/.env.dev
 web/.env.prod
+evals/.env
 
 # Paper (LaTeX source, figures, build artifacts — kept locally)
 docs/paper/
@@ -33,6 +34,6 @@ docs/paper/
 saves/
 
 # CivBench eval artifacts
-evals/saves/*.Civ6Save
+# evals/saves/*.Civ6Save  # benchmark saves are tracked
 eval-logs/
 .vercel

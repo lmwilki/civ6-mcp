@@ -22,7 +22,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-evals = ["inspect-ai>=0.3.170"]
+evals = [
+    "inspect-ai>=0.3.175",
+    "openai>=1.0",
+    "google-cloud-aiplatform>=1.38",
+]
 launcher-macos = [
     "pyobjc-framework-Quartz>=11.0",
     "pyobjc-framework-Vision>=11.0",

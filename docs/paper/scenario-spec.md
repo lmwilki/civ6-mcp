@@ -29,11 +29,11 @@ Record map seed, game seed, game version, and DLC list for each save. Create 3-5
 | Agent Civ | Babylon (Hammurabi) |
 | Map | Pangaea, Standard |
 | Difficulty | Warlord |
-| Opponents | Korea (Seondeok), Scotland (Robert the Bruce), Australia (John Curtin), Japan (Hojo Tokimune), Rome (Trajan), Mapuche (Lautaro) |
+| Opponents | Korea (Seondeok), Scotland (Robert the Bruce), Australia (John Curtin), Japan (Hojo Tokimune), Rome (Trajan), Mapuche (Lautaro), Netherlands (Wilhelmina) |
 
 The experimental control. Babylon is a science civ with a unique mechanic: eurekas grant the full technology instead of a 50% boost. The agent's default preference for science is correct here. Warlord difficulty removes survival pressure entirely — the agent should cruise to a science victory. The variable under test is not whether it wins, but whether it knows it's winning.
 
-Three opponents are genuine science competitors: Korea (Seowon engine), Scotland (science when happy + Great Scientists), Australia (production bonuses for space projects). On Warlord they are slower than the agent, but they still pursue the space race. Rome and Mapuche provide non-science pressure (expansion, loyalty/combat) without derailing the science race framing.
+Three opponents are genuine science competitors: Korea (Seowon engine), Scotland (science when happy + Great Scientists), Australia (production bonuses for space projects). On Warlord they are slower than the agent, but they still pursue the space race. Netherlands adds balanced trade/science competition. Rome, Mapuche, and Japan provide non-science pressure (expansion, loyalty/combat) without derailing the science race framing.
 
 Babylon's eureka mechanic adds a secondary signal: eurekas reward engagement with wider game mechanics — building specific improvements, meeting civilisations, training units, founding cities, winning combats. An agent that pursues eureka conditions is interacting with the full game; an agent that brute-forces research is ignoring its kit and playing a generic science civ.
 
@@ -50,11 +50,11 @@ Babylon's eureka mechanic adds a secondary signal: eurekas reward engagement wit
 | Agent Civ | Kongo (Mvemba a Nzinga) |
 | Map | Pangaea, Small |
 | Difficulty | Prince |
-| Opponents | Greece (Pericles), Brazil (Pedro II), Babylon (Hammurabi), Rome (Trajan) |
+| Opponents | Greece (Pericles), Brazil (Pedro II), Babylon (Hammurabi), Rome (Trajan), France (Catherine de Medici - Magnificence) |
 
 Kongo cannot found a religion (hard-blocked). It has zero science bonuses. What it has is the strongest cultural kit in the game: 2x Great Work slots, +50% Great Writer/Artist/Musician/Merchant points, Mbanza unique district available at Guilds civic. Science victory is possible but actively disadvantaged — the agent is playing a generic civ with no bonuses. Cultural victory is overwhelmingly signposted by the kit.
 
-Greece and Brazil compete for Great Writers/Artists/Musicians — the agent faces cultural rivals on its own turf. Babylon will out-science a Kongo trying to science-tunnel. Rome expands aggressively as baseline pressure. Prince difficulty keeps the environment gentle so the variable under test is kit adaptation, not survival.
+Greece, Brazil, and France compete for Great Writers/Artists/Musicians — the agent faces three cultural rivals on its own turf. Babylon will out-science a Kongo trying to science-tunnel. Rome expands aggressively as baseline pressure. Prince difficulty keeps the environment gentle so the variable under test is kit adaptation, not survival.
 
 **Key metrics:** Theater Squares built, Great Works collected, tourism output at checkpoints, victory type stated in diary, Mbanza utilisation, turns to first Theater Square.
 
@@ -69,7 +69,7 @@ Greece and Brazil compete for Great Writers/Artists/Musicians — the agent face
 | Agent Civ | Germany (Frederick Barbarossa) |
 | Map | Pangaea, Small |
 | Difficulty | King |
-| Opponents | Russia (Peter), Spain (Philip II), Arabia (Saladin), Rome (Trajan), Japan (Hojo Tokimune) |
+| Opponents | Russia (Peter), Spain (Philip II), Arabia (Saladin - Vizier), Rome (Trajan), Japan (Hojo Tokimune) |
 
 Germany has zero religious affinity. Any religious monitoring is purely proactive. Three opponents are among the most aggressive religious civs in the game: Russia (Lavra faith engine), Spain (Inquisitors remove 100% heresy, combat bonus vs other religions), Arabia (guaranteed Great Prophet, free worship building). On small Pangaea they will flood the map with missionaries and apostles by T50-70.
 
@@ -132,6 +132,6 @@ Tiny Pangaea (4 players) ensures the agent finds opponents quickly and that each
 | **Civ** | Babylon | Kongo | Germany | Korea | Sumeria |
 | **Map** | Pangaea, Standard | Pangaea, Small | Pangaea, Small | Snowflake, Small | Pangaea, Tiny |
 | **Difficulty** | Warlord | Prince | King | Emperor | Immortal |
-| **Opponents** | Korea/Scotland/Australia/Japan/Rome/Mapuche | Greece/Brazil/Babylon/Rome | Russia/Spain/Arabia/Rome/Japan | Macedon/Zulu/Aztec/Persia/Scythia | Korea/Brazil/Canada |
+| **Opponents** | Korea/Scotland/Australia/Japan/Rome/Mapuche/Netherlands | Greece/Brazil/Babylon/Rome/France | Russia/Spain/Arabia/Rome/Japan | Macedon/Zulu/Aztec/Persia/Scythia | Korea/Brazil/Canada |
 | **Blind spot** | Tempo awareness | Own civ kit | Invisible rival victory | Military threats | Difficulty context |
 | **Science blocked by** | — (science is correct) | No science bonuses | Religious time pressure | Military destruction | Immortal yield math |
