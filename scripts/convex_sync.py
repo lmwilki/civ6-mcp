@@ -132,20 +132,22 @@ def save_state(state: dict[str, Any]) -> None:
 
 
 def classify_file(name: str) -> str | None:
-    """Return file type: 'diary', 'cities', 'log', or None."""
+    """Return file type: 'diary', 'cities', 'log', 'spatial', or None."""
     if name.startswith("diary_") and name.endswith("_cities.jsonl"):
         return "cities"
     if name.startswith("diary_") and name.endswith(".jsonl"):
         return "diary"
     if name.startswith("log_") and name.endswith(".jsonl"):
         return "log"
+    if name.startswith("spatial_") and name.endswith(".jsonl"):
+        return "spatial"
     return None
 
 
 def extract_game_id(name: str) -> str:
     """Extract game ID from filename: diary_india_123.jsonl → india_123"""
     name = name.removesuffix("_cities.jsonl").removesuffix(".jsonl")
-    for prefix in ("diary_", "log_"):
+    for prefix in ("diary_", "log_", "spatial_"):
         if name.startswith(prefix):
             name = name[len(prefix) :]
     return name
@@ -357,6 +359,100 @@ async def sync_log(path: Path, game_id: str, state: dict, client: ConvexClient) 
     state["game_last_seen"][game_id] = time.time()
 
 
+async def sync_spatial(
+    path: Path, game_id: str, state: dict, client: ConvexClient
+) -> None:
+    """Sync a spatial JSONL file. Aggregates per-turn and pushes to Convex."""
+    name = path.name
+    file_state = state["files"].get(name, {"line_count": 0})
+
+    lines = path.read_text().strip().splitlines()
+    total = len(lines)
+    old_count = file_state.get("line_count", 0)
+
+    if total <= old_count:
+        return
+
+    # Parse all entries (re-process from start for cumulative tracking)
+    entries: list[dict[str, Any]] = []
+    for line in lines:
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    if not entries:
+        return
+
+    # Group by turn and compute aggregates
+    by_turn: dict[int, list[dict[str, Any]]] = {}
+    for entry in entries:
+        turn = entry.get("turn")
+        if turn is None:
+            continue
+        by_turn.setdefault(turn, []).append(entry)
+
+    cumulative_tiles: set[tuple[int, int]] = set()
+    rows: list[dict[str, Any]] = []
+
+    for turn in sorted(by_turn.keys()):
+        turn_entries = by_turn[turn]
+        turn_tiles: set[tuple[int, int]] = set()
+        by_type: dict[str, int] = {
+            "deliberate_scan": 0,
+            "deliberate_action": 0,
+            "survey": 0,
+            "peripheral": 0,
+            "reactive": 0,
+        }
+        total_ms = 0
+
+        for entry in turn_entries:
+            for tile in entry.get("tiles", []):
+                if isinstance(tile, list) and len(tile) == 2:
+                    turn_tiles.add((tile[0], tile[1]))
+            atype = entry.get("type", "")
+            if atype in by_type:
+                by_type[atype] += 1
+            total_ms += entry.get("ms", 0)
+
+        cumulative_tiles |= turn_tiles
+        rows.append(
+            {
+                "turn": turn,
+                "tiles_observed": len(turn_tiles),
+                "tool_calls": len(turn_entries),
+                "cumulative_tiles": len(cumulative_tiles),
+                "total_ms": total_ms,
+                "by_type": by_type,
+            }
+        )
+
+    if not rows:
+        return
+
+    # Only push rows for turns we haven't synced yet
+    last_synced_turn = file_state.get("last_turn", -1)
+    new_rows = [r for r in rows if r["turn"] > last_synced_turn]
+    if not new_rows:
+        file_state["line_count"] = total
+        state["files"][name] = file_state
+        return
+
+    for i in range(0, len(new_rows), BATCH_SIZE):
+        batch = new_rows[i : i + BATCH_SIZE]
+        await client.mutation(
+            "ingest:ingestSpatialTurns",
+            {"gameId": game_id, "rows": batch},
+        )
+
+    log.info("spatial %s: synced %d new turn aggregates (%d total)", game_id, len(new_rows), len(rows))
+    file_state["line_count"] = total
+    file_state["last_turn"] = max(r["turn"] for r in new_rows)
+    state["files"][name] = file_state
+    state["game_last_seen"][game_id] = time.time()
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -378,6 +474,8 @@ async def sync_file(path: Path, state: dict, client: ConvexClient) -> None:
             await sync_cities(path, game_id, state, client)
         elif ftype == "log":
             await sync_log(path, game_id, state, client)
+        elif ftype == "spatial":
+            await sync_spatial(path, game_id, state, client)
     except Exception:
         log.exception("Error syncing %s", name)
 
@@ -445,7 +543,7 @@ async def main() -> None:
 
     try:
         # Initial sync: process all existing files
-        for pattern in ("diary_*.jsonl", "log_*.jsonl"):
+        for pattern in ("diary_*.jsonl", "log_*.jsonl", "spatial_*.jsonl"):
             for filepath in sorted(glob(str(DIARY_DIR / pattern))):
                 await sync_file(Path(filepath), state, client)
         save_state(state)
