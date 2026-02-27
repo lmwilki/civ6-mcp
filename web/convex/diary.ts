@@ -91,7 +91,19 @@ export const getGameSummary = query({
       turnCount: game.turnCount,
       lastTurn: game.lastTurn,
       turnSeries: game.turnSeries ?? null,
+      hasSpatial: game.hasSpatial ?? false,
     };
+  },
+});
+
+/** All spatial attention aggregates for a game. */
+export const getSpatialTurns = query({
+  args: { gameId: v.string() },
+  handler: async (ctx, { gameId }) => {
+    return ctx.db
+      .query("spatialTurns")
+      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+      .collect();
   },
 });
 

@@ -14,6 +14,7 @@ export default defineSchema({
     turnCount: v.number(),
     hasCities: v.boolean(),
     hasLogs: v.boolean(),
+    hasSpatial: v.optional(v.boolean()),
     agentModelOverride: v.optional(v.string()),
     // Denormalized from playerRows (set at ingest time)
     agentModel: v.optional(v.string()),
@@ -189,4 +190,21 @@ export default defineSchema({
   })
     .index("by_game_line", ["gameId", "line"])
     .index("by_game_session", ["gameId", "session"]),
+
+  // One doc per turn — pre-aggregated spatial attention data
+  spatialTurns: defineTable({
+    gameId: v.string(),
+    turn: v.number(),
+    tiles_observed: v.number(),
+    tool_calls: v.number(),
+    cumulative_tiles: v.number(),
+    total_ms: v.number(),
+    by_type: v.object({
+      deliberate_scan: v.number(),
+      deliberate_action: v.number(),
+      survey: v.number(),
+      peripheral: v.number(),
+      reactive: v.number(),
+    }),
+  }).index("by_game_turn", ["gameId", "turn"]),
 });

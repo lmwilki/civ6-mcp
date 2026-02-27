@@ -131,7 +131,8 @@ export const ingestPlayerRows = mutation({
         lastTurn: Math.max(game.lastTurn, maxTurn),
         lastUpdated: Date.now(),
         turnCount: Math.max(game.turnCount, maxTurn),
-        status: "live" as const,
+        // Don't resurrect completed games — lookback re-syncs can re-send old rows
+        ...(game.status !== "completed" ? { status: "live" as const } : {}),
       };
       // Backfill leader/civ if game was created by log ingestion with empty values
       if (!game.leader && leader) patch.leader = leader;
@@ -437,12 +438,19 @@ export const deleteGame = mutation({
       .collect();
     for (const row of logEntries) await ctx.db.delete(row._id);
 
+    const spatialTurns = await ctx.db
+      .query("spatialTurns")
+      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
+      .collect();
+    for (const row of spatialTurns) await ctx.db.delete(row._id);
+
     return {
       deleted: {
         game: game ? 1 : 0,
         playerRows: playerRows.length,
         cityRows: cityRows.length,
         logEntries: logEntries.length,
+        spatialTurns: spatialTurns.length,
       },
     };
   },
@@ -560,6 +568,86 @@ export const listGameIds = mutation({
   handler: async (ctx) => {
     const games = await ctx.db.query("games").collect();
     return games.map((g) => g.gameId);
+  },
+});
+
+// Spatial metrics to merge into turnSeries (agent player only)
+const SPATIAL_METRICS = ["spatial_tiles", "spatial_actions", "spatial_cumulative"] as const;
+
+export const ingestSpatialTurns = mutation({
+  args: {
+    gameId: v.string(),
+    rows: v.array(v.any()),
+  },
+  handler: async (ctx, { gameId, rows }) => {
+    // 1. Upsert spatialTurns rows
+    for (const row of rows) {
+      const existing = await ctx.db
+        .query("spatialTurns")
+        .withIndex("by_game_turn", (q) =>
+          q.eq("gameId", gameId).eq("turn", row.turn),
+        )
+        .unique();
+      if (existing) {
+        await ctx.db.replace(existing._id, { gameId, ...row });
+      } else {
+        await ctx.db.insert("spatialTurns", { gameId, ...row });
+      }
+    }
+
+    // 2. Merge spatial sparkline metrics into games.turnSeries
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .first();
+    if (!game) return;
+
+    const patch: Record<string, unknown> = { hasSpatial: true, lastUpdated: Date.now() };
+
+    if (game.turnSeries) {
+      const ts = {
+        turns: [...game.turnSeries.turns],
+        players: {} as Record<string, SeriesPlayer>,
+      };
+      // Deep-copy existing players
+      for (const [pid, p] of Object.entries(
+        game.turnSeries.players as Record<string, SeriesPlayer>,
+      )) {
+        ts.players[pid] = {
+          civ: p.civ,
+          leader: p.leader,
+          is_agent: p.is_agent,
+          metrics: {} as Record<string, number[]>,
+        };
+        // Copy all existing metrics (diary + any prior spatial)
+        for (const [m, arr] of Object.entries(p.metrics)) {
+          ts.players[pid].metrics[m] = [...(arr ?? [])];
+        }
+        // Ensure spatial metric arrays exist with correct length
+        if (p.is_agent) {
+          for (const m of SPATIAL_METRICS) {
+            if (!ts.players[pid].metrics[m]) {
+              ts.players[pid].metrics[m] = new Array(ts.turns.length).fill(0);
+            }
+          }
+        }
+      }
+
+      // For each incoming row, find the turn index and set spatial values
+      for (const row of rows) {
+        const idx = ts.turns.indexOf(row.turn);
+        if (idx === -1) continue; // Turn not in diary series yet — skip
+        for (const [, p] of Object.entries(ts.players)) {
+          if (!p.is_agent) continue;
+          p.metrics["spatial_tiles"][idx] = row.tiles_observed ?? 0;
+          p.metrics["spatial_actions"][idx] = row.tool_calls ?? 0;
+          p.metrics["spatial_cumulative"][idx] = row.cumulative_tiles ?? 0;
+        }
+      }
+      patch.turnSeries = ts;
+    }
+
+    await ctx.db.patch(game._id, patch);
   },
 });
 
