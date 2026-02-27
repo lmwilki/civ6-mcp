@@ -29,6 +29,9 @@ export const CIV6_COLORS = {
   // Diplomatic
   favor: "#1C9FDC",
 
+  // Spatial attention
+  spatial: "#9333EA",
+
   // Strategic resources
   horses: "#8B6914",
   iron: "#8C8C8C",

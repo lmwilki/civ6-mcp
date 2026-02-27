@@ -149,6 +149,13 @@ export type NumericPlayerField = Exclude<
   undefined
 >;
 
+/** Extended field type for sparklines — includes synthetic spatial metrics */
+export type SparklineField =
+  | NumericPlayerField
+  | "spatial_tiles"
+  | "spatial_actions"
+  | "spatial_cumulative";
+
 export interface CityRow {
   v: number;
   turn: number;
@@ -178,12 +185,29 @@ export interface TurnSeriesPlayer {
   civ: string;
   leader: string;
   is_agent: boolean;
-  metrics: Record<NumericPlayerField, number[]>;
+  metrics: Record<string, number[]>;
 }
 
 export interface TurnSeries {
   turns: number[];
   players: Record<string, TurnSeriesPlayer>; // keyed by pid
+}
+
+// === Spatial attention (pre-aggregated per turn) ===
+
+export interface SpatialTurn {
+  turn: number;
+  tiles_observed: number;
+  tool_calls: number;
+  cumulative_tiles: number;
+  total_ms: number;
+  by_type: {
+    deliberate_scan: number;
+    deliberate_action: number;
+    survey: number;
+    peripheral: number;
+    reactive: number;
+  };
 }
 
 // === Grouped view (client-side computed) ===

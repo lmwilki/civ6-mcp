@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import type { TurnSeries, NumericPlayerField } from "@/lib/diary-types";
+import type { TurnSeries, SparklineField } from "@/lib/diary-types";
 import { AnimatedNumber } from "./animated-number";
 import { CivIcon } from "./civ-icon";
 
 interface ScoreSparklineProps {
   turnSeries: TurnSeries;
   currentIndex: number;
-  field: NumericPlayerField;
+  field: SparklineField;
   label: string;
   color: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;

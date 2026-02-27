@@ -16,6 +16,7 @@ import {
   MapPin,
   Compass,
   Users,
+  ScanSearch,
 } from "lucide-react";
 
 interface SparklineSidebarProps {
@@ -101,6 +102,14 @@ export function SparklineSidebar({
           label="Explored"
           color={CIV6_COLORS.favor}
           icon={Compass}
+        />
+        <ScoreSparkline
+          turnSeries={turnSeries}
+          currentIndex={currentIndex}
+          field="spatial_tiles"
+          label="Scanned"
+          color={CIV6_COLORS.spatial}
+          icon={ScanSearch}
         />
         <ScoreSparkline
           turnSeries={turnSeries}
