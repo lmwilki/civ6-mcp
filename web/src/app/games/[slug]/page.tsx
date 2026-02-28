@@ -4,10 +4,9 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { GameDiaryView } from "@/components/game-diary-view";
 import { GameLogView } from "@/components/game-log-view";
-import { SpatialView } from "@/components/spatial-view";
 import { StrategicMap } from "@/components/strategic-map";
 
-type Tab = "diary" | "log" | "spatial" | "map";
+type Tab = "diary" | "log" | "map";
 
 function TabButton({ tab, active, label, setTab }: { tab: Tab; active: Tab; label: string; setTab: (t: Tab) => void }) {
   return (
@@ -32,10 +31,10 @@ export default function GameDetailPage() {
   const slug = params.slug;
   const filename = `diary_${slug}.jsonl`;
   const rawTab = searchParams.get("tab");
+  // "spatial" redirects to "map" (spatial data is now in the map tab)
   const tab: Tab =
     rawTab === "log" ? "log" :
-    rawTab === "spatial" ? "spatial" :
-    rawTab === "map" ? "map" :
+    rawTab === "spatial" || rawTab === "map" ? "map" :
     "diary";
 
   const setTab = (t: Tab) => {
@@ -51,7 +50,6 @@ export default function GameDetailPage() {
         <div className="mx-auto flex max-w-4xl">
           <TabButton tab="diary" active={tab} label="Diary" setTab={setTab} />
           <TabButton tab="log" active={tab} label="Turn Log" setTab={setTab} />
-          <TabButton tab="spatial" active={tab} label="Spatial" setTab={setTab} />
           <TabButton tab="map" active={tab} label="Map" setTab={setTab} />
         </div>
       </div>
@@ -61,8 +59,6 @@ export default function GameDetailPage() {
         <GameDiaryView filename={filename} />
       ) : tab === "log" ? (
         <GameLogView gameSlug={slug} />
-      ) : tab === "spatial" ? (
-        <SpatialView gameId={slug} />
       ) : (
         <StrategicMap gameId={slug} />
       )}

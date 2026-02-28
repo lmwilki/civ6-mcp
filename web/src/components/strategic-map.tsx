@@ -10,6 +10,7 @@ import {
   unpackOwnerFrames,
   unpackCityFrames,
   unpackRoadFrames,
+  unpackSpatialTiles,
   type MapDataDoc,
   type MapCitySnapshot,
 } from "@/lib/diary-types";
@@ -27,9 +28,13 @@ import {
   SkipBack,
   SkipForward,
   Map as MapIcon,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { CivIcon, CivSymbol } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
+import { SpatialCharts } from "./spatial-charts";
+import type { SpatialTurn } from "@/lib/diary-types";
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -119,6 +124,8 @@ interface StrategicMapProps {
 
 export function StrategicMap({ gameId }: StrategicMapProps) {
   const rawMapData = useQuery(api.diary.getMapData, { gameId });
+  const spatialMap = useQuery(api.diary.getSpatialMap, { gameId });
+  const spatialTurns = useQuery(api.diary.getSpatialTurns, { gameId });
 
   if (rawMapData === undefined) {
     return (
@@ -144,12 +151,31 @@ export function StrategicMap({ gameId }: StrategicMapProps) {
     );
   }
 
-  return <MapRenderer mapData={rawMapData} />;
+  return (
+    <MapRenderer
+      mapData={rawMapData}
+      spatialMap={spatialMap ?? null}
+      spatialTurns={(spatialTurns as SpatialTurn[] | undefined) ?? null}
+    />
+  );
 }
 
 // ── Pixi.js map renderer ──────────────────────────────────────────────────
 
-function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
+// Attention type weights — higher = more intentional observation
+const ATTENTION_WEIGHTS = { ds: 5, da: 4, sv: 3, pe: 2, re: 1 };
+const MAX_DARK = 0.6; // unobserved tile darkness (0=clear, 1=black)
+
+interface SpatialMapDoc {
+  minX: number; maxX: number; minY: number; maxY: number;
+  tileCount: number; tiles: number[];
+}
+
+function MapRenderer({ mapData, spatialMap, spatialTurns }: {
+  mapData: MapDataDoc;
+  spatialMap: SpatialMapDoc | null;
+  spatialTurns: SpatialTurn[] | null;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const renderTurnRef = useRef<((turn: number) => void) | null>(null);
@@ -161,6 +187,8 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
   const animRef = useRef(0);
   const lastFrameRef = useRef(0);
   const [hexSize, setHexSize] = useState(6);
+  const [showAttention, setShowAttention] = useState(true);
+  const showAttentionRef = useRef(true);
 
   // ── Unpack & precompute ───────────────────────────────────────────────
 
@@ -240,6 +268,22 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
     }
     return map;
   }, [players]);
+
+  // ── Attention data lookup ─────────────────────────────────────────────
+
+  const attentionData = useMemo(() => {
+    if (!spatialMap) return null;
+    const tiles = unpackSpatialTiles(spatialMap.tiles);
+    const W = ATTENTION_WEIGHTS;
+    const lookup = new Map<string, { weight: number; firstTurn: number }>();
+    let maxW = 0;
+    for (const t of tiles) {
+      const w = W.ds * t.ds + W.da * t.da + W.sv * t.sv + W.pe * t.pe + W.re * t.re;
+      lookup.set(`${t.x},${t.y}`, { weight: w, firstTurn: t.firstTurn });
+      if (w > maxW) maxW = w;
+    }
+    return { lookup, maxWeight: maxW };
+  }, [spatialMap]);
 
   // ── Responsive hex sizing ─────────────────────────────────────────────
 
@@ -330,9 +374,11 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
       const borderGfx = new Graphics();
       const roadGfx = new Graphics();
       const cityGfx = new Graphics();
+      const attentionGfx = new Graphics();
       const hoverGfx = new Graphics();
       app.stage.addChild(
-        terrainGfx, territoryGfx, borderGfx, roadGfx, cityGfx, hoverGfx,
+        terrainGfx, territoryGfx, borderGfx, roadGfx, cityGfx,
+        attentionGfx, hoverGfx,
       );
 
       // ── Static terrain (drawn once) ──────────────────────────────────
@@ -458,6 +504,29 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
               color: CITY_MARKER.strokeColor,
             });
         }
+
+        // Sensorium attention overlay — darkness lifts where the agent has observed
+        attentionGfx.clear();
+        if (attentionData && showAttentionRef.current) {
+          const logMax = Math.log(attentionData.maxWeight + 1);
+          for (let y = 0; y < gridH; y++) {
+            for (let x = 0; x < gridW; x++) {
+              const entry = attentionData.lookup.get(`${x},${y}`);
+              let alpha = MAX_DARK;
+
+              if (entry && entry.firstTurn <= turn) {
+                const t = Math.log(entry.weight + 1) / logMax;
+                alpha = MAX_DARK * (1 - t);
+              }
+
+              if (alpha < 0.01) continue;
+              const [hx, hy] = hexCenter(x, y, hexSize, gridH);
+              attentionGfx
+                .poly(hexVerts(hx, hy, hexSize * 0.98))
+                .fill({ color: 0x000000, alpha });
+            }
+          }
+        }
       };
 
       renderTurnRef.current = renderTurn;
@@ -552,6 +621,7 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
   }, [
     canvasW, canvasH, hexSize, terrain, gridW, gridH,
     playerColors, getOwnersAtTurn, getCitiesAtTurn, getRoadsAtTurn, players,
+    attentionData,
   ]);
 
   // Sync turn changes to Pixi (lightweight — no Pixi teardown)
@@ -559,6 +629,12 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
     currentTurnRef.current = currentTurn;
     renderTurnRef.current?.(currentTurn);
   }, [currentTurn]);
+
+  // Sync attention toggle to Pixi
+  useEffect(() => {
+    showAttentionRef.current = showAttention;
+    renderTurnRef.current?.(currentTurnRef.current);
+  }, [showAttention]);
 
   // ── Replay animation ─────────────────────────────────────────────────
 
@@ -598,9 +674,29 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
           <CivIcon icon={MapIcon} color={CIV6_COLORS.spatial} size="sm" />
           Strategic Map
         </h3>
-        <span className="font-mono text-sm tabular-nums text-marble-600">
-          Turn {currentTurn}
-        </span>
+        <div className="flex items-center gap-3">
+          {attentionData && (
+            <button
+              onClick={() => setShowAttention((s) => !s)}
+              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-opacity ${
+                showAttention
+                  ? "border-purple-400/50 bg-purple-50 text-purple-700"
+                  : "border-marble-300 bg-marble-50 text-marble-400"
+              }`}
+              title={showAttention ? "Hide attention overlay" : "Show attention overlay"}
+            >
+              {showAttention ? (
+                <Eye className="h-3 w-3" />
+              ) : (
+                <EyeOff className="h-3 w-3" />
+              )}
+              Sensorium
+            </button>
+          )}
+          <span className="font-mono text-sm tabular-nums text-marble-600">
+            Turn {currentTurn}
+          </span>
+        </div>
       </div>
 
       {/* Pixi canvas container */}
@@ -722,6 +818,11 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
           </>
         )}
       </div>
+
+      {/* Spatial attention charts */}
+      {spatialTurns && spatialTurns.length > 0 && (
+        <SpatialCharts data={spatialTurns} />
+      )}
     </div>
   );
 }
