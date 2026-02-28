@@ -132,7 +132,7 @@ def save_state(state: dict[str, Any]) -> None:
 
 
 def classify_file(name: str) -> str | None:
-    """Return file type: 'diary', 'cities', 'log', 'spatial', or None."""
+    """Return file type: 'diary', 'cities', 'log', 'spatial', 'mapturns', or None."""
     if name.startswith("diary_") and name.endswith("_cities.jsonl"):
         return "cities"
     if name.startswith("diary_") and name.endswith(".jsonl"):
@@ -141,13 +141,15 @@ def classify_file(name: str) -> str | None:
         return "log"
     if name.startswith("spatial_") and name.endswith(".jsonl"):
         return "spatial"
+    if name.startswith("mapturns_") and name.endswith(".jsonl"):
+        return "mapturns"
     return None
 
 
 def extract_game_id(name: str) -> str:
     """Extract game ID from filename: diary_india_123.jsonl → india_123"""
-    name = name.removesuffix("_cities.jsonl").removesuffix(".jsonl")
-    for prefix in ("diary_", "log_", "spatial_"):
+    name = name.removesuffix("_cities.jsonl").removesuffix(".jsonl").removesuffix(".json")
+    for prefix in ("diary_", "log_", "spatial_", "mapstatic_", "mapturns_"):
         if name.startswith(prefix):
             name = name[len(prefix) :]
     return name
@@ -522,6 +524,116 @@ async def sync_spatial_map(
     )
 
 
+async def sync_map_data(
+    path: Path, game_id: str, state: dict, client: ConvexClient
+) -> None:
+    """Sync strategic map data (static terrain + per-turn deltas) to Convex.
+
+    Reads mapstatic_{id}.json for terrain grid + initial state, and
+    mapturns_{id}.jsonl for per-turn ownership/road/city deltas.
+    Packs everything into flat arrays and sends as a single mutation.
+    """
+    name = path.name
+    file_state = state["files"].get(name, {"line_count": 0})
+
+    lines = path.read_text().strip().splitlines()
+    total = len(lines)
+    old_count = file_state.get("line_count", 0)
+
+    if total <= old_count:
+        return
+
+    # Find the corresponding mapstatic JSON file
+    static_name = name.replace("mapturns_", "mapstatic_").replace(".jsonl", ".json")
+    static_path = path.parent / static_name
+    if not static_path.exists():
+        log.debug("Map static file not found for %s", game_id)
+        return
+
+    # Read static data
+    try:
+        static_data = json.loads(static_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        log.warning("Failed to read map static file for %s", game_id)
+        return
+
+    # Parse turn deltas
+    turn_entries: list[dict[str, Any]] = []
+    for line in lines:
+        try:
+            turn_entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+
+    # Pack frames into flat arrays matching Convex schema
+    # ownerFrames: [turn, count, tileIdx, owner, ...]
+    # cityFrames: [turn, count, x, y, pid, pop, ...]
+    # roadFrames: [turn, count, tileIdx, routeType, ...]
+    owner_frames: list[int] = []
+    city_frames: list[int] = []
+    road_frames: list[int] = []
+    max_turn = static_data.get("initialTurn", 0)
+
+    for entry in turn_entries:
+        turn = entry.get("turn", 0)
+        max_turn = max(max_turn, turn)
+
+        owners = entry.get("owners", [])
+        if owners:
+            owner_frames.append(turn)
+            owner_frames.append(len(owners) // 2)
+            owner_frames.extend(owners)
+
+        cities = entry.get("cities", [])
+        if cities:
+            city_frames.append(turn)
+            city_frames.append(len(cities))
+            for c in cities:
+                city_frames.extend([c["x"], c["y"], c["pid"], c["pop"]])
+
+        roads = entry.get("roads", [])
+        if roads:
+            road_frames.append(turn)
+            road_frames.append(len(roads) // 2)
+            road_frames.extend(roads)
+
+    payload = {
+        "gameId": game_id,
+        "gridW": static_data["gridW"],
+        "gridH": static_data["gridH"],
+        "terrain": static_data["terrain"],
+        "initialOwners": static_data["initialOwners"],
+        "initialTurn": static_data.get("initialTurn", 0),
+        "ownerFrames": owner_frames,
+        "cityFrames": city_frames,
+        "roadFrames": road_frames,
+        "players": static_data.get("players", []),
+        "maxTurn": max_turn,
+    }
+
+    payload_bytes = len(json.dumps(payload).encode())
+    if payload_bytes > 800_000:
+        log.warning(
+            "Map payload for %s is %dKB — approaching 1MB Convex limit",
+            game_id,
+            payload_bytes // 1024,
+        )
+
+    await client.mutation("ingest:ingestMapData", payload)
+
+    log.info(
+        "map %s: %dx%d grid, %d turn deltas, maxTurn=%d",
+        game_id,
+        static_data["gridW"],
+        static_data["gridH"],
+        len(turn_entries),
+        max_turn,
+    )
+    file_state["line_count"] = total
+    state["files"][name] = file_state
+    state["game_last_seen"][game_id] = time.time()
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -545,6 +657,8 @@ async def sync_file(path: Path, state: dict, client: ConvexClient) -> None:
             await sync_log(path, game_id, state, client)
         elif ftype == "spatial":
             await sync_spatial(path, game_id, state, client)
+        elif ftype == "mapturns":
+            await sync_map_data(path, game_id, state, client)
     except Exception:
         log.exception("Error syncing %s", name)
 
@@ -612,7 +726,7 @@ async def main() -> None:
 
     try:
         # Initial sync: process all existing files
-        for pattern in ("diary_*.jsonl", "log_*.jsonl", "spatial_*.jsonl"):
+        for pattern in ("diary_*.jsonl", "log_*.jsonl", "spatial_*.jsonl", "mapturns_*.jsonl"):
             for filepath in sorted(glob(str(DIARY_DIR / pattern))):
                 await sync_file(Path(filepath), state, client)
         save_state(state)

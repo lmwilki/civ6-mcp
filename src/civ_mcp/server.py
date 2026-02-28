@@ -36,6 +36,7 @@ from civ_mcp.diary import (
 )
 from civ_mcp.game_state import GameState
 from civ_mcp.logger import GameLogger
+from civ_mcp.map_capture import MapCapture
 from civ_mcp.spatial import SpatialTracker
 from civ_mcp.spectator import CameraController, PopupWatcher
 from civ_mcp.web_api import create_app
@@ -50,6 +51,7 @@ class AppContext:
     camera: CameraController
     popup_watcher: PopupWatcher
     spatial: SpatialTracker
+    map_capture: MapCapture
 
 
 @asynccontextmanager
@@ -57,6 +59,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     conn = GameConnection()
     logger = GameLogger()
     spatial = SpatialTracker()
+    map_capture = MapCapture()
     gs = GameState(conn)
     log.info("Game logger session: %s", logger.session_id)
 
@@ -80,6 +83,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
             camera=camera,
             popup_watcher=popup_watcher,
             spatial=spatial,
+            map_capture=map_capture,
         )
     finally:
         await camera.stop()
@@ -110,6 +114,10 @@ def _get_camera(ctx: Context) -> CameraController:
 
 def _get_spatial(ctx: Context) -> SpatialTracker:
     return ctx.request_context.lifespan_context.spatial
+
+
+def _get_map_capture(ctx: Context) -> MapCapture:
+    return ctx.request_context.lifespan_context.map_capture
 
 
 def _param_summary(params: dict[str, Any]) -> str:
@@ -1528,6 +1536,15 @@ async def end_turn(
             new_turn = int(m.group(1))
             _get_logger(ctx).set_turn(new_turn)
             _get_spatial(ctx).set_turn(new_turn)
+        # Map capture — record terrain (first turn) + ownership delta
+        if _diary_civ_type and _diary_seed:
+            try:
+                mc = _get_map_capture(ctx)
+                mc.bind_game(_diary_civ_type, _diary_seed)
+                capture_turn = new_turn if m else _diary_turn
+                await mc.capture(gs.conn, capture_turn)
+            except Exception:
+                log.debug("Map capture failed", exc_info=True)
     elif "Turn paused" in result or "World Congress fires" in result:
         gs._end_turn_blocked = True
 
@@ -2197,6 +2214,27 @@ async def load_save(ctx: Context, save_index: int) -> str:
     gs = _get_game(ctx)
     return await _logged(
         ctx, "load_save", {"save_index": save_index}, lambda: gs.load_save(save_index)
+    )
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+async def load_game_save(ctx: Context, save_name: str) -> str:
+    """Load a save file by name. No need to call list_saves first.
+
+    Args:
+        save_name: Save name without extension (e.g. "MCP_AutoSave_0079",
+                   "GROUND_CONTROL_SA", "AutoSave_0221", "quicksave").
+
+    Tries Lua-based loading first (fast, ~5s). If the save isn't found
+    via Lua (common for autosaves/quicksaves), falls back to OCR menu
+    navigation (~90s) after verifying the file exists on disk.
+    """
+    gs = _get_game(ctx)
+    return await _logged(
+        ctx,
+        "load_game_save",
+        {"save_name": save_name},
+        lambda: gs.load_game_save(save_name),
     )
 
 

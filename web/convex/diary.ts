@@ -92,6 +92,7 @@ export const getGameSummary = query({
       lastTurn: game.lastTurn,
       turnSeries: game.turnSeries ?? null,
       hasSpatial: game.hasSpatial ?? false,
+      hasMap: game.hasMap ?? false,
     };
   },
 });
@@ -107,6 +108,17 @@ export const getSpatialTurns = query({
   },
 });
 
+/** Strategic map data for terrain + replay. One doc per game. */
+export const getMapData = query({
+  args: { gameId: v.string() },
+  handler: async (ctx, { gameId }) => {
+    return ctx.db
+      .query("mapData")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .first();
+  },
+});
+
 /** Tile-level spatial attention map for hex heatmap. One doc per game. */
 export const getSpatialMap = query({
   args: { gameId: v.string() },
@@ -114,7 +126,7 @@ export const getSpatialMap = query({
     return ctx.db
       .query("spatialMaps")
       .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
-      .unique();
+      .first();
   },
 });
 

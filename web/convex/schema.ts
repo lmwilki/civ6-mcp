@@ -15,6 +15,7 @@ export default defineSchema({
     hasCities: v.boolean(),
     hasLogs: v.boolean(),
     hasSpatial: v.optional(v.boolean()),
+    hasMap: v.optional(v.boolean()),
     agentModelOverride: v.optional(v.string()),
     // Denormalized from playerRows (set at ingest time)
     agentModel: v.optional(v.string()),
@@ -207,6 +208,27 @@ export default defineSchema({
       reactive: v.number(),
     }),
   }).index("by_game_turn", ["gameId", "turn"]),
+
+  // One doc per game — strategic map data for terrain + replay
+  mapData: defineTable({
+    gameId: v.string(),
+    gridW: v.number(),
+    gridH: v.number(),
+    // Static terrain: stride-6, row-major [terrain, feature, hills, river, coastal, resource]
+    terrain: v.array(v.number()),
+    // Initial ownership: one owner per tile (-1 = unowned), row-major
+    initialOwners: v.array(v.number()),
+    initialTurn: v.number(),
+    // Ownership deltas: packed [turn, count, tileIdx, owner, ...]
+    ownerFrames: v.array(v.number()),
+    // City events: packed [turn, count, x, y, pid, pop, ...]
+    cityFrames: v.array(v.number()),
+    // Road deltas: packed [turn, count, tileIdx, routeType, ...]
+    roadFrames: v.array(v.number()),
+    // Player→civ mapping for territory coloring
+    players: v.array(v.object({ pid: v.number(), civ: v.string() })),
+    maxTurn: v.number(),
+  }).index("by_gameId", ["gameId"]),
 
   // One doc per game — pre-aggregated per-tile spatial attention map for hex heatmap
   spatialMaps: defineTable({

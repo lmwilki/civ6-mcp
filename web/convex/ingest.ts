@@ -450,6 +450,12 @@ export const deleteGame = mutation({
       .collect();
     for (const row of spatialMaps) await ctx.db.delete(row._id);
 
+    const mapDataDocs = await ctx.db
+      .query("mapData")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .collect();
+    for (const row of mapDataDocs) await ctx.db.delete(row._id);
+
     return {
       deleted: {
         game: game ? 1 : 0,
@@ -458,6 +464,7 @@ export const deleteGame = mutation({
         logEntries: logEntries.length,
         spatialTurns: spatialTurns.length,
         spatialMaps: spatialMaps.length,
+        mapData: mapDataDocs.length,
       },
     };
   },
@@ -677,6 +684,42 @@ export const ingestSpatialMap = mutation({
       await ctx.db.replace(existing._id, args);
     } else {
       await ctx.db.insert("spatialMaps", args);
+    }
+  },
+});
+
+export const ingestMapData = mutation({
+  args: {
+    gameId: v.string(),
+    gridW: v.number(),
+    gridH: v.number(),
+    terrain: v.array(v.number()),
+    initialOwners: v.array(v.number()),
+    initialTurn: v.number(),
+    ownerFrames: v.array(v.number()),
+    cityFrames: v.array(v.number()),
+    roadFrames: v.array(v.number()),
+    players: v.array(v.object({ pid: v.number(), civ: v.string() })),
+    maxTurn: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("mapData")
+      .withIndex("by_gameId", (q) => q.eq("gameId", args.gameId))
+      .unique();
+    if (existing) {
+      await ctx.db.replace(existing._id, args);
+    } else {
+      await ctx.db.insert("mapData", args);
+    }
+
+    // Mark game as having map data
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_gameId", (q) => q.eq("gameId", args.gameId))
+      .unique();
+    if (game && !game.hasMap) {
+      await ctx.db.patch(game._id, { hasMap: true, lastUpdated: Date.now() });
     }
   },
 });

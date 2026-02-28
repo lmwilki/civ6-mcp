@@ -4,7 +4,7 @@
 export function cleanCivName(s: string): string {
   return s
     .replace(
-      /^(GOVERNMENT_|ERA_|TECH_|CIVIC_|BELIEF_|RELIGION_|POLICY_|BUILDING_|UNIT_|DISTRICT_|PROJECT_|GREAT_PERSON_CLASS_)/,
+      /^(CIVILIZATION_|GOVERNMENT_|ERA_|TECH_|CIVIC_|BELIEF_|RELIGION_|POLICY_|BUILDING_|UNIT_|DISTRICT_|PROJECT_|GREAT_PERSON_CLASS_)/,
       "",
     )
     .replace(/_/g, " ")
@@ -245,6 +245,112 @@ export function unpackSpatialTiles(flat: number[]): SpatialTile[] {
     });
   }
   return tiles;
+}
+
+// === Strategic map data (pre-aggregated per game) ===
+
+/** Shape of the Convex mapData document (one per game). */
+export interface MapDataDoc {
+  gridW: number;
+  gridH: number;
+  terrain: number[];
+  initialOwners: number[];
+  initialTurn: number;
+  ownerFrames: number[];
+  cityFrames: number[];
+  roadFrames: number[];
+  players: { pid: number; civ: string }[];
+  maxTurn: number;
+}
+
+export interface MapTile {
+  terrain: number;
+  feature: number;
+  hills: boolean;
+  river: boolean;
+  coastal: boolean;
+  resource: number;
+}
+
+export interface MapOwnerChange {
+  tileIdx: number;
+  owner: number;
+}
+
+export interface MapFrame {
+  turn: number;
+  changes: MapOwnerChange[];
+}
+
+export interface MapCitySnapshot {
+  x: number;
+  y: number;
+  pid: number;
+  pop: number;
+}
+
+export interface MapCityFrame {
+  turn: number;
+  cities: MapCitySnapshot[];
+}
+
+const MAP_TERRAIN_STRIDE = 6;
+
+/** Unpack stride-6 flat terrain array into MapTile objects (row-major) */
+export function unpackTerrain(flat: number[]): MapTile[] {
+  const tiles: MapTile[] = [];
+  for (let i = 0; i < flat.length; i += MAP_TERRAIN_STRIDE) {
+    tiles.push({
+      terrain: flat[i],
+      feature: flat[i + 1],
+      hills: flat[i + 2] === 1,
+      river: flat[i + 3] === 1,
+      coastal: flat[i + 4] === 1,
+      resource: flat[i + 5],
+    });
+  }
+  return tiles;
+}
+
+/** Unpack packed [turn, count, tileIdx, owner, ...] into MapFrame[] */
+export function unpackOwnerFrames(flat: number[]): MapFrame[] {
+  const frames: MapFrame[] = [];
+  let i = 0;
+  while (i < flat.length) {
+    const turn = flat[i];
+    const count = flat[i + 1];
+    i += 2;
+    const changes: MapOwnerChange[] = [];
+    for (let j = 0; j < count; j++) {
+      changes.push({ tileIdx: flat[i], owner: flat[i + 1] });
+      i += 2;
+    }
+    frames.push({ turn, changes });
+  }
+  return frames;
+}
+
+/** Unpack packed [turn, count, x, y, pid, pop, ...] into MapCityFrame[] */
+export function unpackCityFrames(flat: number[]): MapCityFrame[] {
+  const frames: MapCityFrame[] = [];
+  let i = 0;
+  while (i < flat.length) {
+    const turn = flat[i];
+    const count = flat[i + 1];
+    i += 2;
+    const cities: MapCitySnapshot[] = [];
+    for (let j = 0; j < count; j++) {
+      cities.push({ x: flat[i], y: flat[i + 1], pid: flat[i + 2], pop: flat[i + 3] });
+      i += 4;
+    }
+    frames.push({ turn, cities });
+  }
+  return frames;
+}
+
+/** Unpack packed road frames — same shape as owner frames [turn, count, tileIdx, routeType, ...] */
+export function unpackRoadFrames(flat: number[]): MapFrame[] {
+  return unpackOwnerFrames(flat); // Same binary layout
 }
 
 // === Grouped view (client-side computed) ===

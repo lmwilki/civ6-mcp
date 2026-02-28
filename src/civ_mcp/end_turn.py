@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import civ_mcp.narrate as nr
 from civ_mcp import lua as lq
 from civ_mcp.connection import LuaError
+from civ_mcp.game_lifecycle import cleanup_old_autosaves, save_game
 
 if TYPE_CHECKING:
     from civ_mcp.game_state import GameState
@@ -720,6 +721,29 @@ async def execute_end_turn(gs: GameState) -> str:
                     hard_blockers.append((blocking_type, blocking_msg))
                     continue
 
+                # --- Spy escape route: auto-pick fastest district ---
+                if blocking_type == "ENDTURN_BLOCKING_SPY_CHOOSE_ESCAPE_ROUTE":
+                    try:
+                        escape_lines = await gs.conn.execute_write(
+                            lq.build_spy_escape_route()
+                        )
+                        if any("OK:ESCAPE_ROUTE" in l for l in escape_lines):
+                            log.info(
+                                "Auto-resolved spy escape: %s",
+                                next(
+                                    (l for l in escape_lines if "OK:" in l),
+                                    "",
+                                ),
+                            )
+                            resolved_any = True
+                            continue
+                    except Exception:
+                        log.debug(
+                            "Spy escape auto-resolve failed", exc_info=True
+                        )
+                    hard_blockers.append((blocking_type, blocking_msg))
+                    continue
+
                 # --- Unrecognized blocker → always hard ---
                 hard_blockers.append((blocking_type, blocking_msg))
 
@@ -1065,6 +1089,24 @@ async def execute_end_turn(gs: GameState) -> str:
     gs._pending_end_turn = False
     gs._pending_end_turn_from = None
 
+    # Turn regression detection — catch accidental wrong-save loads
+    if turn_after is not None and gs._high_water_turn > 0:
+        if turn_after < gs._high_water_turn - 1:
+            latest_autosave = f"MCP_AutoSave_{gs._high_water_turn:04d}"
+            log.warning(
+                "Turn regressed from %d to %d — possible wrong save loaded",
+                gs._high_water_turn,
+                turn_after,
+            )
+            return (
+                f"CRITICAL: Turn regressed from {gs._high_water_turn} to {turn_after}. "
+                f"You may have loaded the wrong save file. "
+                f"Your most recent MCP autosave is {latest_autosave}. "
+                f'Use load_game_save("{latest_autosave}") to recover.'
+            )
+    if turn_after is not None:
+        gs._high_water_turn = max(gs._high_water_turn, turn_after)
+
     # Post-advance game-over check — victory can trigger during the turn
     # transition (e.g. science vessel arriving, diplo VP threshold).
     # Must check here so "GAME OVER" appears in result for log_game_over.
@@ -1090,6 +1132,14 @@ async def execute_end_turn(gs: GameState) -> str:
     except Exception:
         log.debug("Post-turn snapshot failed", exc_info=True)
         return f"Turn {turn_before} -> {turn_after}"
+
+    # MCP per-turn autosave — fire-and-forget after successful turn advance
+    if turn_after is not None:
+        try:
+            await save_game(gs.conn, f"MCP_AutoSave_{turn_after:04d}")
+            cleanup_old_autosaves(keep=10)
+        except Exception:
+            log.debug("MCP autosave failed for T%s", turn_after, exc_info=True)
 
     events: list[lq.TurnEvent] = []
     if snap_before:

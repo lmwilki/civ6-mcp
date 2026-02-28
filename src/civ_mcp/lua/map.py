@@ -12,6 +12,9 @@ from civ_mcp.lua._helpers import (
 from civ_mcp.lua.models import (
     DistrictPlacement,
     FogBoundary,
+    OwnershipDelta,
+    StaticMapDump,
+    StaticMapTile,
     WonderPlacement,
     NearbyResource,
     OwnedResource,
@@ -1129,3 +1132,195 @@ def parse_purchasable_tiles_response(lines: list[str]) -> list[PurchasableTile]:
                     )
                 )
     return results
+
+
+# ── Strategic map dump (for web replay) ──────────────────────────────────
+
+
+def build_static_map_dump() -> str:
+    """One-time full terrain extraction for strategic map replay.
+
+    Iterates every tile on the map and outputs static terrain data,
+    initial ownership, route types, city positions, and player-civ mapping.
+    Also initializes Lua globals for subsequent delta calls.
+
+    Uses InGame context (execute_write) for broadest API compatibility.
+    """
+    return f"""
+local w, h = Map.GetGridSize()
+local me = Game.GetLocalPlayer()
+print("SIZE|" .. w .. "|" .. h)
+-- Initialize delta tracking globals
+__civmcp_prev_owners = {{}}
+__civmcp_prev_routes = {{}}
+for y = 0, h - 1 do
+    local parts = {{}}
+    for x = 0, w - 1 do
+        local idx = y * w + x
+        local plot = Map.GetPlot(x, y)
+        local terrIdx = plot:GetTerrainType()
+        local featIdx = plot:GetFeatureType()
+        local hills = plot:IsHills() and 1 or 0
+        local river = plot:IsRiver() and 1 or 0
+        local coastal = plot:IsCoastalLand() and 1 or 0
+        local resIdx = plot:GetResourceType()
+        local owner = plot:GetOwner()
+        local routeType = -1
+        if pcall(function() routeType = plot:GetRouteType() end) then else routeType = -1 end
+        __civmcp_prev_owners[idx] = owner
+        __civmcp_prev_routes[idx] = routeType
+        table.insert(parts, terrIdx .. "," .. featIdx .. "," .. hills .. "," .. river .. "," .. coastal .. "," .. resIdx .. "," .. owner .. "," .. routeType)
+    end
+    print("ROW|" .. y .. "|" .. table.concat(parts, "|"))
+end
+for i = 0, 62 do
+    if Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
+        for _, c in Players[i]:GetCities():Members() do
+            print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation())
+        end
+    end
+end
+for i = 0, 62 do
+    if Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
+        local cfg = PlayerConfigurations[i]
+        if cfg then
+            local civType = cfg:GetCivilizationTypeName() or "UNKNOWN"
+            print("PLAYER|" .. i .. "|" .. civType)
+        end
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_static_map_dump(lines: list[str]) -> StaticMapDump:
+    """Parse SIZE|, ROW|, CITY|, PLAYER| lines from build_static_map_dump."""
+    grid_w, grid_h = 0, 0
+    tiles: list[StaticMapTile] = []
+    initial_owners: list[int] = []
+    initial_routes: list[int] = []
+    cities: list[tuple[int, int, int, int]] = []
+    players: list[tuple[int, str]] = []
+
+    for line in lines:
+        if line.startswith("SIZE|"):
+            parts = line.split("|")
+            grid_w, grid_h = int(parts[1]), int(parts[2])
+        elif line.startswith("ROW|"):
+            parts = line.split("|")
+            # parts[0]="ROW", parts[1]=y, parts[2..]=tile data
+            for tile_str in parts[2:]:
+                vals = tile_str.split(",")
+                if len(vals) >= 8:
+                    tiles.append(
+                        StaticMapTile(
+                            terrain=int(vals[0]),
+                            feature=int(vals[1]),
+                            hills=vals[2] == "1",
+                            river=vals[3] == "1",
+                            coastal=vals[4] == "1",
+                            resource=int(vals[5]),
+                        )
+                    )
+                    initial_owners.append(int(vals[6]))
+                    initial_routes.append(int(vals[7]))
+        elif line.startswith("CITY|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                xy = parts[1].split(",")
+                cities.append(
+                    (int(xy[0]), int(xy[1]), int(parts[2]), int(parts[3]))
+                )
+        elif line.startswith("PLAYER|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                players.append((int(parts[1]), parts[2]))
+
+    return StaticMapDump(
+        grid_w=grid_w,
+        grid_h=grid_h,
+        tiles=tiles,
+        initial_owners=initial_owners,
+        initial_routes=initial_routes,
+        initial_cities=cities,
+        players=players,
+    )
+
+
+def build_ownership_delta() -> str:
+    """Lightweight per-turn ownership/road delta for strategic map replay.
+
+    Uses Lua globals __civmcp_prev_owners and __civmcp_prev_routes
+    (initialized by build_static_map_dump) for change detection.
+    First call after game load (globals unset) produces a full diff.
+    """
+    return f"""
+local w, h = Map.GetGridSize()
+if not __civmcp_prev_owners then __civmcp_prev_owners = {{}} end
+if not __civmcp_prev_routes then __civmcp_prev_routes = {{}} end
+local ownerChanges = {{}}
+local roadChanges = {{}}
+for y = 0, h - 1 do
+    for x = 0, w - 1 do
+        local idx = y * w + x
+        local plot = Map.GetPlot(x, y)
+        local owner = plot:GetOwner()
+        if owner ~= (__civmcp_prev_owners[idx] or -99) then
+            table.insert(ownerChanges, idx .. "," .. owner)
+            __civmcp_prev_owners[idx] = owner
+        end
+        local routeType = -1
+        pcall(function() routeType = plot:GetRouteType() end)
+        if routeType ~= (__civmcp_prev_routes[idx] or -99) then
+            table.insert(roadChanges, idx .. "," .. routeType)
+            __civmcp_prev_routes[idx] = routeType
+        end
+    end
+end
+if #ownerChanges > 0 then
+    print("OWNERS|" .. table.concat(ownerChanges, "|"))
+end
+if #roadChanges > 0 then
+    print("ROADS|" .. table.concat(roadChanges, "|"))
+end
+for i = 0, 62 do
+    if Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
+        for _, c in Players[i]:GetCities():Members() do
+            print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation())
+        end
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_ownership_delta(lines: list[str]) -> OwnershipDelta:
+    """Parse OWNERS|, ROADS|, CITY| lines from build_ownership_delta."""
+    owner_changes: list[tuple[int, int]] = []
+    road_changes: list[tuple[int, int]] = []
+    cities: list[tuple[int, int, int, int]] = []
+
+    for line in lines:
+        if line.startswith("OWNERS|"):
+            for pair in line.split("|")[1:]:
+                vals = pair.split(",")
+                if len(vals) == 2:
+                    owner_changes.append((int(vals[0]), int(vals[1])))
+        elif line.startswith("ROADS|"):
+            for pair in line.split("|")[1:]:
+                vals = pair.split(",")
+                if len(vals) == 2:
+                    road_changes.append((int(vals[0]), int(vals[1])))
+        elif line.startswith("CITY|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                xy = parts[1].split(",")
+                cities.append(
+                    (int(xy[0]), int(xy[1]), int(parts[2]), int(parts[3]))
+                )
+
+    return OwnershipDelta(
+        owner_changes=owner_changes,
+        road_changes=road_changes,
+        cities=cities,
+    )
