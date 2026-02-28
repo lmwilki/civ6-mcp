@@ -20,7 +20,7 @@ import {
   ROAD_COLORS,
   CITY_MARKER,
 } from "@/lib/terrain-colors";
-import { getCivColors, getDefaultLeader } from "@/lib/civ-registry";
+import { getCivColors, getDefaultLeader, canonicalCivName } from "@/lib/civ-registry";
 import {
   Play,
   Pause,
@@ -513,7 +513,7 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
           return;
         }
 
-        const civName = cleanCivName(player.civ);
+        const civName = canonicalCivName(cleanCivName(player.civ));
         const cities = getCitiesAtTurn(currentTurnRef.current);
         const city = cities.find((c) => c.x === col && c.y === row);
 
@@ -675,7 +675,7 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
         {players
           .filter((p) => !p.csType)
           .map((p) => {
-            const civName = cleanCivName(p.civ);
+            const civName = canonicalCivName(cleanCivName(p.civ));
             const leader = getDefaultLeader(civName);
             return (
               <div
@@ -714,7 +714,7 @@ function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
                       }}
                     />
                     <span className="text-[10px] font-medium text-marble-400">
-                      {cleanCivName(p.civ)}
+                      {canonicalCivName(cleanCivName(p.civ))}
                     </span>
                   </div>
                 );
