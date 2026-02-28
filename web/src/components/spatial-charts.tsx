@@ -9,6 +9,8 @@ import {
   Area,
   BarChart,
   Bar,
+  Line,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -46,8 +48,25 @@ function turnFormatter(v: number) {
   return `T${v}`;
 }
 
-function tickInterval(dataLength: number) {
-  return Math.max(1, Math.ceil(dataLength / 6));
+/** Compute nice round tick values for a turn axis */
+function niceTurnTicks(data: { turn: number }[]): number[] {
+  if (data.length === 0) return [];
+  const min = data[0].turn;
+  const max = data[data.length - 1].turn;
+  const range = max - min;
+  if (range <= 0) return [min];
+  // Pick a step from a nice sequence that gives ~5-8 ticks
+  const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500];
+  const rawStep = range / 6;
+  const step = steps.find((s) => s >= rawStep) ?? Math.ceil(rawStep / 100) * 100;
+  const ticks: number[] = [];
+  const start = Math.ceil(min / step) * step;
+  for (let t = start; t <= max; t += step) {
+    ticks.push(t);
+  }
+  // Always include the first turn if it's not already there
+  if (ticks[0] !== min) ticks.unshift(min);
+  return ticks;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -185,20 +204,20 @@ export function SpatialStatsBar({ data }: { data: SpatialTurn[] }) {
 // ── Coverage chart (cumulative unique tiles) ─────────────────────────────
 
 function CoverageChart({ data, currentTurn }: { data: SpatialTurn[]; currentTurn: number }) {
-  const interval = tickInterval(data.length);
+  const ticks = useMemo(() => niceTurnTicks(data), [data]);
   return (
     <ResponsiveContainer width="100%" height={160}>
       <AreaChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} strokeOpacity={0.5} />
         <XAxis
           dataKey="turn"
           tickFormatter={turnFormatter}
-          interval={interval}
+          ticks={ticks}
           {...AXIS_STYLE}
         />
         <YAxis width={45} {...AXIS_STYLE} />
         <Tooltip content={<CustomTooltip formatter={() => "Tiles"} />} />
-        <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" />
+        <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" strokeWidth={1} strokeOpacity={0.7} />
         <Area
           type="monotone"
           dataKey="cumulative_tiles"
@@ -216,20 +235,29 @@ function CoverageChart({ data, currentTurn }: { data: SpatialTurn[]; currentTurn
 // ── Tiles per turn bar chart ─────────────────────────────────────────────
 
 function TilesPerTurnChart({ data, currentTurn }: { data: SpatialTurn[]; currentTurn: number }) {
-  const interval = tickInterval(data.length);
+  const chartData = useMemo(() => {
+    const WINDOW = 5;
+    return data.map((d, i) => {
+      const start = Math.max(0, i - WINDOW + 1);
+      const slice = data.slice(start, i + 1);
+      const avg = Math.round(slice.reduce((s, v) => s + v.tiles_observed, 0) / slice.length);
+      return { ...d, avg_5t: avg };
+    });
+  }, [data]);
+  const ticks = useMemo(() => niceTurnTicks(data), [data]);
   return (
     <ResponsiveContainer width="100%" height={160}>
-      <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+      <ComposedChart data={chartData}>
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} strokeOpacity={0.5} />
         <XAxis
           dataKey="turn"
           tickFormatter={turnFormatter}
-          interval={interval}
+          ticks={ticks}
           {...AXIS_STYLE}
         />
         <YAxis width={45} {...AXIS_STYLE} />
-        <Tooltip content={<CustomTooltip formatter={() => "Tiles"} />} />
-        <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" />
+        <Tooltip content={<CustomTooltip formatter={(name: string) => name === "avg_5t" ? "5-Turn Avg" : "Tiles"} />} />
+        <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" strokeWidth={1} strokeOpacity={0.7} />
         <Bar
           dataKey="tiles_observed"
           name="Tiles Observed"
@@ -237,7 +265,15 @@ function TilesPerTurnChart({ data, currentTurn }: { data: SpatialTurn[]; current
           opacity={0.7}
           radius={[2, 2, 0, 0]}
         />
-      </BarChart>
+        <Line
+          type="monotone"
+          dataKey="avg_5t"
+          name="avg_5t"
+          stroke={REFERENCE_LINE_COLOR}
+          strokeWidth={1.5}
+          dot={false}
+        />
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }
@@ -257,22 +293,22 @@ function AttentionStackedChart({ data, currentTurn }: { data: SpatialTurn[]; cur
     () => data.map((d) => ({ turn: d.turn, ...d.by_type })),
     [data],
   );
-  const interval = tickInterval(data.length);
+  const ticks = useMemo(() => niceTurnTicks(data), [data]);
 
   return (
     <div>
       <ResponsiveContainer width="100%" height={160}>
         <AreaChart data={flatData}>
-          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} strokeOpacity={0.5} />
           <XAxis
             dataKey="turn"
             tickFormatter={turnFormatter}
-            interval={interval}
+            ticks={ticks}
             {...AXIS_STYLE}
           />
           <YAxis width={45} {...AXIS_STYLE} />
           <Tooltip content={<CustomTooltip formatter={(name: string) => ATTENTION_LABEL_MAP[name] ?? name} />} />
-          <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" />
+          <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" strokeWidth={1} strokeOpacity={0.7} />
           {ATTENTION_TYPES.map((t) => (
             <Area
               key={t.key}
@@ -316,7 +352,7 @@ export function SpatialCharts({ data, currentTurn }: { data: SpatialTurn[]; curr
         title="Cumulative Coverage"
         icon={Eye}
         color={CIV6_COLORS.spatial}
-        description="Running total of unique map tiles the agent has queried. Steeper slopes indicate bursts of exploration; plateaus show the agent focused on known territory."
+        description="Total unique tiles queried over time. Steep slopes = exploration bursts, plateaus = known territory."
       >
         <CoverageChart data={data} currentTurn={currentTurn} />
       </ChartSection>
@@ -325,7 +361,7 @@ export function SpatialCharts({ data, currentTurn }: { data: SpatialTurn[]; curr
         title="Tiles Observed Per Turn"
         icon={ScanSearch}
         color={CIV6_COLORS.spatial}
-        description="Distinct tiles observed each turn. Spikes often correlate with scouting sweeps, settling decisions, or military reconnaissance."
+        description="Tiles observed per turn. Spikes correlate with scouting, settling, or military activity."
       >
         <TilesPerTurnChart data={data} currentTurn={currentTurn} />
       </ChartSection>
@@ -334,7 +370,7 @@ export function SpatialCharts({ data, currentTurn }: { data: SpatialTurn[]; curr
         title="Attention Type Breakdown"
         icon={Zap}
         color={CIV6_COLORS.goldMetal}
-        description="Breakdown of spatial queries by intentionality. Deliberate scans are explicit map reads the agent chose to make. Deliberate actions are commands issued at specific tiles. Surveys are broad reconnaissance sweeps. Peripheral tiles appeared in query results without being the primary focus. Reactive queries responded to game notifications."
+        description="Query types by intentionality, from deliberate scans to reactive notifications."
       >
         <AttentionStackedChart data={data} currentTurn={currentTurn} />
       </ChartSection>
