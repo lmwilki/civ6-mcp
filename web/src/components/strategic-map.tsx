@@ -228,14 +228,16 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
   const hexPos = useCallback(
     (col: number, row: number): [number, number] => {
       const cx = hexSize + col * 1.5 * hexSize;
+      // Flip Y: game Y increases southward, but minimap renders north-at-top
       // Odd-q offset: even columns shifted down
+      const flippedRow = gridH - 1 - row;
       const cy =
         (SQRT3 * hexSize) / 2 +
-        row * SQRT3 * hexSize +
+        flippedRow * SQRT3 * hexSize +
         (col % 2 === 0 ? (SQRT3 * hexSize) / 2 : 0);
       return [cx, cy];
     },
-    [hexSize],
+    [hexSize, gridH],
   );
 
   const drawHex = useCallback(
