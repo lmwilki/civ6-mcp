@@ -444,6 +444,12 @@ export const deleteGame = mutation({
       .collect();
     for (const row of spatialTurns) await ctx.db.delete(row._id);
 
+    const spatialMaps = await ctx.db
+      .query("spatialMaps")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .collect();
+    for (const row of spatialMaps) await ctx.db.delete(row._id);
+
     return {
       deleted: {
         game: game ? 1 : 0,
@@ -451,6 +457,7 @@ export const deleteGame = mutation({
         cityRows: cityRows.length,
         logEntries: logEntries.length,
         spatialTurns: spatialTurns.length,
+        spatialMaps: spatialMaps.length,
       },
     };
   },
@@ -648,6 +655,29 @@ export const ingestSpatialTurns = mutation({
     }
 
     await ctx.db.patch(game._id, patch);
+  },
+});
+
+export const ingestSpatialMap = mutation({
+  args: {
+    gameId: v.string(),
+    minX: v.number(),
+    maxX: v.number(),
+    minY: v.number(),
+    maxY: v.number(),
+    tileCount: v.number(),
+    tiles: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("spatialMaps")
+      .withIndex("by_gameId", (q) => q.eq("gameId", args.gameId))
+      .unique();
+    if (existing) {
+      await ctx.db.replace(existing._id, args);
+    } else {
+      await ctx.db.insert("spatialMaps", args);
+    }
   },
 });
 

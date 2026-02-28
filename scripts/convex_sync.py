@@ -452,6 +452,75 @@ async def sync_spatial(
     state["files"][name] = file_state
     state["game_last_seen"][game_id] = time.time()
 
+    # Also push tile-level heatmap blob
+    await sync_spatial_map(entries, game_id, client)
+
+
+async def sync_spatial_map(
+    entries: list[dict[str, Any]], game_id: str, client: ConvexClient
+) -> None:
+    """Compute per-tile aggregates from spatial entries and push as one blob."""
+    TYPE_MAP = {
+        "deliberate_scan": "ds",
+        "deliberate_action": "da",
+        "survey": "sv",
+        "peripheral": "pe",
+        "reactive": "re",
+    }
+
+    tile_data: dict[tuple[int, int], dict[str, int]] = {}
+
+    for entry in entries:
+        turn = entry.get("turn")
+        short = TYPE_MAP.get(entry.get("type", ""), "")
+        if turn is None:
+            continue
+        for tile in entry.get("tiles", []):
+            if not isinstance(tile, list) or len(tile) != 2:
+                continue
+            key = (tile[0], tile[1])
+            if key not in tile_data:
+                tile_data[key] = {
+                    "ds": 0, "da": 0, "sv": 0, "pe": 0, "re": 0,
+                    "ft": turn, "lt": turn,
+                }
+            td = tile_data[key]
+            if short:
+                td[short] += 1
+            td["ft"] = min(td["ft"], turn)
+            td["lt"] = max(td["lt"], turn)
+
+    if not tile_data:
+        return
+
+    xs = [k[0] for k in tile_data]
+    ys = [k[1] for k in tile_data]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    # Pack: [x, y, total, ds, da, sv, pe, re, firstTurn, lastTurn] per tile
+    flat: list[int] = []
+    for (x, y), td in tile_data.items():
+        total = td["ds"] + td["da"] + td["sv"] + td["pe"] + td["re"]
+        flat.extend([x, y, total, td["ds"], td["da"], td["sv"], td["pe"], td["re"], td["ft"], td["lt"]])
+
+    await client.mutation(
+        "ingest:ingestSpatialMap",
+        {
+            "gameId": game_id,
+            "minX": min_x,
+            "maxX": max_x,
+            "minY": min_y,
+            "maxY": max_y,
+            "tileCount": len(tile_data),
+            "tiles": flat,
+        },
+    )
+    log.info(
+        "spatial map %s: %d tiles, bounds (%d,%d)-(%d,%d)",
+        game_id, len(tile_data), min_x, min_y, max_x, max_y,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Dispatcher

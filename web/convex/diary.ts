@@ -107,6 +107,17 @@ export const getSpatialTurns = query({
   },
 });
 
+/** Tile-level spatial attention map for hex heatmap. One doc per game. */
+export const getSpatialMap = query({
+  args: { gameId: v.string() },
+  handler: async (ctx, { gameId }) => {
+    return ctx.db
+      .query("spatialMaps")
+      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+      .unique();
+  },
+});
+
 /** Single turn's player + city rows. Reads ~12 docs instead of ~2000. */
 export const getGameTurnDetail = query({
   args: { gameId: v.string(), turn: v.number() },

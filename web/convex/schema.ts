@@ -207,4 +207,16 @@ export default defineSchema({
       reactive: v.number(),
     }),
   }).index("by_game_turn", ["gameId", "turn"]),
+
+  // One doc per game — pre-aggregated per-tile spatial attention map for hex heatmap
+  spatialMaps: defineTable({
+    gameId: v.string(),
+    minX: v.number(),
+    maxX: v.number(),
+    minY: v.number(),
+    maxY: v.number(),
+    tileCount: v.number(),
+    // Flat packed: [x, y, total, ds, da, sv, pe, re, firstTurn, lastTurn] × N
+    tiles: v.array(v.number()),
+  }).index("by_gameId", ["gameId"]),
 });

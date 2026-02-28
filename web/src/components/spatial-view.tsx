@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { SpatialTurn } from "@/lib/diary-types";
+import { unpackSpatialTiles } from "@/lib/diary-types";
+import type { SpatialTile } from "@/lib/diary-types";
 import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 import {
@@ -15,6 +17,7 @@ import {
   Radar,
   MousePointerClick,
   Bell,
+  Map as MapIcon,
 } from "lucide-react";
 
 // Attention type metadata for display
@@ -86,6 +89,11 @@ export function SpatialView({ gameId }: SpatialViewProps) {
     <div className="mx-auto max-w-4xl space-y-6 px-3 py-6 sm:px-6">
       {/* Summary stats */}
       {stats && <StatsBar stats={stats} />}
+
+      {/* Hex heatmap */}
+      <ChartSection title="Attention Heatmap" icon={MapIcon} color={CIV6_COLORS.spatial}>
+        <HexHeatmap gameId={gameId} />
+      </ChartSection>
 
       {/* Coverage chart */}
       <ChartSection title="Cumulative Coverage" icon={Eye} color={CIV6_COLORS.spatial}>
@@ -521,6 +529,200 @@ function AttentionStackedChart({ data }: { data: SpatialTurn[] }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ── Hex heatmap ──────────────────────────────────────────────────────────
+
+const SQRT3 = Math.sqrt(3);
+
+/** Short key → ATTENTION_TYPES index for color lookup */
+const TYPE_SHORT_KEYS = [
+  { short: "ds", key: "deliberate_scan" },
+  { short: "da", key: "deliberate_action" },
+  { short: "sv", key: "survey" },
+  { short: "pe", key: "peripheral" },
+  { short: "re", key: "reactive" },
+] as const;
+
+function hexColor(count: number, maxCount: number): string {
+  if (count === 0) return "transparent";
+  const t = Math.log(count + 1) / Math.log(maxCount + 1);
+  const alpha = 0.15 + t * 0.75;
+  return `rgba(147, 51, 234, ${alpha.toFixed(3)})`;
+}
+
+/** Flat-top hex polygon points centered at (cx, cy) with size s */
+function hexPoints(cx: number, cy: number, s: number): string {
+  const h = (SQRT3 / 2) * s;
+  return [
+    [cx + s, cy],
+    [cx + s / 2, cy + h],
+    [cx - s / 2, cy + h],
+    [cx - s, cy],
+    [cx - s / 2, cy - h],
+    [cx + s / 2, cy - h],
+  ]
+    .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ");
+}
+
+function HexHeatmap({ gameId }: { gameId: string }) {
+  const rawMap = useQuery(api.diary.getSpatialMap, { gameId });
+  const [activeTypes, setActiveTypes] = useState<Set<string>>(
+    new Set(["ds", "da", "sv", "pe", "re"]),
+  );
+  const [hovered, setHovered] = useState<SpatialTile | null>(null);
+
+  const computed = useMemo(() => {
+    if (!rawMap) return null;
+
+    const tiles = unpackSpatialTiles(rawMap.tiles);
+    const gridW = rawMap.maxX - rawMap.minX + 1;
+    const gridH = rawMap.maxY - rawMap.minY + 1;
+
+    // Auto-size hexes to fit ~700px wide
+    const hexSize = Math.min(10, 700 / (gridW * 1.5 + 0.5));
+    const hexH = SQRT3 * hexSize;
+    const svgW = gridW * 1.5 * hexSize + hexSize * 2;
+    const svgH = (gridH + 0.5) * hexH + hexSize;
+
+    // Compute filtered count per tile
+    const tilesWithCount = tiles.map((t) => {
+      let count = 0;
+      if (activeTypes.has("ds")) count += t.ds;
+      if (activeTypes.has("da")) count += t.da;
+      if (activeTypes.has("sv")) count += t.sv;
+      if (activeTypes.has("pe")) count += t.pe;
+      if (activeTypes.has("re")) count += t.re;
+      return { ...t, filteredCount: count };
+    });
+
+    const maxCount = Math.max(1, ...tilesWithCount.map((t) => t.filteredCount));
+
+    // Compute pixel positions for each tile (flat-top offset coordinates)
+    const hexes = tilesWithCount
+      .filter((t) => t.filteredCount > 0)
+      .map((t) => {
+        const col = t.x - rawMap.minX;
+        const row = t.y - rawMap.minY;
+        const cx = hexSize + col * 1.5 * hexSize;
+        const cy = hexH / 2 + row * hexH + (col % 2 !== 0 ? hexH / 2 : 0);
+        return { ...t, cx, cy };
+      });
+
+    return { hexes, maxCount, svgW, svgH, hexSize, tileCount: tiles.length };
+  }, [rawMap, activeTypes]);
+
+  if (!rawMap) {
+    return (
+      <p className="py-4 text-center text-xs text-marble-400">
+        No tile-level data available yet.
+      </p>
+    );
+  }
+
+  if (!computed || computed.hexes.length === 0) {
+    return (
+      <p className="py-4 text-center text-xs text-marble-400">
+        No tiles match the selected attention types.
+      </p>
+    );
+  }
+
+  const { hexes, maxCount, svgW, svgH, hexSize, tileCount } = computed;
+
+  return (
+    <div className="space-y-3">
+      {/* Attention type toggles */}
+      <div className="flex flex-wrap gap-2">
+        {TYPE_SHORT_KEYS.map(({ short, key }) => {
+          const meta = ATTENTION_TYPES.find((t) => t.key === key)!;
+          const active = activeTypes.has(short);
+          return (
+            <button
+              key={short}
+              onClick={() => {
+                const next = new Set(activeTypes);
+                if (active) next.delete(short);
+                else next.add(short);
+                setActiveTypes(next);
+              }}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-opacity ${
+                active
+                  ? "border-marble-400 bg-marble-100 text-marble-700"
+                  : "border-marble-200 bg-marble-50 text-marble-400 opacity-50"
+              }`}
+            >
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: meta.color }}
+              />
+              {meta.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* SVG hex grid */}
+      <div className="relative overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${svgW.toFixed(0)} ${svgH.toFixed(0)}`}
+          className="w-full"
+          style={{ maxHeight: 500 }}
+        >
+          {hexes.map((h) => (
+            <polygon
+              key={`${h.x},${h.y}`}
+              points={hexPoints(h.cx, h.cy, hexSize * 0.95)}
+              fill={hexColor(h.filteredCount, maxCount)}
+              stroke="rgba(147, 51, 234, 0.15)"
+              strokeWidth="0.5"
+              onMouseEnter={() => setHovered(h)}
+              onMouseLeave={() => setHovered(null)}
+              className="cursor-crosshair"
+            />
+          ))}
+        </svg>
+
+        {/* Tooltip */}
+        {hovered && (
+          <div className="pointer-events-none absolute left-4 top-4 rounded border border-marble-300 bg-marble-50/95 px-3 py-2 shadow-sm">
+            <div className="font-mono text-xs font-semibold text-marble-700">
+              ({hovered.x}, {hovered.y})
+            </div>
+            <div className="mt-1 space-y-0.5 text-[10px] text-marble-600">
+              <div>
+                Total: <span className="font-mono font-semibold">{hovered.total}</span>
+              </div>
+              {TYPE_SHORT_KEYS.map(({ short, key }) => {
+                const val = hovered[short as keyof SpatialTile] as number;
+                if (val === 0) return null;
+                const meta = ATTENTION_TYPES.find((t) => t.key === key)!;
+                return (
+                  <div key={short} className="flex items-center gap-1">
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: meta.color }}
+                    />
+                    {meta.label}: <span className="font-mono">{val}</span>
+                  </div>
+                );
+              })}
+              <div className="mt-1 border-t border-marble-200 pt-1 text-marble-500">
+                Turns {hovered.firstTurn}–{hovered.lastTurn}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Summary */}
+      <div className="text-[10px] text-marble-400">
+        {tileCount.toLocaleString()} tiles observed across{" "}
+        {rawMap.maxX - rawMap.minX + 1}&times;{rawMap.maxY - rawMap.minY + 1} grid
       </div>
     </div>
   );

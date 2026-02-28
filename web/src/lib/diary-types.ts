@@ -210,6 +210,43 @@ export interface SpatialTurn {
   };
 }
 
+// === Spatial tile map (one blob per game, for hex heatmap) ===
+
+export interface SpatialTile {
+  x: number;
+  y: number;
+  total: number;
+  ds: number; // deliberate_scan
+  da: number; // deliberate_action
+  sv: number; // survey
+  pe: number; // peripheral
+  re: number; // reactive
+  firstTurn: number;
+  lastTurn: number;
+}
+
+const SPATIAL_TILE_STRIDE = 10;
+
+/** Unpack flat stride-10 tile array into SpatialTile objects */
+export function unpackSpatialTiles(flat: number[]): SpatialTile[] {
+  const tiles: SpatialTile[] = [];
+  for (let i = 0; i < flat.length; i += SPATIAL_TILE_STRIDE) {
+    tiles.push({
+      x: flat[i],
+      y: flat[i + 1],
+      total: flat[i + 2],
+      ds: flat[i + 3],
+      da: flat[i + 4],
+      sv: flat[i + 5],
+      pe: flat[i + 6],
+      re: flat[i + 7],
+      firstTurn: flat[i + 8],
+      lastTurn: flat[i + 9],
+    });
+  }
+  return tiles;
+}
+
 // === Grouped view (client-side computed) ===
 
 export interface TurnData {
