@@ -27,7 +27,7 @@ import {
   SkipForward,
   Map as MapIcon,
 } from "lucide-react";
-import { CivIcon } from "./civ-icon";
+import { CivIcon, CivSymbol } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 
 const SQRT3 = Math.sqrt(3);
@@ -582,17 +582,19 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
           .filter((p) => !p.csType)
           .map((p) => {
             const colors = playerColors.get(p.pid);
+            const civName = cleanCivName(p.civ);
             return (
               <div
                 key={p.pid}
                 className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
               >
+                <CivSymbol civ={civName} className="h-3 w-3" />
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-sm"
                   style={{ backgroundColor: colors?.primary ?? "#888" }}
                 />
                 <span className="text-[10px] font-medium text-marble-600">
-                  {cleanCivName(p.civ)}
+                  {civName}
                 </span>
               </div>
             );
