@@ -164,7 +164,7 @@ export function StrategicMap({ gameId }: StrategicMapProps) {
 
 // Attention type weights — higher = more intentional observation
 const ATTENTION_WEIGHTS = { ds: 5, da: 4, sv: 3, pe: 2, re: 1 };
-const MAX_DARK = 0.6; // unobserved tile darkness (0=clear, 1=black)
+const MAX_DARK = 0.9; // unobserved tile darkness (0=clear, 1=black)
 
 interface SpatialMapDoc {
   minX: number; maxX: number; minY: number; maxY: number;
@@ -187,8 +187,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
   const animRef = useRef(0);
   const lastFrameRef = useRef(0);
   const [hexSize, setHexSize] = useState(6);
-  const [showAttention, setShowAttention] = useState(true);
-  const showAttentionRef = useRef(true);
+  const [showAttention, setShowAttention] = useState(false);
+  const showAttentionRef = useRef(false);
 
   // ── Unpack & precompute ───────────────────────────────────────────────
 
@@ -505,7 +505,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             });
         }
 
-        // Sensorium attention overlay — darkness lifts where the agent has observed
+        // Agent attention overlay — darkness lifts where the agent has observed
         attentionGfx.clear();
         if (attentionData && showAttentionRef.current) {
           const logMax = Math.log(attentionData.maxWeight + 1);
@@ -670,10 +670,9 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     <div className="mx-auto max-w-4xl space-y-4 px-3 py-6 sm:px-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
-          <CivIcon icon={MapIcon} color={CIV6_COLORS.spatial} size="sm" />
-          Strategic Map
-        </h3>
+        <h2 className="font-display text-lg font-semibold text-marble-800">
+          Map
+        </h2>
         <div className="flex items-center gap-3">
           {attentionData && (
             <button
@@ -690,7 +689,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
               ) : (
                 <EyeOff className="h-3 w-3" />
               )}
-              Sensorium
+              Agent Attention
             </button>
           )}
           <span className="font-mono text-sm tabular-nums text-marble-600">
