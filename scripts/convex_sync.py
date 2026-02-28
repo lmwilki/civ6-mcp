@@ -597,16 +597,17 @@ async def sync_map_data(
             road_frames.append(len(roads) // 2)
             road_frames.extend(roads)
 
+    # Convex caps arrays at 8192 elements — encode large arrays as JSON strings
     payload = {
         "gameId": game_id,
         "gridW": static_data["gridW"],
         "gridH": static_data["gridH"],
-        "terrain": static_data["terrain"],
-        "initialOwners": static_data["initialOwners"],
+        "terrain": json.dumps(static_data["terrain"]),
+        "initialOwners": json.dumps(static_data["initialOwners"]),
         "initialTurn": static_data.get("initialTurn", 0),
-        "ownerFrames": owner_frames,
-        "cityFrames": city_frames,
-        "roadFrames": road_frames,
+        "ownerFrames": json.dumps(owner_frames),
+        "cityFrames": json.dumps(city_frames),
+        "roadFrames": json.dumps(road_frames),
         "players": static_data.get("players", []),
         "maxTurn": max_turn,
     }

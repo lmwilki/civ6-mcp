@@ -94,17 +94,24 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     maxTurn,
     initialTurn,
   } = useMemo(() => {
-    const t = unpackTerrain(mapData.terrain);
-    const of_ = unpackOwnerFrames(mapData.ownerFrames);
-    const cf = unpackCityFrames(mapData.cityFrames);
-    const rf = unpackRoadFrames(mapData.roadFrames);
+    // Convex stores large arrays as JSON strings (8192 array cap)
+    const terrainArr: number[] = JSON.parse(mapData.terrain);
+    const initialOwnersArr: number[] = JSON.parse(mapData.initialOwners);
+    const ownerFramesArr: number[] = JSON.parse(mapData.ownerFrames);
+    const cityFramesArr: number[] = JSON.parse(mapData.cityFrames);
+    const roadFramesArr: number[] = JSON.parse(mapData.roadFrames);
+
+    const t = unpackTerrain(terrainArr);
+    const of_ = unpackOwnerFrames(ownerFramesArr);
+    const cf = unpackCityFrames(cityFramesArr);
+    const rf = unpackRoadFrames(roadFramesArr);
 
     const tileCount = mapData.gridW * mapData.gridH;
 
     // Ownership keyframes (snapshots at change points)
     const owners = new Int8Array(tileCount);
     for (let i = 0; i < tileCount; i++) {
-      owners[i] = mapData.initialOwners[i] ?? -1;
+      owners[i] = initialOwnersArr[i] ?? -1;
     }
     const ownerKf: { turn: number; owners: Int8Array }[] = [
       { turn: mapData.initialTurn, owners: Int8Array.from(owners) },

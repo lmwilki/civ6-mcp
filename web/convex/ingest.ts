@@ -693,12 +693,13 @@ export const ingestMapData = mutation({
     gameId: v.string(),
     gridW: v.number(),
     gridH: v.number(),
-    terrain: v.array(v.number()),
-    initialOwners: v.array(v.number()),
+    // JSON-encoded number[] strings — Convex caps arrays at 8192 elements
+    terrain: v.string(),
+    initialOwners: v.string(),
     initialTurn: v.number(),
-    ownerFrames: v.array(v.number()),
-    cityFrames: v.array(v.number()),
-    roadFrames: v.array(v.number()),
+    ownerFrames: v.string(),
+    cityFrames: v.string(),
+    roadFrames: v.string(),
     players: v.array(v.object({ pid: v.number(), civ: v.string() })),
     maxTurn: v.number(),
   },
@@ -706,7 +707,7 @@ export const ingestMapData = mutation({
     const existing = await ctx.db
       .query("mapData")
       .withIndex("by_gameId", (q) => q.eq("gameId", args.gameId))
-      .unique();
+      .first();
     if (existing) {
       await ctx.db.replace(existing._id, args);
     } else {

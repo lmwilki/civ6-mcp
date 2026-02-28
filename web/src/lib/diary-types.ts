@@ -250,15 +250,16 @@ export function unpackSpatialTiles(flat: number[]): SpatialTile[] {
 // === Strategic map data (pre-aggregated per game) ===
 
 /** Shape of the Convex mapData document (one per game). */
+/** Raw shape from Convex — large arrays stored as JSON strings (Convex 8192 array cap) */
 export interface MapDataDoc {
   gridW: number;
   gridH: number;
-  terrain: number[];
-  initialOwners: number[];
+  terrain: string;
+  initialOwners: string;
   initialTurn: number;
-  ownerFrames: number[];
-  cityFrames: number[];
-  roadFrames: number[];
+  ownerFrames: string;
+  cityFrames: string;
+  roadFrames: string;
   players: { pid: number; civ: string }[];
   maxTurn: number;
 }

@@ -214,17 +214,13 @@ export default defineSchema({
     gameId: v.string(),
     gridW: v.number(),
     gridH: v.number(),
-    // Static terrain: stride-6, row-major [terrain, feature, hills, river, coastal, resource]
-    terrain: v.array(v.number()),
-    // Initial ownership: one owner per tile (-1 = unowned), row-major
-    initialOwners: v.array(v.number()),
+    // Large numeric arrays stored as JSON strings — Convex caps arrays at 8192 elements
+    terrain: v.string(),       // stride-6, row-major [terrain, feature, hills, river, coastal, resource]
+    initialOwners: v.string(), // one owner per tile (-1 = unowned), row-major
     initialTurn: v.number(),
-    // Ownership deltas: packed [turn, count, tileIdx, owner, ...]
-    ownerFrames: v.array(v.number()),
-    // City events: packed [turn, count, x, y, pid, pop, ...]
-    cityFrames: v.array(v.number()),
-    // Road deltas: packed [turn, count, tileIdx, routeType, ...]
-    roadFrames: v.array(v.number()),
+    ownerFrames: v.string(),   // packed [turn, count, tileIdx, owner, ...]
+    cityFrames: v.string(),    // packed [turn, count, x, y, pid, pop, ...]
+    roadFrames: v.string(),    // packed [turn, count, tileIdx, routeType, ...]
     // Player→civ mapping for territory coloring
     players: v.array(v.object({ pid: v.number(), civ: v.string() })),
     maxTurn: v.number(),
