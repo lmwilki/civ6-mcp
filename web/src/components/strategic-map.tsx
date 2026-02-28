@@ -17,7 +17,6 @@ import {
   getFeatureOverlay,
   FEATURE_OVERLAY_ALPHA,
   ROAD_COLORS,
-  TERRITORY_ALPHA,
   CITY_MARKER,
 } from "@/lib/terrain-colors";
 import { getCivColors } from "@/lib/civ-registry";
@@ -312,9 +311,8 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
       ctx.drawImage(terrainCanvas, 0, 0);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Layer 2: territory overlay
+      // Layer 2: solid territory fill
       const owners = getOwnersAtTurn(turn);
-      ctx.globalAlpha = TERRITORY_ALPHA;
       for (let y = 0; y < gridH; y++) {
         for (let x = 0; x < gridW; x++) {
           const idx = y * gridW + x;
@@ -328,7 +326,55 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
           ctx.fill();
         }
       }
-      ctx.globalAlpha = 1;
+
+      // Layer 2b: inner territory borders
+      // Flat-top, even-column offset neighbor deltas
+      const neighborsEven = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 0], [-1, -1]];
+      const neighborsOdd  = [[0, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      // Edge vertex indices (pairs) matching the 6 neighbor directions
+      // Vertices: 0=right, 1=bot-right, 2=bot-left, 3=left, 4=top-left, 5=top-right
+      const edgeVertices: [number, number][] = [[4, 5], [5, 0], [0, 1], [1, 2], [2, 3], [3, 4]];
+      const INSET = 0.82; // how far inset from center (1 = on edge, 0 = at center)
+      const h = (SQRT3 / 2) * hexSize * 0.98;
+      const s98 = hexSize * 0.98;
+      // Precompute the 6 vertex offsets from hex center
+      const vOffsets: [number, number][] = [
+        [s98, 0], [s98 / 2, h], [-s98 / 2, h],
+        [-s98, 0], [-s98 / 2, -h], [s98 / 2, -h],
+      ];
+
+      ctx.lineWidth = Math.max(1, hexSize * 0.2);
+      ctx.lineCap = "round";
+      for (let y = 0; y < gridH; y++) {
+        for (let x = 0; x < gridW; x++) {
+          const idx = y * gridW + x;
+          const owner = owners[idx];
+          if (owner < 0) continue;
+          const colors = playerColors.get(owner);
+          if (!colors) continue;
+          const [cx, cy] = hexPos(x, y);
+          const deltas = x % 2 === 0 ? neighborsEven : neighborsOdd;
+          ctx.strokeStyle = colors.secondary;
+          for (let d = 0; d < 6; d++) {
+            const nx = x + deltas[d][0];
+            const ny = y + deltas[d][1];
+            // Draw border if neighbor is out of bounds or different owner
+            const nOwner = (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH)
+              ? owners[ny * gridW + nx]
+              : -1;
+            if (nOwner === owner) continue;
+            const [vi, vj] = edgeVertices[d];
+            const x1 = cx + vOffsets[vi][0] * INSET;
+            const y1 = cy + vOffsets[vi][1] * INSET;
+            const x2 = cx + vOffsets[vj][0] * INSET;
+            const y2 = cy + vOffsets[vj][1] * INSET;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+          }
+        }
+      }
 
       // Layer 3: roads (dots)
       const roads = getRoadsAtTurn(turn);
