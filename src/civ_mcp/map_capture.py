@@ -87,7 +87,8 @@ class MapCapture:
                     for c in dump.initial_cities
                 ],
                 "players": [
-                    {"pid": p[0], "civ": p[1]} for p in dump.players
+                    {"pid": p[0], "civ": p[1], **({"csType": p[2]} if p[2] else {})}
+                    for p in dump.players
                 ],
                 "initialTurn": turn,
             }

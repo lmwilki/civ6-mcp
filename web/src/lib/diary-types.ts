@@ -260,7 +260,7 @@ export interface MapDataDoc {
   ownerFrames: string;
   cityFrames: string;
   roadFrames: string;
-  players: { pid: number; civ: string }[];
+  players: { pid: number; civ: string; csType?: string }[];
   maxTurn: number;
 }
 

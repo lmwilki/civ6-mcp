@@ -222,7 +222,7 @@ export default defineSchema({
     cityFrames: v.string(),    // packed [turn, count, x, y, pid, pop, ...]
     roadFrames: v.string(),    // packed [turn, count, tileIdx, routeType, ...]
     // Player→civ mapping for territory coloring
-    players: v.array(v.object({ pid: v.number(), civ: v.string() })),
+    players: v.array(v.object({ pid: v.number(), civ: v.string(), csType: v.optional(v.string()) })),
     maxTurn: v.number(),
   }).index("by_gameId", ["gameId"]),
 

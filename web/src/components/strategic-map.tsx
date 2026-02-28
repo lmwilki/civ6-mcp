@@ -32,6 +32,15 @@ import { CIV6_COLORS } from "@/lib/civ-colors";
 
 const SQRT3 = Math.sqrt(3);
 
+const CS_TYPE_COLORS: Record<string, string> = {
+  Scientific: "#4A90D9",
+  Cultural: "#9B59B6",
+  Militaristic: "#CA1415",
+  Religious: "#F9F9F9",
+  Trade: "#F7D801",
+  Industrial: "#FF8112",
+};
+
 interface StrategicMapProps {
   gameId: string;
 }
@@ -152,7 +161,15 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
   const playerColors = useMemo(() => {
     const map = new Map<number, { primary: string; secondary: string }>();
     for (const p of players) {
-      map.set(p.pid, getCivColors(cleanCivName(p.civ)));
+      if (p.csType) {
+        // City-state: dark fill, type-colored borders
+        map.set(p.pid, {
+          primary: "#1a1a2e",
+          secondary: CS_TYPE_COLORS[p.csType] ?? "#888888",
+        });
+      } else {
+        map.set(p.pid, getCivColors(cleanCivName(p.civ)));
+      }
     }
     return map;
   }, [players]);
@@ -167,7 +184,7 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
 
     const observer = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 800;
-      const s = Math.min(8, (w - 20) / (gridW * 1.5 + 0.5));
+      const s = Math.min(8, (w - 20) / (SQRT3 * (gridW + 0.5)));
       setHexSize(Math.max(2, s));
     });
 
@@ -175,8 +192,8 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     return () => observer.disconnect();
   }, [gridW]);
 
-  const canvasW = Math.ceil(gridW * 1.5 * hexSize + hexSize * 2);
-  const canvasH = Math.ceil((gridH + 0.5) * SQRT3 * hexSize + hexSize);
+  const canvasW = Math.ceil(SQRT3 * hexSize * (gridW + 0.5) + SQRT3 * hexSize);
+  const canvasH = Math.ceil(1.5 * hexSize * gridH + hexSize * 2);
 
   // ── Keyframe lookup (binary search for latest snapshot <= turn) ─────
 
@@ -223,18 +240,17 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     [roadKeyframes],
   );
 
-  // ── Hex geometry (flat-top, even-column offset) ────────────────────────
+  // ── Hex geometry (pointy-top, even-r offset) ──────────────────────────
 
   const hexPos = useCallback(
     (col: number, row: number): [number, number] => {
-      const cx = hexSize + col * 1.5 * hexSize;
-      // Flip Y: game Y increases southward, but minimap renders north-at-top
-      // Odd-q offset: even columns shifted down
+      // Flip Y: game Y increases southward, minimap renders north-at-top
       const flippedRow = gridH - 1 - row;
-      const cy =
-        (SQRT3 * hexSize) / 2 +
-        flippedRow * SQRT3 * hexSize +
-        (col % 2 === 0 ? (SQRT3 * hexSize) / 2 : 0);
+      // Pointy-top even-r: even rows shifted right by half a hex width
+      const cx =
+        SQRT3 * hexSize * (col + 0.5 * (flippedRow & 1)) +
+        (SQRT3 * hexSize) / 2;
+      const cy = 1.5 * hexSize * flippedRow + hexSize;
       return [cx, cy];
     },
     [hexSize, gridH],
@@ -242,14 +258,15 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
 
   const drawHex = useCallback(
     (ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number) => {
+      // Pointy-top: vertex at top, clockwise
       const h = (SQRT3 / 2) * s;
       ctx.beginPath();
-      ctx.moveTo(cx + s, cy);
-      ctx.lineTo(cx + s / 2, cy + h);
-      ctx.lineTo(cx - s / 2, cy + h);
-      ctx.lineTo(cx - s, cy);
-      ctx.lineTo(cx - s / 2, cy - h);
-      ctx.lineTo(cx + s / 2, cy - h);
+      ctx.moveTo(cx, cy - s); // top
+      ctx.lineTo(cx + h, cy - s / 2); // NE
+      ctx.lineTo(cx + h, cy + s / 2); // SE
+      ctx.lineTo(cx, cy + s); // bottom
+      ctx.lineTo(cx - h, cy + s / 2); // SW
+      ctx.lineTo(cx - h, cy - s / 2); // NW
       ctx.closePath();
     },
     [],
@@ -331,19 +348,24 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
       }
 
       // Layer 2b: inner territory borders
-      // Flat-top, odd-q offset: even columns shifted, odd columns standard
-      const neighborsEven = [[0, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
-      const neighborsOdd  = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 0], [-1, -1]];
-      // Edge vertex indices (pairs) matching the 6 neighbor directions
-      // Vertices: 0=right, 1=bot-right, 2=bot-left, 3=left, 4=top-left, 5=top-right
-      const edgeVertices: [number, number][] = [[4, 5], [5, 0], [0, 1], [1, 2], [2, 3], [3, 4]];
-      const INSET = 0.82; // how far inset from center (1 = on edge, 0 = at center)
+      // Pointy-top, even-r offset: even rows shifted right
+      // Directions: E, SE, SW, W, NW, NE
+      const neighborsEven = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
+      const neighborsOdd  = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
+      // Edge vertex indices matching the 6 directions
+      // Pointy-top vertices: 0=top, 1=NE, 2=SE, 3=bottom, 4=SW, 5=NW
+      const edgeVertices: [number, number][] = [[1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [0, 1]];
+      const INSET = 0.82;
       const h = (SQRT3 / 2) * hexSize * 0.98;
       const s98 = hexSize * 0.98;
-      // Precompute the 6 vertex offsets from hex center
+      // Pointy-top vertex offsets from hex center
       const vOffsets: [number, number][] = [
-        [s98, 0], [s98 / 2, h], [-s98 / 2, h],
-        [-s98, 0], [-s98 / 2, -h], [s98 / 2, -h],
+        [0, -s98],          // 0: top
+        [h, -s98 / 2],      // 1: NE
+        [h, s98 / 2],       // 2: SE
+        [0, s98],           // 3: bottom
+        [-h, s98 / 2],      // 4: SW
+        [-h, -s98 / 2],     // 5: NW
       ];
 
       ctx.lineWidth = Math.max(1, hexSize * 0.2);
@@ -356,7 +378,8 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
           const colors = playerColors.get(owner);
           if (!colors) continue;
           const [cx, cy] = hexPos(x, y);
-          const deltas = x % 2 === 0 ? neighborsEven : neighborsOdd;
+          // Use original y for parity (game coordinates, not flipped)
+          const deltas = y % 2 === 0 ? neighborsEven : neighborsOdd;
           ctx.strokeStyle = colors.secondary;
           for (let d = 0; d < 6; d++) {
             const nx = x + deltas[d][0];
@@ -552,23 +575,52 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
 
       {/* Civ legend */}
       <div className="flex flex-wrap gap-2">
-        {players.map((p) => {
-          const colors = playerColors.get(p.pid);
-          return (
-            <div
-              key={p.pid}
-              className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
-            >
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-sm"
-                style={{ backgroundColor: colors?.primary ?? "#888" }}
-              />
-              <span className="text-[10px] font-medium text-marble-600">
-                {cleanCivName(p.civ)}
-              </span>
-            </div>
-          );
-        })}
+        {players
+          .filter((p) => !p.csType)
+          .map((p) => {
+            const colors = playerColors.get(p.pid);
+            return (
+              <div
+                key={p.pid}
+                className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
+              >
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-sm"
+                  style={{ backgroundColor: colors?.primary ?? "#888" }}
+                />
+                <span className="text-[10px] font-medium text-marble-600">
+                  {cleanCivName(p.civ)}
+                </span>
+              </div>
+            );
+          })}
+        {players.some((p) => p.csType) && (
+          <>
+            <span className="self-center text-[9px] text-marble-400">|</span>
+            {players
+              .filter((p) => p.csType)
+              .map((p) => {
+                const colors = playerColors.get(p.pid);
+                return (
+                  <div
+                    key={p.pid}
+                    className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
+                  >
+                    <span
+                      className="inline-block h-2 w-2 rotate-45"
+                      style={{
+                        backgroundColor: "#1a1a2e",
+                        border: `1.5px solid ${colors?.secondary ?? "#888"}`,
+                      }}
+                    />
+                    <span className="text-[10px] font-medium text-marble-400">
+                      {cleanCivName(p.civ)}
+                    </span>
+                  </div>
+                );
+              })}
+          </>
+        )}
       </div>
     </div>
   );

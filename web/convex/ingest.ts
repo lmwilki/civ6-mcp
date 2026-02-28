@@ -700,7 +700,7 @@ export const ingestMapData = mutation({
     ownerFrames: v.string(),
     cityFrames: v.string(),
     roadFrames: v.string(),
-    players: v.array(v.object({ pid: v.number(), civ: v.string() })),
+    players: v.array(v.object({ pid: v.number(), civ: v.string(), csType: v.optional(v.string()) })),
     maxTurn: v.number(),
   },
   handler: async (ctx, args) => {

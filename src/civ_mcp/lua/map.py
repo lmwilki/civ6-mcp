@@ -1174,18 +1174,35 @@ for y = 0, h - 1 do
     print("ROW|" .. y .. "|" .. table.concat(parts, "|"))
 end
 for i = 0, 62 do
-    if Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
+    if Players[i] and Players[i]:IsAlive() then
         for _, c in Players[i]:GetCities():Members() do
             print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation())
         end
     end
 end
+local csTypeMap = {{}}
+csTypeMap["LEADER_MINOR_CIV_SCIENTIFIC"] = "Scientific"
+csTypeMap["LEADER_MINOR_CIV_CULTURAL"] = "Cultural"
+csTypeMap["LEADER_MINOR_CIV_MILITARISTIC"] = "Militaristic"
+csTypeMap["LEADER_MINOR_CIV_RELIGIOUS"] = "Religious"
+csTypeMap["LEADER_MINOR_CIV_TRADE"] = "Trade"
+csTypeMap["LEADER_MINOR_CIV_INDUSTRIAL"] = "Industrial"
 for i = 0, 62 do
-    if Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
+    if Players[i] and Players[i]:IsAlive() then
         local cfg = PlayerConfigurations[i]
         if cfg then
             local civType = cfg:GetCivilizationTypeName() or "UNKNOWN"
-            print("PLAYER|" .. i .. "|" .. civType)
+            local csType = ""
+            if not Players[i]:IsMajor() then
+                local leaderType = cfg:GetLeaderTypeName()
+                if leaderType then
+                    local ldr = GameInfo.Leaders[leaderType]
+                    if ldr and ldr.InheritFrom then
+                        csType = csTypeMap[ldr.InheritFrom] or ""
+                    end
+                end
+            end
+            print("PLAYER|" .. i .. "|" .. civType .. "|" .. csType)
         end
     end
 end
@@ -1200,7 +1217,7 @@ def parse_static_map_dump(lines: list[str]) -> StaticMapDump:
     initial_owners: list[int] = []
     initial_routes: list[int] = []
     cities: list[tuple[int, int, int, int]] = []
-    players: list[tuple[int, str]] = []
+    players: list[tuple[int, str, str | None]] = []
 
     for line in lines:
         if line.startswith("SIZE|"):
@@ -1234,7 +1251,8 @@ def parse_static_map_dump(lines: list[str]) -> StaticMapDump:
         elif line.startswith("PLAYER|"):
             parts = line.split("|")
             if len(parts) >= 3:
-                players.append((int(parts[1]), parts[2]))
+                cs_type = parts[3] if len(parts) >= 4 and parts[3] else None
+                players.append((int(parts[1]), parts[2], cs_type))
 
     return StaticMapDump(
         grid_w=grid_w,
@@ -1284,7 +1302,7 @@ if #roadChanges > 0 then
     print("ROADS|" .. table.concat(roadChanges, "|"))
 end
 for i = 0, 62 do
-    if Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
+    if Players[i] and Players[i]:IsAlive() then
         for _, c in Players[i]:GetCities():Members() do
             print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation())
         end

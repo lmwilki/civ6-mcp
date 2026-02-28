@@ -225,6 +225,7 @@ class SpyInfo:
     city_owner: int  # player ID of city owner, or -1
     available_ops: list[str]  # e.g. ["TRAVEL", "COUNTERSPY"]
     current_mission: str = "none"  # active mission e.g. "COUNTERSPY", or "none"
+    is_escaping: bool = False  # True if spy is caught and needs escape route
 
 
 @dataclass
@@ -932,6 +933,40 @@ class PurchasableTile:
     terrain: str
     resource: str | None
     resource_class: str | None  # "strategic", "luxury", "bonus"
+
+
+@dataclass
+class StaticMapTile:
+    """Per-tile static terrain data from full map dump."""
+
+    terrain: int  # TerrainType index
+    feature: int  # FeatureType index (-1 = none)
+    hills: bool
+    river: bool
+    coastal: bool
+    resource: int  # ResourceType index (-1 = none)
+
+
+@dataclass
+class StaticMapDump:
+    """Full static terrain dump of the game map."""
+
+    grid_w: int
+    grid_h: int
+    tiles: list[StaticMapTile]  # row-major: index = y * grid_w + x
+    initial_owners: list[int]  # one per tile, -1 = unowned
+    initial_routes: list[int]  # one per tile, -1 = none
+    initial_cities: list[tuple[int, int, int, int]]  # (x, y, pid, pop)
+    players: list[tuple[int, str, str | None]]  # (pid, civ_type, cs_type)
+
+
+@dataclass
+class OwnershipDelta:
+    """Per-turn ownership/road changes + city snapshot."""
+
+    owner_changes: list[tuple[int, int]]  # (tile_idx, new_owner)
+    road_changes: list[tuple[int, int]]  # (tile_idx, route_type)
+    cities: list[tuple[int, int, int, int]]  # (x, y, pid, pop)
 
 
 @dataclass
