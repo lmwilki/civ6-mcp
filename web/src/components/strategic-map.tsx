@@ -240,15 +240,15 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     [roadKeyframes],
   );
 
-  // ── Hex geometry (pointy-top, even-r offset) ──────────────────────────
+  // ── Hex geometry (pointy-top, odd-r offset) ───────────────────────────
 
   const hexPos = useCallback(
     (col: number, row: number): [number, number] => {
       // Flip Y: game Y increases southward, minimap renders north-at-top
       const flippedRow = gridH - 1 - row;
-      // Pointy-top even-r: even rows shifted right by half a hex width
+      // Odd-r offset: odd game-rows shifted right (use original row parity, not flipped)
       const cx =
-        SQRT3 * hexSize * (col + 0.5 * (flippedRow & 1)) +
+        SQRT3 * hexSize * (col + 0.5 * (row & 1)) +
         (SQRT3 * hexSize) / 2;
       const cy = 1.5 * hexSize * flippedRow + hexSize;
       return [cx, cy];
@@ -348,13 +348,16 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
       }
 
       // Layer 2b: inner territory borders
-      // Pointy-top, even-r offset: even rows shifted right
+      // Pointy-top, odd-r offset: odd rows shifted right
       // Directions: E, SE, SW, W, NW, NE
       const neighborsEven = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
       const neighborsOdd  = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
-      // Edge vertex indices matching the 6 directions
-      // Pointy-top vertices: 0=top, 1=NE, 2=SE, 3=bottom, 4=SW, 5=NW
-      const edgeVertices: [number, number][] = [[1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [0, 1]];
+      // Edge vertex indices matching the 6 game directions (accounting for Y-flip)
+      // Screen vertices: 0=top, 1=NE, 2=SE, 3=bottom, 4=SW, 5=NW
+      // After Y-flip: game-N=screen-bottom, game-S=screen-top
+      //   E→right[1,2], SE→upper-right[0,1], SW→upper-left[5,0],
+      //   W→left[4,5], NW→lower-left[3,4], NE→lower-right[2,3]
+      const edgeVertices: [number, number][] = [[1, 2], [0, 1], [5, 0], [4, 5], [3, 4], [2, 3]];
       const INSET = 0.82;
       const h = (SQRT3 / 2) * hexSize * 0.98;
       const s98 = hexSize * 0.98;
