@@ -179,9 +179,9 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const renderTurnRef = useRef<((turn: number) => void) | null>(null);
-  const currentTurnRef = useRef(mapData.initialTurn);
+  const currentTurnRef = useRef(mapData.maxTurn);
 
-  const [currentTurn, setCurrentTurn] = useState(mapData.initialTurn);
+  const [currentTurn, setCurrentTurn] = useState(mapData.maxTurn);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(0);
   const animRef = useRef(0);
@@ -820,7 +820,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
       {/* Spatial attention charts */}
       {spatialTurns && spatialTurns.length > 0 && (
-        <SpatialCharts data={spatialTurns} />
+        <SpatialCharts data={spatialTurns} currentTurn={currentTurn} />
       )}
     </div>
   );

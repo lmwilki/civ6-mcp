@@ -5,6 +5,18 @@ import type { SpatialTurn } from "@/lib/diary-types";
 import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+} from "recharts";
+import {
   ScanSearch,
   Eye,
   Zap,
@@ -24,23 +36,39 @@ const ATTENTION_TYPES = [
   { key: "reactive" as const, label: "Reactive", color: "#C4785C", icon: Bell },
 ] as const;
 
-// ── Chart constants ──────────────────────────────────────────────────────
+// ── Shared chart styling ─────────────────────────────────────────────────
 
-const CHART_W = 600;
-const CHART_H = 160;
-const CHART_PAD = 24;
+const AXIS_STYLE = { fontSize: 11, fill: "#A39B8F", fontFamily: "monospace" };
+const GRID_STROKE = "#E0DBD3";
+const REFERENCE_LINE_COLOR = "#D4A853";
 
-function computeTurnLabels(
-  data: SpatialTurn[],
-  toX: (i: number) => number,
-): { turn: number; x: number }[] {
-  if (data.length <= 1) return [];
-  const step = Math.max(1, Math.floor(data.length / 5));
-  const result: { turn: number; x: number }[] = [];
-  for (let i = 0; i < data.length; i += step) {
-    result.push({ turn: data[i].turn, x: toX(i) });
-  }
-  return result;
+function turnFormatter(v: number) {
+  return `T${v}`;
+}
+
+function tickInterval(dataLength: number) {
+  return Math.max(1, Math.ceil(dataLength / 6));
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CustomTooltip({ active, payload, label, formatter }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded border border-marble-300 bg-marble-50 px-3 py-2 shadow-sm">
+      <p className="mb-1 font-mono text-[11px] font-semibold text-marble-700">Turn {label}</p>
+      {payload.map((entry: { name: string; value: number; color: string }) => (
+        <div key={entry.name} className="flex items-center gap-1.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="text-[11px] text-marble-600">
+            {formatter ? formatter(entry.name) : entry.name}:
+          </span>
+          <span className="font-mono text-[11px] tabular-nums text-marble-800">
+            {entry.value.toLocaleString()}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── Chart section wrapper ────────────────────────────────────────────────
@@ -49,19 +77,24 @@ function ChartSection({
   title,
   icon,
   color,
+  description,
   children,
 }: {
   title: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   color: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-sm border border-marble-300 bg-marble-50 p-4">
-      <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+      <h3 className="mb-1 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
         <CivIcon icon={icon} color={color} size="sm" />
         {title}
       </h3>
+      {description && (
+        <p className="mb-3 text-xs leading-relaxed text-marble-500">{description}</p>
+      )}
       {children}
     </div>
   );
@@ -151,157 +184,110 @@ export function SpatialStatsBar({ data }: { data: SpatialTurn[] }) {
 
 // ── Coverage chart (cumulative unique tiles) ─────────────────────────────
 
-function CoverageChart({ data }: { data: SpatialTurn[] }) {
-  const { points, max, labels } = useMemo(() => {
-    const vals = data.map((d) => d.cumulative_tiles);
-    const mx = Math.max(...vals) || 1;
-    const pts = vals
-      .map((v, i) => {
-        const x =
-          CHART_PAD + (i / Math.max(vals.length - 1, 1)) * (CHART_W - 2 * CHART_PAD);
-        const y =
-          CHART_H - CHART_PAD - (v / mx) * (CHART_H - 2 * CHART_PAD);
-        return `${x},${y}`;
-      })
-      .join(" ");
-    const lbls = [0, Math.round(mx / 2), mx];
-    return { points: pts, max: mx, labels: lbls };
-  }, [data]);
-
-  const turnLabels = useMemo(
-    () =>
-      computeTurnLabels(data, (i) =>
-        CHART_PAD + (i / Math.max(data.length - 1, 1)) * (CHART_W - 2 * CHART_PAD),
-      ),
-    [data],
-  );
-
+function CoverageChart({ data, currentTurn }: { data: SpatialTurn[]; currentTurn: number }) {
+  const interval = tickInterval(data.length);
   return (
-    <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="h-40 w-full">
-      {labels.map((l) => {
-        const y = CHART_H - CHART_PAD - (l / (max || 1)) * (CHART_H - 2 * CHART_PAD);
-        return (
-          <g key={l}>
-            <line x1={CHART_PAD} y1={y} x2={CHART_W - CHART_PAD} y2={y} stroke="#E0DBD3" strokeWidth="0.5" />
-            <text x={CHART_PAD - 4} y={y + 3} textAnchor="end" fill="#A39B8F" fontSize="8" fontFamily="monospace">{l}</text>
-          </g>
-        );
-      })}
-      {turnLabels.map((tl) => (
-        <text key={tl.turn} x={tl.x} y={CHART_H - 4} textAnchor="middle" fill="#A39B8F" fontSize="8" fontFamily="monospace">T{tl.turn}</text>
-      ))}
-      <polygon
-        points={`${CHART_PAD},${CHART_H - CHART_PAD} ${points} ${CHART_W - CHART_PAD},${CHART_H - CHART_PAD}`}
-        fill={CIV6_COLORS.spatial}
-        opacity="0.1"
-      />
-      <polyline points={points} fill="none" stroke={CIV6_COLORS.spatial} strokeWidth="2" strokeLinejoin="round" opacity="0.8" />
-    </svg>
+    <ResponsiveContainer width="100%" height={160}>
+      <AreaChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+        <XAxis
+          dataKey="turn"
+          tickFormatter={turnFormatter}
+          interval={interval}
+          {...AXIS_STYLE}
+        />
+        <YAxis width={45} {...AXIS_STYLE} />
+        <Tooltip content={<CustomTooltip formatter={() => "Tiles"} />} />
+        <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" />
+        <Area
+          type="monotone"
+          dataKey="cumulative_tiles"
+          name="Cumulative Tiles"
+          stroke={CIV6_COLORS.spatial}
+          fill={CIV6_COLORS.spatial}
+          fillOpacity={0.15}
+          strokeWidth={2}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   );
 }
 
 // ── Tiles per turn bar chart ─────────────────────────────────────────────
 
-function TilesPerTurnChart({ data }: { data: SpatialTurn[] }) {
-  const { bars, max } = useMemo(() => {
-    const mx = Math.max(...data.map((d) => d.tiles_observed)) || 1;
-    const barWidth = (CHART_W - 2 * CHART_PAD) / Math.max(data.length, 1) - 1;
-    const bs = data.map((d, i) => {
-      const h = (d.tiles_observed / mx) * (CHART_H - 2 * CHART_PAD);
-      const x = CHART_PAD + (i / Math.max(data.length, 1)) * (CHART_W - 2 * CHART_PAD);
-      const y = CHART_H - CHART_PAD - h;
-      return { x, y, width: Math.max(barWidth, 1), height: h, turn: d.turn };
-    });
-    return { bars: bs, max: mx };
-  }, [data]);
-
-  const turnLabels = useMemo(
-    () =>
-      computeTurnLabels(data, (i) =>
-        CHART_PAD + (i / Math.max(data.length, 1)) * (CHART_W - 2 * CHART_PAD),
-      ),
-    [data],
-  );
-
+function TilesPerTurnChart({ data, currentTurn }: { data: SpatialTurn[]; currentTurn: number }) {
+  const interval = tickInterval(data.length);
   return (
-    <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="h-40 w-full">
-      {[0, 0.5, 1].map((frac) => {
-        const val = Math.round(max * frac);
-        const y = CHART_H - CHART_PAD - frac * (CHART_H - 2 * CHART_PAD);
-        return (
-          <g key={frac}>
-            <line x1={CHART_PAD} y1={y} x2={CHART_W - CHART_PAD} y2={y} stroke="#E0DBD3" strokeWidth="0.5" />
-            <text x={CHART_PAD - 4} y={y + 3} textAnchor="end" fill="#A39B8F" fontSize="8" fontFamily="monospace">{val}</text>
-          </g>
-        );
-      })}
-      {turnLabels.map((tl) => (
-        <text key={tl.turn} x={tl.x} y={CHART_H - 4} textAnchor="middle" fill="#A39B8F" fontSize="8" fontFamily="monospace">T{tl.turn}</text>
-      ))}
-      {bars.map((b) => (
-        <rect key={b.turn} x={b.x} y={b.y} width={b.width} height={b.height} fill={CIV6_COLORS.spatial} opacity="0.6" rx="1" />
-      ))}
-    </svg>
+    <ResponsiveContainer width="100%" height={160}>
+      <BarChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+        <XAxis
+          dataKey="turn"
+          tickFormatter={turnFormatter}
+          interval={interval}
+          {...AXIS_STYLE}
+        />
+        <YAxis width={45} {...AXIS_STYLE} />
+        <Tooltip content={<CustomTooltip formatter={() => "Tiles"} />} />
+        <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" />
+        <Bar
+          dataKey="tiles_observed"
+          name="Tiles Observed"
+          fill={CIV6_COLORS.spatial}
+          opacity={0.7}
+          radius={[2, 2, 0, 0]}
+        />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 
 // ── Attention type stacked area chart ────────────────────────────────────
 
-function AttentionStackedChart({ data }: { data: SpatialTurn[] }) {
-  const { areas, maxTotal, turnLabels } = useMemo(() => {
-    if (data.length === 0) return { areas: [], maxTotal: 1, turnLabels: [] };
-    const keys = ATTENTION_TYPES.map((t) => t.key);
-    const stacked = data.map((d) => {
-      const values: number[] = [];
-      let cumulative = 0;
-      for (const key of keys) {
-        cumulative += d.by_type[key];
-        values.push(cumulative);
-      }
-      return values;
-    });
-    const mx = Math.max(...stacked.map((s) => s[s.length - 1])) || 1;
-    function toX(i: number) {
-      return CHART_PAD + (i / Math.max(data.length - 1, 1)) * (CHART_W - 2 * CHART_PAD);
-    }
-    function toY(val: number) {
-      return CHART_H - CHART_PAD - (val / mx) * (CHART_H - 2 * CHART_PAD);
-    }
-    const areaData = keys.map((_, layerIdx) => {
-      const topLine = stacked.map((s, i) => `${toX(i)},${toY(s[layerIdx])}`);
-      const bottomLine =
-        layerIdx === 0
-          ? data.map((_, i) => `${toX(i)},${toY(0)}`)
-          : stacked.map((s, i) => `${toX(i)},${toY(s[layerIdx - 1])}`);
-      return {
-        key: keys[layerIdx],
-        color: ATTENTION_TYPES[layerIdx].color,
-        polygon: [...topLine, ...bottomLine.reverse()].join(" "),
-      };
-    });
-    return { areas: areaData, maxTotal: mx, turnLabels: computeTurnLabels(data, toX) };
-  }, [data]);
+const ATTENTION_LABEL_MAP: Record<string, string> = {
+  deliberate_scan: "Deliberate Scan",
+  deliberate_action: "Deliberate Action",
+  survey: "Survey",
+  peripheral: "Peripheral",
+  reactive: "Reactive",
+};
+
+function AttentionStackedChart({ data, currentTurn }: { data: SpatialTurn[]; currentTurn: number }) {
+  const flatData = useMemo(
+    () => data.map((d) => ({ turn: d.turn, ...d.by_type })),
+    [data],
+  );
+  const interval = tickInterval(data.length);
 
   return (
     <div>
-      <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} className="h-40 w-full">
-        {[0, 0.5, 1].map((frac) => {
-          const val = Math.round(maxTotal * frac);
-          const y = CHART_H - CHART_PAD - frac * (CHART_H - 2 * CHART_PAD);
-          return (
-            <g key={frac}>
-              <line x1={CHART_PAD} y1={y} x2={CHART_W - CHART_PAD} y2={y} stroke="#E0DBD3" strokeWidth="0.5" />
-              <text x={CHART_PAD - 4} y={y + 3} textAnchor="end" fill="#A39B8F" fontSize="8" fontFamily="monospace">{val}</text>
-            </g>
-          );
-        })}
-        {turnLabels.map((tl) => (
-          <text key={tl.turn} x={tl.x} y={CHART_H - 4} textAnchor="middle" fill="#A39B8F" fontSize="8" fontFamily="monospace">T{tl.turn}</text>
-        ))}
-        {areas.map((area) => (
-          <polygon key={area.key} points={area.polygon} fill={area.color} opacity="0.5" />
-        ))}
-      </svg>
+      <ResponsiveContainer width="100%" height={160}>
+        <AreaChart data={flatData}>
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+          <XAxis
+            dataKey="turn"
+            tickFormatter={turnFormatter}
+            interval={interval}
+            {...AXIS_STYLE}
+          />
+          <YAxis width={45} {...AXIS_STYLE} />
+          <Tooltip content={<CustomTooltip formatter={(name: string) => ATTENTION_LABEL_MAP[name] ?? name} />} />
+          <ReferenceLine x={currentTurn} stroke={REFERENCE_LINE_COLOR} strokeDasharray="3 3" />
+          {ATTENTION_TYPES.map((t) => (
+            <Area
+              key={t.key}
+              type="monotone"
+              dataKey={t.key}
+              name={t.key}
+              stackId="1"
+              stroke={t.color}
+              fill={t.color}
+              fillOpacity={0.6}
+              strokeWidth={0}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
       <div className="mt-2 flex flex-wrap gap-3">
         {ATTENTION_TYPES.map((t) => {
           const Icon = t.icon;
@@ -319,23 +305,38 @@ function AttentionStackedChart({ data }: { data: SpatialTurn[] }) {
 
 // ── Combined spatial charts section ──────────────────────────────────────
 
-export function SpatialCharts({ data }: { data: SpatialTurn[] }) {
+export function SpatialCharts({ data, currentTurn }: { data: SpatialTurn[]; currentTurn: number }) {
   if (data.length === 0) return null;
 
   return (
     <div className="space-y-4">
       <SpatialStatsBar data={data} />
 
-      <ChartSection title="Cumulative Coverage" icon={Eye} color={CIV6_COLORS.spatial}>
-        <CoverageChart data={data} />
+      <ChartSection
+        title="Cumulative Coverage"
+        icon={Eye}
+        color={CIV6_COLORS.spatial}
+        description="Running total of unique map tiles the agent has queried. Steeper slopes indicate bursts of exploration; plateaus show the agent focused on known territory."
+      >
+        <CoverageChart data={data} currentTurn={currentTurn} />
       </ChartSection>
 
-      <ChartSection title="Tiles Observed Per Turn" icon={ScanSearch} color={CIV6_COLORS.spatial}>
-        <TilesPerTurnChart data={data} />
+      <ChartSection
+        title="Tiles Observed Per Turn"
+        icon={ScanSearch}
+        color={CIV6_COLORS.spatial}
+        description="Distinct tiles observed each turn. Spikes often correlate with scouting sweeps, settling decisions, or military reconnaissance."
+      >
+        <TilesPerTurnChart data={data} currentTurn={currentTurn} />
       </ChartSection>
 
-      <ChartSection title="Attention Type Breakdown" icon={Zap} color={CIV6_COLORS.goldMetal}>
-        <AttentionStackedChart data={data} />
+      <ChartSection
+        title="Attention Type Breakdown"
+        icon={Zap}
+        color={CIV6_COLORS.goldMetal}
+        description="Breakdown of spatial queries by intentionality. Deliberate scans are explicit map reads the agent chose to make. Deliberate actions are commands issued at specific tiles. Surveys are broad reconnaissance sweeps. Peripheral tiles appeared in query results without being the primary focus. Reactive queries responded to game notifications."
+      >
+        <AttentionStackedChart data={data} currentTurn={currentTurn} />
       </ChartSection>
     </div>
   );
