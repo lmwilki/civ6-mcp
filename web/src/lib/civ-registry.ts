@@ -454,6 +454,7 @@ export const CIV_REGISTRY: CivEntry[] = [
   },
   {
     name: "Babylon",
+    aliases: ["Babylon Stk"],
     slug: "babylon",
     symbol: "babylon.webp",
     colors: { primary: "#74A3F3", secondary: "#012A6C" },
@@ -628,4 +629,9 @@ export function canonicalLeaderName(leader: string): string {
 /** Resolve a possibly-variant civ name to its canonical form. */
 export function canonicalCivName(civName: string): string {
   return findCiv(civName)?.name ?? civName;
+}
+
+/** Get the default leader name for a civ (first in registry). */
+export function getDefaultLeader(civName: string): string | null {
+  return findCiv(civName)?.leaders[0]?.name ?? null;
 }

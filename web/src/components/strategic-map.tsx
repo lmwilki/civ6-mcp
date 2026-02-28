@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Application, Graphics } from "pixi.js";
 import {
   cleanCivName,
   unpackTerrain,
@@ -19,7 +20,7 @@ import {
   ROAD_COLORS,
   CITY_MARKER,
 } from "@/lib/terrain-colors";
-import { getCivColors } from "@/lib/civ-registry";
+import { getCivColors, getDefaultLeader } from "@/lib/civ-registry";
 import {
   Play,
   Pause,
@@ -29,6 +30,8 @@ import {
 } from "lucide-react";
 import { CivIcon, CivSymbol } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
+
+// ── Constants ─────────────────────────────────────────────────────────────
 
 const SQRT3 = Math.sqrt(3);
 
@@ -40,6 +43,75 @@ const CS_TYPE_COLORS: Record<string, string> = {
   Trade: "#F7D801",
   Industrial: "#FF8112",
 };
+
+// Odd-r offset neighbors: E, SE, SW, W, NW, NE
+const NEIGHBORS_EVEN = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
+const NEIGHBORS_ODD  = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
+
+// Edge-vertex indices for border drawing (accounting for Y-flip)
+// Screen vertices: 0=top, 1=NE, 2=SE, 3=bottom, 4=SW, 5=NW
+// After Y-flip: game-N→screen-bottom, game-S→screen-top
+const EDGE_VERTICES: [number, number][] = [
+  [1, 2], [0, 1], [5, 0], [4, 5], [3, 4], [2, 3],
+];
+
+// ── Pure geometry helpers ─────────────────────────────────────────────────
+
+/** Hex center in CSS-pixel coords (pointy-top, odd-r offset, Y-flipped) */
+function hexCenter(
+  col: number, row: number, hexSize: number, gridH: number,
+): [number, number] {
+  const flippedRow = gridH - 1 - row;
+  const cx = SQRT3 * hexSize * (col + 0.5 * (row & 1)) + (SQRT3 * hexSize) / 2;
+  const cy = 1.5 * hexSize * flippedRow + hexSize;
+  return [cx, cy];
+}
+
+/** Flat array of pointy-top hex vertices (12 numbers: x0,y0,...x5,y5) */
+function hexVerts(cx: number, cy: number, s: number): number[] {
+  const h = (SQRT3 / 2) * s;
+  return [
+    cx,     cy - s,      // 0: top
+    cx + h, cy - s / 2,  // 1: NE
+    cx + h, cy + s / 2,  // 2: SE
+    cx,     cy + s,      // 3: bottom
+    cx - h, cy + s / 2,  // 4: SW
+    cx - h, cy - s / 2,  // 5: NW
+  ];
+}
+
+/** Approximate screen pixel → game hex (col, row) via nearest-center search */
+function screenToHex(
+  px: number, py: number,
+  hexSize: number, gridW: number, gridH: number,
+): [number, number] | null {
+  // Approximate row from cy = 1.5 * hexSize * flippedRow + hexSize
+  const flippedRow = Math.round((py - hexSize) / (1.5 * hexSize));
+  const row = gridH - 1 - flippedRow;
+  // Approximate col from cx
+  const offset = 0.5 * (row & 1);
+  const col = Math.round(px / (SQRT3 * hexSize) - 0.5 - offset);
+
+  // Check this hex and its 6 neighbors — find closest center
+  const deltas = row % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
+  const candidates: [number, number][] = [[col, row]];
+  for (const [dx, dy] of deltas) candidates.push([col + dx, row + dy]);
+
+  let bestDist = Infinity;
+  let best: [number, number] | null = null;
+
+  for (const [c, r] of candidates) {
+    if (c < 0 || c >= gridW || r < 0 || r >= gridH) continue;
+    const [cx, cy] = hexCenter(c, r, hexSize, gridH);
+    const d = (px - cx) ** 2 + (py - cy) ** 2;
+    if (d < bestDist) { bestDist = d; best = [c, r]; }
+  }
+
+  if (!best || bestDist > hexSize * hexSize) return null;
+  return best;
+}
+
+// ── Outer component (loading states) ──────────────────────────────────────
 
 interface StrategicMapProps {
   gameId: string;
@@ -72,24 +144,25 @@ export function StrategicMap({ gameId }: StrategicMapProps) {
     );
   }
 
-  return <MapCanvas mapData={rawMapData} />;
+  return <MapRenderer mapData={rawMapData} />;
 }
 
-// ── Canvas map renderer ──────────────────────────────────────────────────
+// ── Pixi.js map renderer ──────────────────────────────────────────────────
 
-function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const terrainCanvasRef = useRef<HTMLCanvasElement | null>(null);
+function MapRenderer({ mapData }: { mapData: MapDataDoc }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const dprRef = useRef(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const renderTurnRef = useRef<((turn: number) => void) | null>(null);
+  const currentTurnRef = useRef(mapData.initialTurn);
 
   const [currentTurn, setCurrentTurn] = useState(mapData.initialTurn);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(0);
   const animRef = useRef(0);
   const lastFrameRef = useRef(0);
+  const [hexSize, setHexSize] = useState(6);
 
-  // ── Unpack & precompute ────────────────────────────────────────────────
+  // ── Unpack & precompute ───────────────────────────────────────────────
 
   const {
     terrain,
@@ -102,7 +175,6 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     maxTurn,
     initialTurn,
   } = useMemo(() => {
-    // Convex stores large arrays as JSON strings (8192 array cap)
     const terrainArr: number[] = JSON.parse(mapData.terrain);
     const initialOwnersArr: number[] = JSON.parse(mapData.initialOwners);
     const ownerFramesArr: number[] = JSON.parse(mapData.ownerFrames);
@@ -125,9 +197,7 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
       { turn: mapData.initialTurn, owners: Int8Array.from(owners) },
     ];
     for (const frame of of_) {
-      for (const ch of frame.changes) {
-        owners[ch.tileIdx] = ch.owner;
-      }
+      for (const ch of frame.changes) owners[ch.tileIdx] = ch.owner;
       ownerKf.push({ turn: frame.turn, owners: Int8Array.from(owners) });
     }
 
@@ -137,9 +207,7 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
       { turn: mapData.initialTurn, roads: Int8Array.from(roads) },
     ];
     for (const frame of rf) {
-      for (const ch of frame.changes) {
-        roads[ch.tileIdx] = ch.owner; // reusing owner field for routeType
-      }
+      for (const ch of frame.changes) roads[ch.tileIdx] = ch.owner;
       roadKf.push({ turn: frame.turn, roads: Int8Array.from(roads) });
     }
 
@@ -156,13 +224,12 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     };
   }, [mapData]);
 
-  // ── Player color lookup ────────────────────────────────────────────────
+  // ── Player color lookup ───────────────────────────────────────────────
 
   const playerColors = useMemo(() => {
     const map = new Map<number, { primary: string; secondary: string }>();
     for (const p of players) {
       if (p.csType) {
-        // City-state: dark fill, type-colored borders
         map.set(p.pid, {
           primary: "#1a1a2e",
           secondary: CS_TYPE_COLORS[p.csType] ?? "#888888",
@@ -174,20 +241,16 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     return map;
   }, [players]);
 
-  // ── Hex sizing (responsive) ────────────────────────────────────────────
-
-  const [hexSize, setHexSize] = useState(6);
+  // ── Responsive hex sizing ─────────────────────────────────────────────
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
     const observer = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 800;
       const s = Math.min(8, (w - 20) / (SQRT3 * (gridW + 0.5)));
       setHexSize(Math.max(2, s));
     });
-
     observer.observe(el);
     return () => observer.disconnect();
   }, [gridW]);
@@ -195,7 +258,7 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
   const canvasW = Math.ceil(SQRT3 * hexSize * (gridW + 0.5) + SQRT3 * hexSize);
   const canvasH = Math.ceil(1.5 * hexSize * gridH + hexSize * 2);
 
-  // ── Keyframe lookup (binary search for latest snapshot <= turn) ─────
+  // ── Keyframe lookups (binary search for latest snapshot <= turn) ────
 
   const getOwnersAtTurn = useCallback(
     (turn: number): Int8Array => {
@@ -240,231 +303,269 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     [roadKeyframes],
   );
 
-  // ── Hex geometry (pointy-top, odd-r offset) ───────────────────────────
-
-  const hexPos = useCallback(
-    (col: number, row: number): [number, number] => {
-      // Flip Y: game Y increases southward, minimap renders north-at-top
-      const flippedRow = gridH - 1 - row;
-      // Odd-r offset: odd game-rows shifted right (use original row parity, not flipped)
-      const cx =
-        SQRT3 * hexSize * (col + 0.5 * (row & 1)) +
-        (SQRT3 * hexSize) / 2;
-      const cy = 1.5 * hexSize * flippedRow + hexSize;
-      return [cx, cy];
-    },
-    [hexSize, gridH],
-  );
-
-  const drawHex = useCallback(
-    (ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number) => {
-      // Pointy-top: vertex at top, clockwise
-      const h = (SQRT3 / 2) * s;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - s); // top
-      ctx.lineTo(cx + h, cy - s / 2); // NE
-      ctx.lineTo(cx + h, cy + s / 2); // SE
-      ctx.lineTo(cx, cy + s); // bottom
-      ctx.lineTo(cx - h, cy + s / 2); // SW
-      ctx.lineTo(cx - h, cy - s / 2); // NW
-      ctx.closePath();
-    },
-    [],
-  );
-
-  // ── Static terrain render (offscreen canvas, once per resize) ──────────
+  // ── Pixi.js lifecycle ─────────────────────────────────────────────────
 
   useEffect(() => {
-    const dpr = dprRef.current;
-    const offscreen = document.createElement("canvas");
-    offscreen.width = canvasW * dpr;
-    offscreen.height = canvasH * dpr;
-    const ctx = offscreen.getContext("2d");
-    if (!ctx) return;
+    const app = new Application();
+    let destroyed = false;
 
-    ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#1a1a2e";
-    ctx.fillRect(0, 0, canvasW, canvasH);
+    (async () => {
+      await app.init({
+        background: 0x1a1a2e,
+        width: canvasW,
+        height: canvasH,
+        autoDensity: true,
+        resolution: window.devicePixelRatio || 1,
+        antialias: true,
+      });
+      if (destroyed) return;
 
-    for (let y = 0; y < gridH; y++) {
-      for (let x = 0; x < gridW; x++) {
-        const idx = y * gridW + x;
-        const tile = terrain[idx];
-        if (!tile) continue;
+      const container = containerRef.current;
+      if (!container) return;
+      container.insertBefore(app.canvas, container.firstChild);
 
-        const [cx, cy] = hexPos(x, y);
+      // Scene layers (bottom to top)
+      const terrainGfx = new Graphics();
+      const territoryGfx = new Graphics();
+      const borderGfx = new Graphics();
+      const roadGfx = new Graphics();
+      const cityGfx = new Graphics();
+      const hoverGfx = new Graphics();
+      app.stage.addChild(
+        terrainGfx, territoryGfx, borderGfx, roadGfx, cityGfx, hoverGfx,
+      );
 
-        // Terrain fill
-        drawHex(ctx, cx, cy, hexSize * 0.98);
-        ctx.fillStyle = getTerrainColor(tile.terrain);
-        ctx.fill();
+      // ── Static terrain (drawn once) ──────────────────────────────────
 
-        // Feature overlay (forest, jungle, etc.)
-        const featureColor = getFeatureOverlay(tile.feature);
-        if (featureColor) {
-          ctx.globalAlpha = FEATURE_OVERLAY_ALPHA;
-          ctx.fillStyle = featureColor;
-          ctx.fill();
-          ctx.globalAlpha = 1;
-        }
-      }
-    }
-
-    terrainCanvasRef.current = offscreen;
-  }, [terrain, gridW, gridH, hexSize, canvasW, canvasH, hexPos, drawHex]);
-
-  // ── Frame renderer ─────────────────────────────────────────────────────
-
-  const renderFrame = useCallback(
-    (turn: number) => {
-      const canvas = canvasRef.current;
-      const terrainCanvas = terrainCanvasRef.current;
-      if (!canvas || !terrainCanvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const dpr = dprRef.current;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // Layer 1: static terrain (blit from offscreen — use full pixel dims)
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(terrainCanvas, 0, 0);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // Layer 2: solid territory fill
-      const owners = getOwnersAtTurn(turn);
       for (let y = 0; y < gridH; y++) {
         for (let x = 0; x < gridW; x++) {
           const idx = y * gridW + x;
-          const owner = owners[idx];
-          if (owner < 0) continue;
-          const colors = playerColors.get(owner);
-          if (!colors) continue;
-          const [cx, cy] = hexPos(x, y);
-          drawHex(ctx, cx, cy, hexSize * 0.98);
-          ctx.fillStyle = colors.primary;
-          ctx.fill();
-        }
-      }
+          const tile = terrain[idx];
+          if (!tile) continue;
+          const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+          const verts = hexVerts(cx, cy, hexSize * 0.98);
 
-      // Layer 2b: inner territory borders
-      // Pointy-top, odd-r offset: odd rows shifted right
-      // Directions: E, SE, SW, W, NW, NE
-      const neighborsEven = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
-      const neighborsOdd  = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
-      // Edge vertex indices matching the 6 game directions (accounting for Y-flip)
-      // Screen vertices: 0=top, 1=NE, 2=SE, 3=bottom, 4=SW, 5=NW
-      // After Y-flip: game-N=screen-bottom, game-S=screen-top
-      //   E→right[1,2], SE→upper-right[0,1], SW→upper-left[5,0],
-      //   W→left[4,5], NW→lower-left[3,4], NE→lower-right[2,3]
-      const edgeVertices: [number, number][] = [[1, 2], [0, 1], [5, 0], [4, 5], [3, 4], [2, 3]];
-      const INSET = 0.82;
-      const h = (SQRT3 / 2) * hexSize * 0.98;
-      const s98 = hexSize * 0.98;
-      // Pointy-top vertex offsets from hex center
-      const vOffsets: [number, number][] = [
-        [0, -s98],          // 0: top
-        [h, -s98 / 2],      // 1: NE
-        [h, s98 / 2],       // 2: SE
-        [0, s98],           // 3: bottom
-        [-h, s98 / 2],      // 4: SW
-        [-h, -s98 / 2],     // 5: NW
-      ];
+          terrainGfx.poly(verts).fill(getTerrainColor(tile.terrain));
 
-      ctx.lineWidth = Math.max(1, hexSize * 0.2);
-      ctx.lineCap = "round";
-      for (let y = 0; y < gridH; y++) {
-        for (let x = 0; x < gridW; x++) {
-          const idx = y * gridW + x;
-          const owner = owners[idx];
-          if (owner < 0) continue;
-          const colors = playerColors.get(owner);
-          if (!colors) continue;
-          const [cx, cy] = hexPos(x, y);
-          // Use original y for parity (game coordinates, not flipped)
-          const deltas = y % 2 === 0 ? neighborsEven : neighborsOdd;
-          ctx.strokeStyle = colors.secondary;
-          for (let d = 0; d < 6; d++) {
-            const nx = x + deltas[d][0];
-            const ny = y + deltas[d][1];
-            // Draw border if neighbor is out of bounds or different owner
-            const nOwner = (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH)
-              ? owners[ny * gridW + nx]
-              : -1;
-            if (nOwner === owner) continue;
-            const [vi, vj] = edgeVertices[d];
-            const x1 = cx + vOffsets[vi][0] * INSET;
-            const y1 = cy + vOffsets[vi][1] * INSET;
-            const x2 = cx + vOffsets[vj][0] * INSET;
-            const y2 = cy + vOffsets[vj][1] * INSET;
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
+          const featureColor = getFeatureOverlay(tile.feature);
+          if (featureColor) {
+            terrainGfx.poly(verts).fill({
+              color: featureColor, alpha: FEATURE_OVERLAY_ALPHA,
+            });
           }
         }
       }
 
-      // Layer 3: roads (dots)
-      const roads = getRoadsAtTurn(turn);
-      for (let y = 0; y < gridH; y++) {
-        for (let x = 0; x < gridW; x++) {
-          const idx = y * gridW + x;
-          const routeType = roads[idx];
-          if (routeType < 0) continue;
-          const [cx, cy] = hexPos(x, y);
-          ctx.fillStyle = ROAD_COLORS[routeType] ?? ROAD_COLORS[0];
-          ctx.beginPath();
-          ctx.arc(cx, cy, hexSize * 0.15, 0, Math.PI * 2);
-          ctx.fill();
+      // ── Dynamic turn renderer ────────────────────────────────────────
+
+      const renderTurn = (turn: number) => {
+        territoryGfx.clear();
+        borderGfx.clear();
+        roadGfx.clear();
+        cityGfx.clear();
+
+        const owners = getOwnersAtTurn(turn);
+
+        // Territory fill
+        for (let y = 0; y < gridH; y++) {
+          for (let x = 0; x < gridW; x++) {
+            const idx = y * gridW + x;
+            const owner = owners[idx];
+            if (owner < 0) continue;
+            const colors = playerColors.get(owner);
+            if (!colors) continue;
+            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+            territoryGfx
+              .poly(hexVerts(cx, cy, hexSize * 0.98))
+              .fill(colors.primary);
+          }
         }
+
+        // Territory borders — batch segments by owner for fewer draw calls
+        const bordersByOwner = new Map<number, number[]>();
+        const INSET = 0.82;
+        const h = (SQRT3 / 2) * hexSize * 0.98;
+        const s98 = hexSize * 0.98;
+        const vOffsets: [number, number][] = [
+          [0, -s98],     [h, -s98 / 2], [h, s98 / 2],
+          [0, s98],      [-h, s98 / 2], [-h, -s98 / 2],
+        ];
+
+        for (let y = 0; y < gridH; y++) {
+          for (let x = 0; x < gridW; x++) {
+            const idx = y * gridW + x;
+            const owner = owners[idx];
+            if (owner < 0) continue;
+            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+            const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
+
+            for (let d = 0; d < 6; d++) {
+              const nx = x + deltas[d][0];
+              const ny = y + deltas[d][1];
+              const nOwner =
+                nx >= 0 && nx < gridW && ny >= 0 && ny < gridH
+                  ? owners[ny * gridW + nx]
+                  : -1;
+              if (nOwner === owner) continue;
+
+              const [vi, vj] = EDGE_VERTICES[d];
+              let segs = bordersByOwner.get(owner);
+              if (!segs) { segs = []; bordersByOwner.set(owner, segs); }
+              segs.push(
+                cx + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET,
+                cx + vOffsets[vj][0] * INSET, cy + vOffsets[vj][1] * INSET,
+              );
+            }
+          }
+        }
+
+        const bw = Math.max(1, hexSize * 0.2);
+        for (const [owner, segs] of bordersByOwner) {
+          const colors = playerColors.get(owner);
+          if (!colors) continue;
+          for (let i = 0; i < segs.length; i += 4) {
+            borderGfx.moveTo(segs[i], segs[i + 1]).lineTo(segs[i + 2], segs[i + 3]);
+          }
+          borderGfx.stroke({ width: bw, color: colors.secondary, cap: "round" });
+        }
+
+        // Roads (dots)
+        const roads = getRoadsAtTurn(turn);
+        for (let y = 0; y < gridH; y++) {
+          for (let x = 0; x < gridW; x++) {
+            const idx = y * gridW + x;
+            const routeType = roads[idx];
+            if (routeType < 0) continue;
+            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+            roadGfx
+              .circle(cx, cy, hexSize * 0.15)
+              .fill(ROAD_COLORS[routeType] ?? ROAD_COLORS[0]);
+          }
+        }
+
+        // Cities
+        const cities = getCitiesAtTurn(turn);
+        for (const city of cities) {
+          const [cx, cy] = hexCenter(city.x, city.y, hexSize, gridH);
+          const colors = playerColors.get(city.pid);
+          const r =
+            CITY_MARKER.baseRadius + Math.sqrt(city.pop) * CITY_MARKER.popScale;
+          cityGfx
+            .circle(cx, cy, r)
+            .fill(colors?.secondary ?? "#ffffff")
+            .stroke({
+              width: CITY_MARKER.strokeWidth,
+              color: CITY_MARKER.strokeColor,
+            });
+        }
+      };
+
+      renderTurnRef.current = renderTurn;
+      renderTurn(currentTurnRef.current);
+
+      // ── Hover interaction ────────────────────────────────────────────
+
+      app.stage.eventMode = "static";
+      app.stage.hitArea = app.screen;
+
+      let lastHexKey = "";
+
+      app.stage.on("pointermove", (e) => {
+        const { x: px, y: py } = e.global;
+        const hex = screenToHex(px, py, hexSize, gridW, gridH);
+        const tooltip = tooltipRef.current;
+
+        if (!hex) {
+          hoverGfx.clear();
+          lastHexKey = "";
+          if (tooltip) tooltip.style.display = "none";
+          return;
+        }
+
+        const [col, row] = hex;
+        const key = `${col},${row}`;
+
+        // Redraw highlight only when hex changes
+        if (key !== lastHexKey) {
+          lastHexKey = key;
+          const [cx, cy] = hexCenter(col, row, hexSize, gridH);
+          hoverGfx.clear();
+          hoverGfx
+            .poly(hexVerts(cx, cy, hexSize * 0.98))
+            .stroke({ width: 1.5, color: "#ffffff", alpha: 0.7 });
+        }
+
+        // Update tooltip content & position
+        if (!tooltip) return;
+
+        const owners = getOwnersAtTurn(currentTurnRef.current);
+        const idx = row * gridW + col;
+        const owner = owners[idx];
+
+        if (owner < 0) {
+          tooltip.style.display = "none";
+          return;
+        }
+
+        const player = players.find((p) => p.pid === owner);
+        if (!player) {
+          tooltip.style.display = "none";
+          return;
+        }
+
+        const civName = cleanCivName(player.civ);
+        const cities = getCitiesAtTurn(currentTurnRef.current);
+        const city = cities.find((c) => c.x === col && c.y === row);
+
+        let html = `<span class="font-medium">${civName}</span>`;
+        if (player.csType) {
+          html += ` <span style="opacity:0.6">(${player.csType})</span>`;
+        }
+        if (city) {
+          html += `<br/><span style="opacity:0.6">Pop ${city.pop}</span>`;
+        }
+
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+
+        // Position via canvas bounding rect for scroll-safe fixed positioning
+        const rect = app.canvas.getBoundingClientRect();
+        tooltip.style.left = `${rect.left + px + 12}px`;
+        tooltip.style.top = `${rect.top + py - 8}px`;
+      });
+
+      app.canvas.addEventListener("mouseleave", () => {
+        hoverGfx.clear();
+        lastHexKey = "";
+        if (tooltipRef.current) tooltipRef.current.style.display = "none";
+      });
+    })();
+
+    return () => {
+      destroyed = true;
+      const container = containerRef.current;
+      if (container?.contains(app.canvas)) {
+        container.removeChild(app.canvas);
       }
+      app.destroy(true, { children: true });
+    };
+  }, [
+    canvasW, canvasH, hexSize, terrain, gridW, gridH,
+    playerColors, getOwnersAtTurn, getCitiesAtTurn, getRoadsAtTurn, players,
+  ]);
 
-      // Layer 4: cities
-      const cities = getCitiesAtTurn(turn);
-      for (const city of cities) {
-        const [cx, cy] = hexPos(city.x, city.y);
-        const colors = playerColors.get(city.pid);
-        const radius =
-          CITY_MARKER.baseRadius +
-          Math.sqrt(city.pop) * CITY_MARKER.popScale;
-
-        // Fill
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fillStyle = colors?.secondary ?? "#ffffff";
-        ctx.fill();
-
-        // Stroke
-        ctx.strokeStyle = CITY_MARKER.strokeColor;
-        ctx.lineWidth = CITY_MARKER.strokeWidth;
-        ctx.stroke();
-      }
-    },
-    [
-      gridW,
-      gridH,
-      hexSize,
-      hexPos,
-      drawHex,
-      getOwnersAtTurn,
-      getCitiesAtTurn,
-      getRoadsAtTurn,
-      playerColors,
-    ],
-  );
-
-  // Re-render when turn changes
+  // Sync turn changes to Pixi (lightweight — no Pixi teardown)
   useEffect(() => {
-    renderFrame(currentTurn);
-  }, [currentTurn, renderFrame]);
+    currentTurnRef.current = currentTurn;
+    renderTurnRef.current?.(currentTurn);
+  }, [currentTurn]);
 
-  // ── Replay animation ───────────────────────────────────────────────────
+  // ── Replay animation ─────────────────────────────────────────────────
 
   useEffect(() => {
     if (!playing) return;
 
-    const speeds = [500, 250, 100, 50]; // 1x, 2x, 5x, 10x
+    const speeds = [500, 250, 100, 50];
     const interval = speeds[Math.min(speed, speeds.length - 1)];
 
     const tick = (time: number) => {
@@ -485,10 +586,9 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
     return () => cancelAnimationFrame(animRef.current);
   }, [playing, speed, maxTurn]);
 
-  // ── UI ─────────────────────────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────────────────
 
   const speedLabels = ["1x", "2x", "5x", "10x"];
-  const dpr = dprRef.current;
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 px-3 py-6 sm:px-6">
@@ -503,26 +603,23 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
         </span>
       </div>
 
-      {/* Canvas */}
+      {/* Pixi canvas container */}
       <div
         ref={containerRef}
         className="overflow-x-auto rounded-sm border border-marble-300 bg-[#1a1a2e]"
-      >
-        <canvas
-          ref={canvasRef}
-          width={canvasW * dpr}
-          height={canvasH * dpr}
-          style={{ width: canvasW, height: canvasH }}
-        />
-      </div>
+      />
+
+      {/* Hover tooltip (fixed positioning — scroll-safe) */}
+      <div
+        ref={tooltipRef}
+        className="pointer-events-none fixed z-50 hidden rounded bg-marble-900/90 px-2 py-1 text-[10px] leading-snug text-marble-100"
+        style={{ display: "none" }}
+      />
 
       {/* Replay controls */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => {
-            setPlaying(false);
-            setCurrentTurn(initialTurn);
-          }}
+          onClick={() => { setPlaying(false); setCurrentTurn(initialTurn); }}
           className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
           title="Reset to start"
         >
@@ -545,10 +642,7 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
         </button>
 
         <button
-          onClick={() => {
-            setPlaying(false);
-            setCurrentTurn(maxTurn);
-          }}
+          onClick={() => { setPlaying(false); setCurrentTurn(maxTurn); }}
           className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
           title="Jump to end"
         >
@@ -576,29 +670,30 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
         </button>
       </div>
 
-      {/* Civ legend */}
+      {/* Legend — major civs */}
       <div className="flex flex-wrap gap-2">
         {players
           .filter((p) => !p.csType)
           .map((p) => {
-            const colors = playerColors.get(p.pid);
             const civName = cleanCivName(p.civ);
+            const leader = getDefaultLeader(civName);
             return (
               <div
                 key={p.pid}
                 className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
               >
                 <CivSymbol civ={civName} className="h-3 w-3" />
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-sm"
-                  style={{ backgroundColor: colors?.primary ?? "#888" }}
-                />
                 <span className="text-[10px] font-medium text-marble-600">
                   {civName}
                 </span>
+                {leader && (
+                  <span className="text-[9px] text-marble-400">{leader}</span>
+                )}
               </div>
             );
           })}
+
+        {/* Legend — city-states */}
         {players.some((p) => p.csType) && (
           <>
             <span className="self-center text-[9px] text-marble-400">|</span>
