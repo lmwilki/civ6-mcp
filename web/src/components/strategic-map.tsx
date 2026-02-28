@@ -228,10 +228,11 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
   const hexPos = useCallback(
     (col: number, row: number): [number, number] => {
       const cx = hexSize + col * 1.5 * hexSize;
+      // Odd-q offset: even columns shifted down
       const cy =
         (SQRT3 * hexSize) / 2 +
         row * SQRT3 * hexSize +
-        (col % 2 !== 0 ? (SQRT3 * hexSize) / 2 : 0);
+        (col % 2 === 0 ? (SQRT3 * hexSize) / 2 : 0);
       return [cx, cy];
     },
     [hexSize],
@@ -328,9 +329,9 @@ function MapCanvas({ mapData }: { mapData: MapDataDoc }) {
       }
 
       // Layer 2b: inner territory borders
-      // Flat-top, even-column offset neighbor deltas
-      const neighborsEven = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 0], [-1, -1]];
-      const neighborsOdd  = [[0, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      // Flat-top, odd-q offset: even columns shifted, odd columns standard
+      const neighborsEven = [[0, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      const neighborsOdd  = [[0, -1], [1, -1], [1, 0], [0, 1], [-1, 0], [-1, -1]];
       // Edge vertex indices (pairs) matching the 6 neighbor directions
       // Vertices: 0=right, 1=bot-right, 2=bot-left, 3=left, 4=top-left, 5=top-right
       const edgeVertices: [number, number][] = [[4, 5], [5, 0], [0, 1], [1, 2], [2, 3], [3, 4]];
