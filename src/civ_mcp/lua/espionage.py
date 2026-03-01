@@ -60,7 +60,8 @@ for i, u in Players[me]:GetUnits():Members() do
             local params = {{[UnitOperationTypes.PARAM_X0]=x, [UnitOperationTypes.PARAM_Y0]=y}}
             local availOps = {{}}
             for opName, opHash in pairs(SPY_OPS) do
-                if UnitManager.CanStartOperation(u, opHash, nil, params) then
+                local ok, can = pcall(function() return UnitManager.CanStartOperation(u, opHash, nil, params) end)
+                if ok and can then
                     table.insert(availOps, opName)
                 end
             end
