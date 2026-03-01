@@ -696,6 +696,7 @@ export const ingestMapData = mutation({
     // JSON-encoded number[] strings — Convex caps arrays at 8192 elements
     terrain: v.string(),
     initialOwners: v.string(),
+    initialRoutes: v.optional(v.string()),
     initialTurn: v.number(),
     ownerFrames: v.string(),
     cityFrames: v.string(),

@@ -604,6 +604,7 @@ async def sync_map_data(
         "gridH": static_data["gridH"],
         "terrain": json.dumps(static_data["terrain"]),
         "initialOwners": json.dumps(static_data["initialOwners"]),
+        "initialRoutes": json.dumps(static_data.get("initialRoutes", [])),
         "initialTurn": static_data.get("initialTurn", 0),
         "ownerFrames": json.dumps(owner_frames),
         "cityFrames": json.dumps(city_frames),

@@ -256,6 +256,7 @@ export interface MapDataDoc {
   gridH: number;
   terrain: string;
   initialOwners: string;
+  initialRoutes?: string;
   initialTurn: number;
   ownerFrames: string;
   cityFrames: string;

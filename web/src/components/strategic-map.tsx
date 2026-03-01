@@ -231,8 +231,12 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       ownerKf.push({ turn: frame.turn, owners: Int8Array.from(owners) });
     }
 
-    // Road keyframes (accumulating)
+    // Road keyframes (accumulating) — seed from initialRoutes if available
     const roads = new Int8Array(tileCount).fill(-1);
+    if (mapData.initialRoutes) {
+      const ir: number[] = JSON.parse(mapData.initialRoutes);
+      for (let i = 0; i < ir.length && i < tileCount; i++) roads[i] = ir[i];
+    }
     const roadKf: { turn: number; roads: Int8Array }[] = [
       { turn: mapData.initialTurn, roads: Int8Array.from(roads) },
     ];

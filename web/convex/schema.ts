@@ -217,6 +217,7 @@ export default defineSchema({
     // Large numeric arrays stored as JSON strings — Convex caps arrays at 8192 elements
     terrain: v.string(),       // stride-6, row-major [terrain, feature, hills, river, coastal, resource]
     initialOwners: v.string(), // one owner per tile (-1 = unowned), row-major
+    initialRoutes: v.optional(v.string()), // one route type per tile (-1 = none), row-major
     initialTurn: v.number(),
     ownerFrames: v.string(),   // packed [turn, count, tileIdx, owner, ...]
     cityFrames: v.string(),    // packed [turn, count, x, y, pid, pop, ...]
