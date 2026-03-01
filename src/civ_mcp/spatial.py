@@ -3,8 +3,12 @@
 Writes per-game JSONL to ~/.civ6-mcp/spatial_{civ}_{seed}.jsonl.
 This is research instrumentation only — data does NOT feed back to the agent.
 
-Each tool call that surfaces coordinate data is classified by attention type
-and the observed tile set is extracted via regex from the narrated result text.
+Each tool call that surfaces coordinate data is classified by attention type.
+Tile coordinates are passed structurally when available, with regex extraction
+from narrated text as a fallback for tools that haven't been updated.
+
+The tracker also maintains a revealed-tile set for computing visibility diffs
+after unit moves — enabling post-move discovery feedback to the agent.
 """
 
 from __future__ import annotations
@@ -139,6 +143,9 @@ class SpatialTracker:
         self._game: str | None = None
         self._path: Path | None = None
         self._buffer: list[dict[str, Any]] = []
+        # Revealed-tile set for visibility diffs
+        self._revealed: set[tuple[int, int]] = set()
+        self._revealed_seeded: bool = False
 
     @property
     def bound(self) -> bool:
@@ -155,6 +162,9 @@ class SpatialTracker:
         self._game = game_id
         self._path = LOG_DIR / f"spatial_{civ}_{seed}.jsonl"
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        # Reset revealed set for new game
+        self._revealed.clear()
+        self._revealed_seeded = False
 
         if self._buffer:
             with open(self._path, "a") as f:
@@ -163,23 +173,41 @@ class SpatialTracker:
                     f.write(json.dumps(entry, separators=(",", ":")) + "\n")
             self._buffer.clear()
 
+    def seed_revealed(self, tiles: set[tuple[int, int]]) -> None:
+        """Bulk-load revealed tiles from a Lua query at game start."""
+        self._revealed = set(tiles)
+        self._revealed_seeded = True
+
+    def mark_revealed(
+        self, tiles: set[tuple[int, int]]
+    ) -> set[tuple[int, int]]:
+        """Add tiles to revealed set. Returns the newly revealed subset."""
+        newly = tiles - self._revealed
+        self._revealed |= tiles
+        return newly
+
     async def record(
         self,
         tool_name: str,
         params: dict[str, Any],
         result_text: str,
         duration_ms: int,
+        *,
+        tiles: set[tuple[int, int]] | None = None,
     ) -> None:
         """Record a spatial observation from a tool call.
 
+        When *tiles* is provided, uses that directly (structured path).
+        Otherwise falls back to regex extraction from result text + params.
         Silently skips non-spatial tools or results with no coordinates.
         """
         attention_type = _classify_attention(tool_name)
         if attention_type is None:
             return
 
-        tiles = _extract_tiles_from_text(result_text)
-        tiles |= _extract_tiles_from_params(tool_name, params)
+        if tiles is None:
+            tiles = _extract_tiles_from_text(result_text)
+            tiles |= _extract_tiles_from_params(tool_name, params)
 
         if not tiles:
             return
@@ -195,6 +223,35 @@ class SpatialTracker:
             "ms": duration_ms,
         }
 
+        await self._write(entry)
+
+    async def record_discovery(
+        self,
+        tool_name: str,
+        unit_pos: tuple[int, int],
+        newly_revealed: set[tuple[int, int]],
+        duration_ms: int,
+    ) -> None:
+        """Record a visibility discovery event from a unit move."""
+        if not newly_revealed:
+            return
+
+        entry: dict[str, Any] = {
+            "game": self._game,
+            "turn": self._turn,
+            "tool": tool_name,
+            "type": "discovery",
+            "unit_pos": list(unit_pos),
+            "tiles": sorted(newly_revealed),
+            "n_tiles": len(newly_revealed),
+            "ts": time.time(),
+            "ms": duration_ms,
+        }
+
+        await self._write(entry)
+
+    async def _write(self, entry: dict[str, Any]) -> None:
+        """Append an entry to the JSONL file (or buffer if unbound)."""
         async with self._lock:
             if self._path is not None:
                 with open(self._path, "a") as f:

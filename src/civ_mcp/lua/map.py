@@ -1346,3 +1346,40 @@ def parse_ownership_delta(lines: list[str]) -> OwnershipDelta:
         road_changes=road_changes,
         cities=cities,
     )
+
+
+def build_revealed_tiles_seed_query() -> str:
+    """GameCore: return all currently revealed tile coordinates.
+
+    Used once per session to seed the spatial tracker's revealed-tile set.
+    Output: ``REVEALED|x1,y1;x2,y2;...`` (semicolon-separated pairs).
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local vis = PlayersVisibility[me]
+local parts = {{}}
+for idx = 0, Map.GetPlotCount() - 1 do
+    local p = Map.GetPlotByIndex(idx)
+    if vis:IsRevealed(p:GetX(), p:GetY()) then
+        table.insert(parts, p:GetX() .. "," .. p:GetY())
+    end
+end
+print("REVEALED|" .. table.concat(parts, ";"))
+print("{SENTINEL}")
+"""
+
+
+def parse_revealed_tiles_seed(lines: list[str]) -> set[tuple[int, int]]:
+    """Parse the bulk revealed-tiles response into a coordinate set."""
+    tiles: set[tuple[int, int]] = set()
+    for line in lines:
+        if not line.startswith("REVEALED|"):
+            continue
+        data = line[len("REVEALED|") :]
+        if not data:
+            break
+        for pair in data.split(";"):
+            xy = pair.split(",")
+            if len(xy) == 2:
+                tiles.add((int(xy[0]), int(xy[1])))
+    return tiles

@@ -144,6 +144,8 @@ async def _logged(
     tool_name: str,
     params: dict[str, Any],
     fn: Callable[[], Awaitable[str]],
+    *,
+    tiles: set[tuple[int, int]] | None = None,
 ) -> str:
     """Run a tool function with timing, error handling, and logging."""
     logger = _get_logger(ctx)
@@ -167,7 +169,7 @@ async def _logged(
     log.info("[T%s] %s(%s) OK %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
     await logger.log_tool_call(tool_name, params, result, ms)
     try:
-        await _get_spatial(ctx).record(tool_name, params, result, ms)
+        await _get_spatial(ctx).record(tool_name, params, result, ms, tiles=tiles)
     except Exception:
         pass
     return result
@@ -198,8 +200,20 @@ async def get_game_overview(ctx: Context) -> str:
             civ, seed = await gs.get_game_identity()
             logger.bind_game(civ, seed)
             spatial.bind_game(civ, seed)
+            gs.spatial = spatial
         except Exception:
             pass
+        # Seed revealed tiles for visibility diff (once per session)
+        if not spatial._revealed_seeded:
+            try:
+                seed_lines = await gs.conn.execute_read(
+                    lq.build_revealed_tiles_seed_query()
+                )
+                seed_tiles = lq.parse_revealed_tiles_seed(seed_lines)
+                spatial.seed_revealed(seed_tiles)
+                log.info("Seeded spatial tracker with %d revealed tiles", len(seed_tiles))
+            except Exception:
+                log.debug("Failed to seed revealed tiles", exc_info=True)
         text = nr.narrate_overview(ov)
         # Check for game-over state
         gameover = await gs.check_game_over()
@@ -238,9 +252,11 @@ async def get_units(ctx: Context) -> str:
     Consumed units (e.g. settlers that founded cities) are excluded.
     """
     gs = _get_game(ctx)
+    unit_tiles: set[tuple[int, int]] = set()
 
     async def _run():
         units = await gs.get_units()
+        unit_tiles.update((u.x, u.y) for u in units if u.x >= 0)
         try:
             threats = await gs.get_threat_scan()
         except Exception:
@@ -252,7 +268,7 @@ async def get_units(ctx: Context) -> str:
             pass
         return nr.narrate_units(units, threats, trade_status)
 
-    return await _logged(ctx, "get_units", {}, _run)
+    return await _logged(ctx, "get_units", {}, _run, tiles=unit_tiles)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -372,9 +388,11 @@ async def get_map_area(
     """
     radius = min(radius, 4)
     gs = _get_game(ctx)
+    tile_coords: set[tuple[int, int]] = set()
 
     async def _run():
         tiles = await gs.get_map_area(center_x, center_y, radius)
+        tile_coords.update((t.x, t.y) for t in tiles)
         return nr.narrate_map(tiles)
 
     result = await _logged(
@@ -382,6 +400,7 @@ async def get_map_area(
         "get_map_area",
         {"center_x": center_x, "center_y": center_y, "radius": radius},
         _run,
+        tiles=tile_coords,
     )
     _get_camera(ctx).push(center_x, center_y, f"map_area ({center_x},{center_y})")
     return result

@@ -1650,3 +1650,63 @@ def narrate_notifications(notifs: list[lq.GameNotification]) -> str:
             lines.append(f"  - {n.message}{loc}")
 
     return "\n".join(lines)
+
+
+def narrate_move_discoveries(
+    newly_revealed: list[tuple[int, int, dict]],
+    total_new: int,
+) -> str:
+    """Narrate newly revealed tiles after a unit move.
+
+    *newly_revealed* is a list of ``(x, y, metadata)`` for each tile that
+    the engine had never revealed to this player before this move.
+    *total_new* is the full count (may exceed len(newly_revealed) if some
+    tiles lacked metadata).
+
+    Returns empty string when nothing new was revealed.
+    """
+    if total_new == 0:
+        return ""
+
+    # Classify tiles as "notable" (resource, enemy unit, camp, city, river+hills)
+    notable: list[str] = []
+    for x, y, m in newly_revealed:
+        parts: list[str] = []
+        terrain = m.get("terrain", "").replace("TERRAIN_", "").replace("_", " ").title()
+        if m.get("hills"):
+            terrain += " Hills"
+        parts.append(terrain)
+        if m.get("feature"):
+            feat = m["feature"].replace("FEATURE_", "").replace("_", " ").title()
+            parts.append(feat)
+        is_notable = False
+        if m.get("resource"):
+            res = m["resource"].replace("RESOURCE_", "").replace("_", " ").title()
+            cls = m.get("resource_class", "")
+            marker = "*" if cls == "strategic" else "+" if cls == "luxury" else ""
+            parts.append(f"[{res}{marker}]")
+            is_notable = True
+        if m.get("units"):
+            for u in m["units"]:
+                parts.append(f"**[{u}]**")
+            is_notable = True
+        if m.get("camp"):
+            parts.append("**[Barbarian Camp!]**")
+            is_notable = True
+        if m.get("city"):
+            parts.append(f"**[City: {m['city']}]**")
+            is_notable = True
+        if is_notable:
+            notable.append(f"  ({x},{y}): {' '.join(parts)}")
+
+    n_notable = len(notable)
+    n_mundane = total_new - n_notable
+    lines: list[str] = []
+    if n_notable:
+        lines.append(f"Revealed {total_new} new tiles ({n_notable} notable):")
+        lines.extend(notable)
+        if n_mundane > 0:
+            lines.append(f"  + {n_mundane} mundane tiles")
+    else:
+        lines.append(f"Revealed {total_new} new tiles (no notable features)")
+    return "\n".join(lines)
