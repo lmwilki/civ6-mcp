@@ -465,7 +465,6 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
           // Territory borders — boundary edge graph walk for continuous contours.
           // Collect directed boundary edges per owner, then walk closed loops.
-          const INSET = 0.92;
           const bh = (SQRT3 / 2) * hexSize;
           const vOffsets: [number, number][] = [
             [0, -hexSize],      [bh, -hexSize / 2], [bh, hexSize / 2],
@@ -496,20 +495,16 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
                 const [vi, vj] = EDGE_VERTICES[d];
                 // Full-size vertex positions (shared exactly between adjacent hexes)
-                const fromFX = cx + ox + vOffsets[vi][0];
-                const fromFY = cy + vOffsets[vi][1];
-                const toFX = cx + ox + vOffsets[vj][0];
-                const toFY = cy + vOffsets[vj][1];
-                // Inset destination vertex (shifted toward this hex's center)
-                const toIX = cx + ox + vOffsets[vj][0] * INSET;
-                const toIY = cy + vOffsets[vj][1] * INSET;
+                const fromX = cx + ox + vOffsets[vi][0];
+                const fromY = cy + vOffsets[vi][1];
+                const toX = cx + ox + vOffsets[vj][0];
+                const toY = cy + vOffsets[vj][1];
 
                 let edges = edgesByOwner.get(owner);
                 if (!edges) { edges = new Map(); edgesByOwner.set(owner, edges); }
-                const fk = vKey(fromFX, fromFY);
-                // Only store first writer (avoids overwrite from adjacent hex)
+                const fk = vKey(fromX, fromY);
                 if (!edges.has(fk)) {
-                  edges.set(fk, { ix: toIX, iy: toIY, nk: vKey(toFX, toFY) });
+                  edges.set(fk, { ix: toX, iy: toY, nk: vKey(toX, toY) });
                 }
               }
             }
@@ -543,7 +538,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
               borderGfx.closePath();
             }
 
-            borderGfx.stroke({ width: bw, color: colors.secondary, join: "miter" });
+            borderGfx.stroke({ width: bw, color: colors.secondary, join: "miter", alignment: 1 });
           }
 
           // Roads — lines connecting adjacent road tiles
