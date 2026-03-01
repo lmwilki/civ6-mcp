@@ -110,118 +110,142 @@ async def dismiss_popup(conn: GameConnection) -> str:
     except Exception as e:
         log.debug("Phase 1 dismiss failed: %s", e)
 
-    # Phase 2: ALWAYS check ExclusivePopupManager popups — they need Close()
-    # in their OWN Lua state to release engine lock.  Phase 1's SetHide()
-    # does NOT release this lock, so we must run Phase 2 even if Phase 1
-    # found/hid a popup.  These have their own state index (not accessible
-    # from InGame).
-    #
-    # Phase 1 no longer hides ExclusivePopup types (they were removed from
-    # the Phase 1 list), so the IsHidden check here works correctly.
-    # We guard with IsHidden to avoid calling Close() on inactive popups,
-    # which would corrupt BulkHide counters.
-    popup_keywords = ("Popup", "Wonder", "Moment", "Era", "Disaster")
-    popup_states = {
-        idx: n
-        for idx, n in conn.lua_states.items()
-        if any(kw in n for kw in popup_keywords)
-    }
-    log.debug("Phase 2 popup states: %s", popup_states)
-    for state_idx, name in popup_states.items():
-        # Loop to drain the ExclusivePopupManager's engine queue —
-        # each Close() pops the next event, so we keep closing until
-        # the popup stays hidden (max 20 to avoid infinite loops).
-        for _drain in range(20):
-            try:
-                lines = await conn.execute_in_state(
-                    state_idx,
-                    "pcall(function() if m_kQueuedPopups then m_kQueuedPopups = {} end end); "
-                    "if not ContextPtr:IsHidden() then "
-                    "  local ok = pcall(Close); "
-                    "  if not ok then pcall(OnClose) end; "
-                    '  print("DISMISSED") '
-                    "end; "
-                    'print("---END---")',
-                )
-                if any("DISMISSED" in l for l in lines):
-                    dismissed.append(name)
-                else:
-                    break  # popup stayed hidden, queue drained
-            except Exception as e:
-                log.debug(
-                    "Popup check failed for %s (state %d): %s", name, state_idx, e
-                )
-                break
-
-    # Phase 3: Fallback — if InGame still sees visible ExclusivePopups,
-    # probe state indexes to find and close them.  This handles cases where
-    # lua_states from the handshake is incomplete (truncated LSQ response).
+    # Pre-check: single InGame call to detect visible ExclusivePopupManager
+    # popups.  Phase 2 scans ~30 Lua states individually (~450ms each = ~13.5s)
+    # to find these.  This pre-check costs one round-trip (~500ms) and skips
+    # Phase 2+3 entirely when no ExclusivePopups are active (>99% of calls).
     exclusive_popup_names = [
         "NaturalWonderPopup",
         "NaturalDisasterPopup",
         "WonderBuiltPopup",
         "EraCompletePopup",
+        "HistoricMoments",
+        "MomentPopup",
         "ProjectBuiltPopup",
         "RockBandPopup",
         "RockBandMoviePopup",
     ]
+    any_exclusive_visible = False
     try:
-        check_lua = (
+        precheck_lua = (
             " ".join(
                 f'do local c = ContextPtr:LookUpControl("/InGame/{n}") '
-                f'if c and not c:IsHidden() then print("STILL_VISIBLE|{n}") end end'
+                f'if c and not c:IsHidden() then print("EXCL_VISIBLE") end end'
                 for n in exclusive_popup_names
             )
             + f' print("{lq.SENTINEL}")'
         )
-        still_visible = await conn.execute_write(check_lua)
-        remaining = [
-            l.split("|", 1)[1] for l in still_visible if l.startswith("STILL_VISIBLE|")
-        ]
-        if remaining:
-            log.info(
-                "Phase 3: ExclusivePopups still visible after Phase 2: %s "
-                "(probing state indexes...)",
-                remaining,
-            )
-            # Probe state indexes 50-200 to find the popup states
-            for probe_idx in range(50, 200):
-                if probe_idx in popup_states:
-                    continue  # already checked in Phase 2
-                if not remaining:
-                    break
-                try:
-                    probe_lines = await conn.execute_in_state(
-                        probe_idx,
-                        'print(ContextPtr:GetID()); print("---END---")',
-                        timeout=1.0,
-                    )
-                    state_name = probe_lines[0] if probe_lines else ""
-                    if state_name not in remaining:
-                        continue
-                    # Found it! Close the popup
-                    close_lines = await conn.execute_in_state(
-                        probe_idx,
-                        "pcall(function() if m_kQueuedPopups then m_kQueuedPopups = {} end end); "
-                        "local ok = pcall(Close); "
-                        "if not ok then pcall(OnClose) end; "
-                        "ContextPtr:SetHide(true); "
-                        'print("DISMISSED"); '
-                        'print("---END---")',
-                        timeout=2.0,
-                    )
-                    if any("DISMISSED" in l for l in close_lines):
-                        dismissed.append(f"{state_name} (probed state {probe_idx})")
-                        remaining.remove(state_name)
-                        # Cache this state for future use
-                        conn.lua_states[probe_idx] = state_name
-                        log.info(
-                            "Phase 3: Dismissed %s at state %d", state_name, probe_idx
-                        )
-                except Exception:
-                    pass  # state doesn't exist or errored
+        precheck_lines = await conn.execute_write(precheck_lua)
+        any_exclusive_visible = any("EXCL_VISIBLE" in l for l in precheck_lines)
     except Exception as e:
-        log.debug("Phase 3 probe failed: %s", e)
+        log.debug("ExclusivePopup pre-check failed (will run Phase 2): %s", e)
+        any_exclusive_visible = True  # fail-open: scan if pre-check errors
+
+    if any_exclusive_visible:
+        log.info("ExclusivePopup visible — running Phase 2 state scan")
+
+        # Phase 2: Close ExclusivePopupManager popups in their own Lua states.
+        # These need Close() in their OWN state to release the engine lock —
+        # Phase 1's SetHide() does NOT release this lock.
+        popup_keywords = ("Popup", "Wonder", "Moment", "Era", "Disaster")
+        popup_states = {
+            idx: n
+            for idx, n in conn.lua_states.items()
+            if any(kw in n for kw in popup_keywords)
+        }
+        log.debug("Phase 2 popup states: %s", popup_states)
+        for state_idx, name in popup_states.items():
+            # Loop to drain the ExclusivePopupManager's engine queue —
+            # each Close() pops the next event, so we keep closing until
+            # the popup stays hidden (max 20 to avoid infinite loops).
+            for _drain in range(20):
+                try:
+                    lines = await conn.execute_in_state(
+                        state_idx,
+                        "pcall(function() if m_kQueuedPopups then m_kQueuedPopups = {} end end); "
+                        "if not ContextPtr:IsHidden() then "
+                        "  local ok = pcall(Close); "
+                        "  if not ok then pcall(OnClose) end; "
+                        '  print("DISMISSED") '
+                        "end; "
+                        'print("---END---")',
+                    )
+                    if any("DISMISSED" in l for l in lines):
+                        dismissed.append(name)
+                    else:
+                        break  # popup stayed hidden, queue drained
+                except Exception as e:
+                    log.debug(
+                        "Popup check failed for %s (state %d): %s",
+                        name,
+                        state_idx,
+                        e,
+                    )
+                    break
+
+        # Phase 3: Fallback — if InGame still sees visible ExclusivePopups,
+        # probe state indexes to find and close them.  Handles cases where
+        # lua_states from the handshake is incomplete (truncated LSQ).
+        try:
+            check_lua = (
+                " ".join(
+                    f'do local c = ContextPtr:LookUpControl("/InGame/{n}") '
+                    f'if c and not c:IsHidden() then print("STILL_VISIBLE|{n}") end end'
+                    for n in exclusive_popup_names
+                )
+                + f' print("{lq.SENTINEL}")'
+            )
+            still_visible = await conn.execute_write(check_lua)
+            remaining = [
+                l.split("|", 1)[1]
+                for l in still_visible
+                if l.startswith("STILL_VISIBLE|")
+            ]
+            if remaining:
+                log.info(
+                    "Phase 3: ExclusivePopups still visible after Phase 2: %s "
+                    "(probing state indexes...)",
+                    remaining,
+                )
+                for probe_idx in range(50, 200):
+                    if probe_idx in popup_states:
+                        continue
+                    if not remaining:
+                        break
+                    try:
+                        probe_lines = await conn.execute_in_state(
+                            probe_idx,
+                            'print(ContextPtr:GetID()); print("---END---")',
+                            timeout=1.0,
+                        )
+                        state_name = probe_lines[0] if probe_lines else ""
+                        if state_name not in remaining:
+                            continue
+                        close_lines = await conn.execute_in_state(
+                            probe_idx,
+                            "pcall(function() if m_kQueuedPopups then m_kQueuedPopups = {} end end); "
+                            "local ok = pcall(Close); "
+                            "if not ok then pcall(OnClose) end; "
+                            "ContextPtr:SetHide(true); "
+                            'print("DISMISSED"); '
+                            'print("---END---")',
+                            timeout=2.0,
+                        )
+                        if any("DISMISSED" in l for l in close_lines):
+                            dismissed.append(
+                                f"{state_name} (probed state {probe_idx})"
+                            )
+                            remaining.remove(state_name)
+                            conn.lua_states[probe_idx] = state_name
+                            log.info(
+                                "Phase 3: Dismissed %s at state %d",
+                                state_name,
+                                probe_idx,
+                            )
+                    except Exception:
+                        pass
+        except Exception as e:
+            log.debug("Phase 3 probe failed: %s", e)
 
     if dismissed:
         msg = f"Dismissed: {', '.join(dismissed)}"

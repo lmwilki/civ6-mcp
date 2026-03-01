@@ -47,7 +47,11 @@ _NONCRITICAL_POPUPS = [
     "NaturalWonderPopup",
     "WonderBuiltPopup",
     "EraCompletePopup",
+    "HistoricMoments",
+    "MomentPopup",
+    "ProjectBuiltPopup",
     "RockBandPopup",
+    "RockBandMoviePopup",
     "NaturalDisasterPopup",
 ]
 
