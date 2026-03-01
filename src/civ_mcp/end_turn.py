@@ -118,14 +118,17 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
 async def _check_empire_warnings(
     gs: GameState,
     snap: lq.TurnSnapshot | None,
-) -> list[lq.TurnEvent]:
+) -> tuple[list[lq.TurnEvent], int | None]:
     """Lightweight alerts that compensate for the Sensorium Effect.
 
     Surfaces information a human player would notice via passive visual cues:
     scoreboard position, idle trade routes, resource caps, loyalty crises,
     military imbalance, and gold deficits.
+
+    Returns (events, score) where score is the current game score if available.
     """
     events: list[lq.TurnEvent] = []
+    game_score: int | None = None
 
     # --- Loyalty crisis (from snapshot cities) ---
     if snap:
@@ -170,6 +173,7 @@ async def _check_empire_warnings(
         overview = None
 
     if overview:
+        game_score = overview.score
         if overview.gold_per_turn < 0 and overview.gold < abs(overview.gold_per_turn) * 20:
             turns_to_zero = int(overview.gold / abs(overview.gold_per_turn)) if overview.gold_per_turn < 0 else 99
             events.append(lq.TurnEvent(
@@ -253,7 +257,7 @@ async def _check_empire_warnings(
         except Exception:
             log.debug("Rival snapshot for warnings failed", exc_info=True)
 
-    return events
+    return events, game_score
 
 
 async def execute_end_turn(gs: GameState) -> str:
@@ -1268,8 +1272,9 @@ async def execute_end_turn(gs: GameState) -> str:
                 )
 
     # Empire-wide warnings (scoreboard, idle trade, loyalty, military, gold)
+    game_score = None
     try:
-        warning_events = await _check_empire_warnings(gs, snap_after)
+        warning_events, game_score = await _check_empire_warnings(gs, snap_after)
         events.extend(warning_events)
     except Exception:
         log.debug("Empire warnings failed", exc_info=True)
@@ -1280,5 +1285,6 @@ async def execute_end_turn(gs: GameState) -> str:
         turn_after,
         events,
         notifications,
-        snap_after.stockpiles if snap_after else None,
+        stockpiles=snap_after.stockpiles if snap_after else None,
+        score=game_score,
     )

@@ -1278,9 +1278,13 @@ class GameState:
         events: list[lq.TurnEvent],
         notifications: list[lq.GameNotification],
         stockpiles: list[lq.ResourceStockpile] | None = None,
+        score: int | None = None,
     ) -> str:
         """Format turn events and notifications into a scannable report."""
-        lines = [f"Turn {turn_before} -> {turn_after}"]
+        header = f"Turn {turn_before} -> {turn_after}"
+        if score is not None:
+            header += f" | Score: {score}"
+        lines = [header]
 
         if stockpiles:
             visible = [
