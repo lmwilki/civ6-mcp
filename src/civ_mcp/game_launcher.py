@@ -22,8 +22,21 @@ import os
 import subprocess
 import sys
 import time
+from typing import NamedTuple
 
 log = logging.getLogger(__name__)
+
+
+class WindowInfo(NamedTuple):
+    """Game window metadata from Quartz CGWindowList."""
+
+    window_id: int
+    x: int  # screen points
+    y: int  # screen points
+    w: int  # screen points
+    h: int  # screen points
+    pid: int
+
 
 # ---------------------------------------------------------------------------
 # Constants — hardcoded for safety (not configurable by agents)
@@ -31,6 +44,8 @@ log = logging.getLogger(__name__)
 
 STEAM_APP_ID = "289070"
 _ALLOWED_PROCESS_PATTERNS = ("Civ6",)  # pkill -f pattern — only matches Civ 6
+# CGWindowList/AppKit report app name ("Civilization VI"), not binary name ("Civ6_Exe")
+_APP_NAME_PATTERNS = ("Civilization",)
 
 if sys.platform == "darwin":
     _PROCESS_NAMES = ("Civ6_Exe_Child", "Civ6_Exe", "Civ6")
@@ -60,8 +75,8 @@ _LAUNCH_TIMEOUT_SECONDS = 60
 _MAIN_MENU_WAIT_SECONDS = 15
 
 
-def _require_gui_deps():
-    """Import and return GUI dependencies, raising clear error if missing."""
+def _require_gui_deps() -> None:
+    """Validate GUI dependencies are available, raising clear error if missing."""
     if sys.platform == "win32":
         raise NotImplementedError(
             "Windows GUI automation not yet implemented. "
@@ -70,11 +85,8 @@ def _require_gui_deps():
     if sys.platform != "darwin":
         raise NotImplementedError(f"GUI automation not supported on {sys.platform}")
     try:
-        import Quartz
-        import Vision
-        from Foundation import NSURL
-
-        return Quartz, Vision, NSURL
+        import Quartz  # noqa: F401
+        import Vision  # noqa: F401
     except ImportError:
         raise RuntimeError(
             "Game launcher requires pyobjc GUI dependencies. "
@@ -212,76 +224,142 @@ def _launch_game_sync() -> str:
 # ---------------------------------------------------------------------------
 
 
-def _screenshot(path: str = "/tmp/civ_ocr_nav.png") -> str:
-    """Take a screenshot of the entire screen (macOS only)."""
-    if sys.platform != "darwin":
-        raise NotImplementedError(f"Screenshot not supported on {sys.platform}")
-    subprocess.run(["screencapture", "-x", path], check=True)
-    return path
+def _find_game_window() -> WindowInfo | None:
+    """Find the Civ 6 game window via Quartz CGWindowList.
+
+    Returns WindowInfo with window ID, bounds (screen points), and PID.
+    Returns None if no matching window is found on screen.
+    """
+    _require_gui_deps()
+    import Quartz
+
+    window_list = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly
+        | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID,
+    )
+    if not window_list:
+        return None
+
+    for w in window_list:
+        owner = w.get("kCGWindowOwnerName", "")
+        layer = w.get("kCGWindowLayer", -1)
+        if layer != 0:
+            continue
+        if not (
+            any(p in owner for p in _PROCESS_NAMES)
+            or any(p in owner for p in _APP_NAME_PATTERNS)
+        ):
+            continue
+        bounds = w.get("kCGWindowBounds", {})
+        return WindowInfo(
+            window_id=w.get("kCGWindowNumber", 0),
+            x=int(bounds.get("X", 0)),
+            y=int(bounds.get("Y", 0)),
+            w=int(bounds.get("Width", 0)),
+            h=int(bounds.get("Height", 0)),
+            pid=w.get("kCGWindowOwnerPID", 0),
+        )
+    return None
 
 
-def _ocr(image_path: str) -> list[tuple[str, int, int, int, int]]:
-    """Run OCR, return [(text, screen_x, screen_y, width, height)]."""
-    Quartz, Vision, NSURL = _require_gui_deps()
+def _capture_window(window_id: int) -> object:
+    """Capture a single window as an in-memory CGImage (no disk I/O).
 
-    url = NSURL.fileURLWithPath_(image_path)
-    source = Quartz.CGImageSourceCreateWithURL(url, None)
-    image = Quartz.CGImageSourceCreateImageAtIndex(source, 0, None)
-    img_w = Quartz.CGImageGetWidth(image)
-    img_h = Quartz.CGImageGetHeight(image)
+    Returns a CGImageRef for direct use with Vision framework.
+    """
+    import Quartz
+
+    image = Quartz.CGWindowListCreateImage(
+        Quartz.CGRectNull,
+        Quartz.kCGWindowListOptionIncludingWindow,
+        window_id,
+        Quartz.kCGWindowImageBoundsIgnoreFraming,
+    )
+    if image is None:
+        raise RuntimeError(f"CGWindowListCreateImage failed for window {window_id}")
+    return image
+
+
+def _ocr_vision(
+    cg_image: object,
+    origin_x: int,
+    origin_y: int,
+    extent_w: int,
+    extent_h: int,
+) -> list[tuple[str, int, int, int, int]]:
+    """Run Vision OCR on a CGImage, mapping results to screen points.
+
+    Coordinates are mapped using the capture region's known bounds in
+    screen points (not retina pixels), making this retina-independent:
+        screen_x = origin_x + normalized_center_x * extent_w
+        screen_y = origin_y + (1 - norm_y - norm_h/2) * extent_h
+    """
+    import Vision
 
     request = Vision.VNRecognizeTextRequest.alloc().init()
     request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(image, None)
-    handler.performRequests_error_([request], None)
+    handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(
+        cg_image, None
+    )
+    success, error = handler.performRequests_error_([request], None)
+    if not success:
+        log.warning("Vision OCR failed: %s", error)
+        return []
 
     results = []
-    for obs in request.results():
+    for obs in request.results() or []:
         text = obs.topCandidates_(1)[0].string()
         bbox = obs.boundingBox()
-        # Vision: normalized coords, origin bottom-left → screen coords (retina /2)
-        sx = (bbox.origin.x + bbox.size.width / 2) * img_w / 2
-        sy = (1 - bbox.origin.y - bbox.size.height / 2) * img_h / 2
-        sw = bbox.size.width * img_w / 2
-        sh = bbox.size.height * img_h / 2
+        # Vision: normalized [0,1], origin bottom-left → screen points
+        norm_cx = bbox.origin.x + bbox.size.width / 2
+        norm_cy = 1 - bbox.origin.y - bbox.size.height / 2  # flip Y
+        sx = origin_x + norm_cx * extent_w
+        sy = origin_y + norm_cy * extent_h
+        sw = bbox.size.width * extent_w
+        sh = bbox.size.height * extent_h
         results.append((text, int(sx), int(sy), int(sw), int(sh)))
     return results
 
 
-def _get_game_window() -> tuple[int, int, int, int] | None:
-    """Get game window bounds (x, y, w, h) via AppleScript (macOS only)."""
-    if sys.platform != "darwin":
-        raise NotImplementedError(f"Window detection not supported on {sys.platform}")
-    for proc in _PROCESS_NAMES:
-        r = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                f'tell application "System Events"\n'
-                f'  tell process "{proc}"\n'
-                f"    set {{x, y}} to position of window 1\n"
-                f"    set {{w, h}} to size of window 1\n"
-                f'    return (x as string) & "," & (y as string) & "," & (w as string) & "," & (h as string)\n'
-                f"  end tell\n"
-                f"end tell",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        parts = r.stdout.strip().split(",")
-        if len(parts) == 4:
-            return tuple(int(p) for p in parts)
-    return None
+def _ocr_game_window(win: WindowInfo) -> list[tuple[str, int, int, int, int]]:
+    """Capture the game window and OCR it. All coords in screen points."""
+    cg_image = _capture_window(win.window_id)
+    return _ocr_vision(cg_image, win.x, win.y, win.w, win.h)
+
+
+def _ocr_fullscreen() -> list[tuple[str, int, int, int, int]]:
+    """Full-screen OCR fallback for when no game window exists.
+
+    Used during the Aspyr launcher phase before the game process starts.
+    Maps via display dimensions in points (retina-independent).
+    """
+    import Quartz
+
+    main_display = Quartz.CGMainDisplayID()
+    display_bounds = Quartz.CGDisplayBounds(main_display)
+    disp_w = int(display_bounds.size.width)
+    disp_h = int(display_bounds.size.height)
+
+    image = Quartz.CGWindowListCreateImage(
+        display_bounds,
+        Quartz.kCGWindowListOptionAll,
+        Quartz.kCGNullWindowID,
+        Quartz.kCGWindowImageDefault,
+    )
+    if image is None:
+        return []
+
+    return _ocr_vision(image, 0, 0, disp_w, disp_h)
 
 
 def _find_text(
     ocr_results: list[tuple[str, int, int, int, int]],
     target: str,
     exact: bool = False,
-    window_bounds: tuple[int, int, int, int] | None = None,
     prefer_bottom: bool = False,
 ) -> tuple[str, int, int, int, int] | None:
-    """Find OCR result matching target within game window.
+    """Find OCR result matching target text.
 
     Args:
         prefer_bottom: When True and multiple matches exist, return the one
@@ -292,10 +370,6 @@ def _find_text(
     target_lower = target.lower().strip()
     matches = []
     for text, x, y, w, h in ocr_results:
-        if window_bounds:
-            wx, wy, ww, wh = window_bounds
-            if not (wx <= x <= wx + ww and wy <= y <= wy + wh):
-                continue
         if exact and text.strip().lower() == target_lower:
             matches.append((text, x, y, w, h))
         elif not exact and target_lower in text.lower():
@@ -308,8 +382,10 @@ def _find_text(
 
 
 def _click(x: int, y: int) -> None:
-    """Click at screen coordinates."""
-    Quartz = _require_gui_deps()[0]
+    """Click at screen coordinates (points)."""
+    _require_gui_deps()
+    import Quartz
+
     e = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (x, y), 0)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
     time.sleep(0.15)
@@ -320,22 +396,62 @@ def _click(x: int, y: int) -> None:
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
 
 
-def _bring_to_front() -> None:
-    """Bring the game window to front (macOS only)."""
+def _is_window_focused() -> bool:
+    """Check if a Civ 6 window is the frontmost application (macOS only)."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        from AppKit import NSWorkspace
+
+        active = NSWorkspace.sharedWorkspace().frontmostApplication()
+        if active is None:
+            return False
+        name = active.localizedName() or ""
+        return any(p in name for p in _PROCESS_NAMES) or any(
+            p in name for p in _APP_NAME_PATTERNS
+        )
+    except ImportError:
+        return False
+
+
+def _bring_to_front(pid: int | None = None) -> None:
+    """Bring the game window to front via native AppKit activation.
+
+    Args:
+        pid: Process ID from WindowInfo. If None, looks up via
+            _find_game_window().
+    """
     if sys.platform != "darwin":
         raise NotImplementedError(f"Window focus not supported on {sys.platform}")
-    for proc in _PROCESS_NAMES:
-        r = subprocess.run(
-            [
-                "osascript",
-                "-e",
-                f'tell application "System Events" to set frontmost of process "{proc}" to true',
-            ],
-            capture_output=True,
+    try:
+        from AppKit import (
+            NSApplicationActivateIgnoringOtherApps,
+            NSRunningApplication,
         )
-        if r.returncode == 0:
-            break
-    time.sleep(0.3)
+    except ImportError:
+        log.warning("AppKit not available for window focus")
+        return
+
+    if pid is None:
+        win = _find_game_window()
+        if win is None:
+            log.debug("Cannot bring to front: no game window found")
+            return
+        pid = win.pid
+
+    app = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+    if app is None:
+        log.warning("Cannot bring to front: no app with PID %d", pid)
+        return
+
+    for attempt in range(3):
+        app.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+        time.sleep(0.3)
+        if app.isActive():
+            return
+        if attempt < 2:
+            log.debug("Window focus attempt %d failed, retrying...", attempt + 1)
+    log.warning("Could not confirm window focus after 3 attempts")
 
 
 def _wait_for_text(
@@ -345,19 +461,31 @@ def _wait_for_text(
     interval: int = 3,
     prefer_bottom: bool = False,
 ) -> tuple[str, int, int, int, int] | None:
-    """Wait until OCR finds target text in game window."""
+    """Wait until OCR finds target text in game window.
+
+    Captures only the game window (not the full screen). Falls back to
+    full-screen capture when no game window exists (e.g. Aspyr launcher).
+    """
+    _require_gui_deps()
     start = time.time()
     while time.time() - start < timeout:
-        _bring_to_front()
-        time.sleep(0.5)
-        bounds = _get_game_window()
-        results = _ocr(_screenshot())
+        win = _find_game_window()
+        if win is None:
+            # No game window yet (Aspyr launcher phase) — full-screen fallback
+            log.debug("No game window found, using full-screen OCR")
+            results = _ocr_fullscreen()
+        else:
+            _bring_to_front(pid=win.pid)
+            time.sleep(0.3)
+            try:
+                results = _ocr_game_window(win)
+            except RuntimeError:
+                log.debug("Window capture failed, retrying...")
+                time.sleep(interval)
+                continue
+
         match = _find_text(
-            results,
-            target,
-            exact=exact,
-            window_bounds=bounds,
-            prefer_bottom=prefer_bottom,
+            results, target, exact=exact, prefer_bottom=prefer_bottom
         )
         if match:
             return match
@@ -418,8 +546,8 @@ def _navigate_to_save_sync(save_name: str, tab: str = "Autosaves") -> str:
 
     Args:
         save_name: Display name of the save (no extension).
-        tab: Which tab to click in the Load Game screen.
-            "Autosaves" for autosaves, "Game Saves" for regular saves.
+        tab: Which tab to click ("Autosaves" — the only tab that shows
+            all save types sorted by last modified).
 
     Blocking operation — takes 30-90 seconds. Returns status message.
     """
@@ -501,14 +629,14 @@ async def load_save_from_menu(save_name: str | None = None) -> str:
         if save_name is None:
             return "No autosaves found in save directory."
 
-    # Check both save directories to determine which tab to use
+    # All saves (autosaves, MCP saves, named saves) appear under the
+    # "Autosaves" tab in the Load Game screen, sorted by last modified.
+    # There is no separate "Game Saves" tab in the Civ 6 UI.
     auto_path = os.path.join(SAVE_DIR, f"{save_name}.Civ6Save")
     single_path = os.path.join(SINGLE_SAVE_DIR, f"{save_name}.Civ6Save")
 
-    if os.path.exists(auto_path):
+    if os.path.exists(auto_path) or os.path.exists(single_path):
         tab = "Autosaves"
-    elif os.path.exists(single_path):
-        tab = "Game Saves"
     else:
         available = list_autosaves(5)
         # Also list regular saves
