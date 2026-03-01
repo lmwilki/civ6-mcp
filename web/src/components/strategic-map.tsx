@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Application, Graphics } from "pixi.js";
+import { Application, Container, Graphics } from "pixi.js";
 import {
   cleanCivName,
   unpackTerrain,
@@ -186,9 +186,11 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
   const [speed, setSpeed] = useState(0);
   const animRef = useRef(0);
   const lastFrameRef = useRef(0);
-  const [hexSize, setHexSize] = useState(6);
+  const hexSize = 6; // fixed base hex size — zoom handles magnification
   const [showAttention, setShowAttention] = useState(false);
   const showAttentionRef = useRef(false);
+  const worldContainerRef = useRef<Container | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
 
   // ── Unpack & precompute ───────────────────────────────────────────────
 
@@ -285,22 +287,11 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     return { lookup, maxWeight: maxW };
   }, [spatialMap]);
 
-  // ── Responsive hex sizing ─────────────────────────────────────────────
+  // ── World dimensions (fixed at base hexSize) ────────────────────────
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 800;
-      const s = Math.min(8, (w - 20) / (SQRT3 * (gridW + 0.5)));
-      setHexSize(Math.max(2, s));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [gridW]);
-
-  const canvasW = Math.ceil(SQRT3 * hexSize * (gridW + 0.5) + SQRT3 * hexSize);
-  const canvasH = Math.ceil(1.5 * hexSize * gridH + hexSize * 2);
+  const worldW = Math.ceil(SQRT3 * hexSize * (gridW + 0.5) + SQRT3 * hexSize);
+  const worldH = Math.ceil(1.5 * hexSize * gridH + hexSize * 2);
+  const VIEWPORT_H = 500;
 
   // ── Keyframe lookups (binary search for latest snapshot <= turn) ────
 
@@ -354,19 +345,27 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     let destroyed = false;
 
     (async () => {
+      // Viewport = container width (or fallback) × fixed height
+      const containerEl = containerRef.current;
+      const viewW = containerEl?.clientWidth ?? 800;
+      const viewH = VIEWPORT_H;
+
       await app.init({
         background: 0x1a1a2e,
-        width: canvasW,
-        height: canvasH,
+        width: viewW,
+        height: viewH,
         autoDensity: true,
         resolution: window.devicePixelRatio || 1,
         antialias: true,
       });
       if (destroyed) return;
+      if (!containerEl) return;
+      containerEl.insertBefore(app.canvas, containerEl.firstChild);
 
-      const container = containerRef.current;
-      if (!container) return;
-      container.insertBefore(app.canvas, container.firstChild);
+      // World container — holds all layers, transformed for pan/zoom
+      const world = new Container();
+      app.stage.addChild(world);
+      worldContainerRef.current = world;
 
       // Scene layers (bottom to top)
       const terrainGfx = new Graphics();
@@ -376,33 +375,63 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       const cityGfx = new Graphics();
       const attentionGfx = new Graphics();
       const hoverGfx = new Graphics();
-      app.stage.addChild(
+      world.addChild(
         terrainGfx, territoryGfx, borderGfx, roadGfx, cityGfx,
         attentionGfx, hoverGfx,
       );
 
-      // ── Static terrain (drawn once) ──────────────────────────────────
+      // X offsets for cylindrical wrapping — draw world 3 times
+      const xOffsets = [-worldW, 0, worldW];
 
-      for (let y = 0; y < gridH; y++) {
-        for (let x = 0; x < gridW; x++) {
-          const idx = y * gridW + x;
-          const tile = terrain[idx];
-          if (!tile) continue;
-          const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-          const verts = hexVerts(cx, cy, hexSize * 0.98);
+      // ── Static terrain (drawn once, 3 copies for wrapping) ─────────
 
-          terrainGfx.poly(verts).fill(getTerrainColor(tile.terrain));
+      for (const ox of xOffsets) {
+        for (let y = 0; y < gridH; y++) {
+          for (let x = 0; x < gridW; x++) {
+            const idx = y * gridW + x;
+            const tile = terrain[idx];
+            if (!tile) continue;
+            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+            const verts = hexVerts(cx + ox, cy, hexSize * 0.98);
 
-          const featureColor = getFeatureOverlay(tile.feature);
-          if (featureColor) {
-            terrainGfx.poly(verts).fill({
-              color: featureColor, alpha: FEATURE_OVERLAY_ALPHA,
-            });
+            terrainGfx.poly(verts).fill(getTerrainColor(tile.terrain));
+
+            const featureColor = getFeatureOverlay(tile.feature);
+            if (featureColor) {
+              terrainGfx.poly(verts).fill({
+                color: featureColor, alpha: FEATURE_OVERLAY_ALPHA,
+              });
+            }
           }
         }
       }
 
-      // ── Dynamic turn renderer ────────────────────────────────────────
+      // ── Pan / zoom helpers ─────────────────────────────────────────
+
+      function clamp(v: number, lo: number, hi: number) {
+        return Math.max(lo, Math.min(hi, v));
+      }
+
+      function wrapAndClamp() {
+        const scaledW = worldW * world.scale.x;
+        // Horizontal wrap: keep world.x in [-scaledW, 0)
+        world.x = ((world.x % scaledW) + scaledW) % scaledW - scaledW;
+        // Vertical clamp
+        const scaledH = worldH * world.scale.y;
+        if (scaledH <= viewH) {
+          world.y = (viewH - scaledH) / 2; // center if smaller than viewport
+        } else {
+          world.y = clamp(world.y, viewH - scaledH, 0);
+        }
+      }
+
+      // Initial view: fit to viewport width, vertically centered
+      const fitZoom = viewW / worldW;
+      world.scale.set(fitZoom);
+      world.x = 0;
+      wrapAndClamp();
+
+      // ── Dynamic turn renderer (3-copy for each dynamic layer) ──────
 
       const renderTurn = (turn: number) => {
         territoryGfx.clear();
@@ -412,118 +441,125 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
         const owners = getOwnersAtTurn(turn);
 
-        // Territory fill
-        for (let y = 0; y < gridH; y++) {
-          for (let x = 0; x < gridW; x++) {
-            const idx = y * gridW + x;
-            const owner = owners[idx];
-            if (owner < 0) continue;
-            const colors = playerColors.get(owner);
-            if (!colors) continue;
-            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-            territoryGfx
-              .poly(hexVerts(cx, cy, hexSize * 0.98))
-              .fill(colors.primary);
-          }
-        }
-
-        // Territory borders — batch segments by owner for fewer draw calls
-        const bordersByOwner = new Map<number, number[]>();
-        const INSET = 0.82;
-        const h = (SQRT3 / 2) * hexSize * 0.98;
-        const s98 = hexSize * 0.98;
-        const vOffsets: [number, number][] = [
-          [0, -s98],     [h, -s98 / 2], [h, s98 / 2],
-          [0, s98],      [-h, s98 / 2], [-h, -s98 / 2],
-        ];
-
-        for (let y = 0; y < gridH; y++) {
-          for (let x = 0; x < gridW; x++) {
-            const idx = y * gridW + x;
-            const owner = owners[idx];
-            if (owner < 0) continue;
-            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-            const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
-
-            for (let d = 0; d < 6; d++) {
-              const nx = x + deltas[d][0];
-              const ny = y + deltas[d][1];
-              const nOwner =
-                nx >= 0 && nx < gridW && ny >= 0 && ny < gridH
-                  ? owners[ny * gridW + nx]
-                  : -1;
-              if (nOwner === owner) continue;
-
-              const [vi, vj] = EDGE_VERTICES[d];
-              let segs = bordersByOwner.get(owner);
-              if (!segs) { segs = []; bordersByOwner.set(owner, segs); }
-              segs.push(
-                cx + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET,
-                cx + vOffsets[vj][0] * INSET, cy + vOffsets[vj][1] * INSET,
-              );
+        for (const ox of xOffsets) {
+          // Territory fill
+          for (let y = 0; y < gridH; y++) {
+            for (let x = 0; x < gridW; x++) {
+              const idx = y * gridW + x;
+              const owner = owners[idx];
+              if (owner < 0) continue;
+              const colors = playerColors.get(owner);
+              if (!colors) continue;
+              const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+              territoryGfx
+                .poly(hexVerts(cx + ox, cy, hexSize * 0.98))
+                .fill(colors.primary);
             }
           }
-        }
 
-        const bw = Math.max(1, hexSize * 0.2);
-        for (const [owner, segs] of bordersByOwner) {
-          const colors = playerColors.get(owner);
-          if (!colors) continue;
-          for (let i = 0; i < segs.length; i += 4) {
-            borderGfx.moveTo(segs[i], segs[i + 1]).lineTo(segs[i + 2], segs[i + 3]);
+          // Territory borders — batch segments by owner for fewer draw calls
+          const bordersByOwner = new Map<number, number[]>();
+          const INSET = 0.82;
+          const h = (SQRT3 / 2) * hexSize * 0.98;
+          const s98 = hexSize * 0.98;
+          const vOffsets: [number, number][] = [
+            [0, -s98],     [h, -s98 / 2], [h, s98 / 2],
+            [0, s98],      [-h, s98 / 2], [-h, -s98 / 2],
+          ];
+
+          for (let y = 0; y < gridH; y++) {
+            for (let x = 0; x < gridW; x++) {
+              const idx = y * gridW + x;
+              const owner = owners[idx];
+              if (owner < 0) continue;
+              const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+              const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
+
+              for (let d = 0; d < 6; d++) {
+                const nx = x + deltas[d][0];
+                const ny = y + deltas[d][1];
+                const nOwner =
+                  nx >= 0 && nx < gridW && ny >= 0 && ny < gridH
+                    ? owners[ny * gridW + nx]
+                    : -1;
+                if (nOwner === owner) continue;
+
+                const [vi, vj] = EDGE_VERTICES[d];
+                let segs = bordersByOwner.get(owner);
+                if (!segs) { segs = []; bordersByOwner.set(owner, segs); }
+                segs.push(
+                  cx + ox + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET,
+                  cx + ox + vOffsets[vj][0] * INSET, cy + vOffsets[vj][1] * INSET,
+                );
+              }
+            }
           }
-          borderGfx.stroke({ width: bw, color: colors.secondary, cap: "round" });
-        }
 
-        // Roads (dots)
-        const roads = getRoadsAtTurn(turn);
-        for (let y = 0; y < gridH; y++) {
-          for (let x = 0; x < gridW; x++) {
-            const idx = y * gridW + x;
-            const routeType = roads[idx];
-            if (routeType < 0) continue;
-            const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-            roadGfx
-              .circle(cx, cy, hexSize * 0.15)
-              .fill(ROAD_COLORS[routeType] ?? ROAD_COLORS[0]);
+          const bw = Math.max(1, hexSize * 0.2);
+          for (const [owner, segs] of bordersByOwner) {
+            const colors = playerColors.get(owner);
+            if (!colors) continue;
+            for (let i = 0; i < segs.length; i += 4) {
+              borderGfx.moveTo(segs[i], segs[i + 1]).lineTo(segs[i + 2], segs[i + 3]);
+            }
+            borderGfx.stroke({ width: bw, color: colors.secondary, cap: "round" });
           }
-        }
 
-        // Cities
-        const cities = getCitiesAtTurn(turn);
-        for (const city of cities) {
-          const [cx, cy] = hexCenter(city.x, city.y, hexSize, gridH);
-          const colors = playerColors.get(city.pid);
-          const r =
-            CITY_MARKER.baseRadius + Math.sqrt(city.pop) * CITY_MARKER.popScale;
-          cityGfx
-            .circle(cx, cy, r)
-            .fill(colors?.secondary ?? "#ffffff")
-            .stroke({
-              width: CITY_MARKER.strokeWidth,
-              color: CITY_MARKER.strokeColor,
-            });
-        }
+          // Roads (dots)
+          const roads = getRoadsAtTurn(turn);
+          for (let y = 0; y < gridH; y++) {
+            for (let x = 0; x < gridW; x++) {
+              const idx = y * gridW + x;
+              const routeType = roads[idx];
+              if (routeType < 0) continue;
+              const [cx, cy] = hexCenter(x, y, hexSize, gridH);
+              roadGfx
+                .circle(cx + ox, cy, hexSize * 0.15)
+                .fill(ROAD_COLORS[routeType] ?? ROAD_COLORS[0]);
+            }
+          }
+
+          // Cities — radius scales with population
+          const cities = getCitiesAtTurn(turn);
+          const minR = hexSize * 0.35;
+          const maxR = hexSize * 0.8;
+          const popNorm = 1 / Math.sqrt(30);
+          for (const city of cities) {
+            const [cx, cy] = hexCenter(city.x, city.y, hexSize, gridH);
+            const colors = playerColors.get(city.pid);
+            const t = Math.min(1, Math.sqrt(city.pop) * popNorm);
+            const r = minR + t * (maxR - minR);
+            cityGfx
+              .circle(cx + ox, cy, r)
+              .fill(colors?.secondary ?? "#ffffff")
+              .stroke({
+                width: CITY_MARKER.strokeWidth,
+                color: CITY_MARKER.strokeColor,
+              });
+          }
+        } // end xOffsets
 
         // Agent attention overlay — darkness lifts where the agent has observed
         attentionGfx.clear();
         if (attentionData && showAttentionRef.current) {
           const logMax = Math.log(attentionData.maxWeight + 1);
-          for (let y = 0; y < gridH; y++) {
-            for (let x = 0; x < gridW; x++) {
-              const entry = attentionData.lookup.get(`${x},${y}`);
-              let alpha = MAX_DARK;
+          for (const ox of xOffsets) {
+            for (let y = 0; y < gridH; y++) {
+              for (let x = 0; x < gridW; x++) {
+                const entry = attentionData.lookup.get(`${x},${y}`);
+                let alpha = MAX_DARK;
 
-              if (entry && entry.firstTurn <= turn) {
-                const t = Math.log(entry.weight + 1) / logMax;
-                alpha = MAX_DARK * (1 - t);
+                if (entry && entry.firstTurn <= turn) {
+                  const t = Math.log(entry.weight + 1) / logMax;
+                  alpha = MAX_DARK * (1 - t);
+                }
+
+                if (alpha < 0.01) continue;
+                const [hx, hy] = hexCenter(x, y, hexSize, gridH);
+                attentionGfx
+                  .poly(hexVerts(hx + ox, hy, hexSize * 0.98))
+                  .fill({ color: 0x000000, alpha });
               }
-
-              if (alpha < 0.01) continue;
-              const [hx, hy] = hexCenter(x, y, hexSize, gridH);
-              attentionGfx
-                .poly(hexVerts(hx, hy, hexSize * 0.98))
-                .fill({ color: 0x000000, alpha });
             }
           }
         }
@@ -540,8 +576,15 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       let lastHexKey = "";
 
       app.stage.on("pointermove", (e) => {
-        const { x: px, y: py } = e.global;
-        const hex = screenToHex(px, py, hexSize, gridW, gridH);
+        // Suppress hover while dragging
+        if (dragRef.current) return;
+        // Convert screen coords → world coords accounting for container transform
+        const { x: sx, y: sy } = e.global;
+        const wx = (sx - world.x) / world.scale.x;
+        const wy = (sy - world.y) / world.scale.y;
+        // Wrap horizontally into [0, worldW)
+        const wrappedWx = ((wx % worldW) + worldW) % worldW;
+        const hex = screenToHex(wrappedWx, wy, hexSize, gridW, gridH);
         const tooltip = tooltipRef.current;
 
         if (!hex) {
@@ -554,14 +597,16 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
         const [col, row] = hex;
         const key = `${col},${row}`;
 
-        // Redraw highlight only when hex changes
+        // Redraw highlight (all 3 copies for wrapping)
         if (key !== lastHexKey) {
           lastHexKey = key;
-          const [cx, cy] = hexCenter(col, row, hexSize, gridH);
           hoverGfx.clear();
-          hoverGfx
-            .poly(hexVerts(cx, cy, hexSize * 0.98))
-            .stroke({ width: 1.5, color: "#ffffff", alpha: 0.7 });
+          for (const ox of xOffsets) {
+            const [cx, cy] = hexCenter(col, row, hexSize, gridH);
+            hoverGfx
+              .poly(hexVerts(cx + ox, cy, hexSize * 0.98))
+              .stroke({ width: 1.5, color: "#ffffff", alpha: 0.7 });
+          }
         }
 
         // Update tooltip content & position
@@ -597,29 +642,78 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
         tooltip.innerHTML = html;
         tooltip.style.display = "block";
 
-        // Position via canvas bounding rect for scroll-safe fixed positioning
+        // Position tooltip using screen coords
         const rect = app.canvas.getBoundingClientRect();
-        tooltip.style.left = `${rect.left + px + 12}px`;
-        tooltip.style.top = `${rect.top + py - 8}px`;
+        tooltip.style.left = `${rect.left + sx + 12}px`;
+        tooltip.style.top = `${rect.top + sy - 8}px`;
       });
+
+      // ── Wheel zoom (centered on cursor) ────────────────────────────
+
+      const onWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newScale = clamp(world.scale.x * factor, 0.3, 6);
+
+        const rect = app.canvas.getBoundingClientRect();
+        const mx = (e.clientX - rect.left) * (app.screen.width / rect.width);
+        const my = (e.clientY - rect.top) * (app.screen.height / rect.height);
+
+        // Zoom toward cursor
+        const wx = (mx - world.x) / world.scale.x;
+        const wy = (my - world.y) / world.scale.y;
+        world.scale.set(newScale);
+        world.x = mx - wx * newScale;
+        world.y = my - wy * newScale;
+        wrapAndClamp();
+      };
+      app.canvas.addEventListener("wheel", onWheel, { passive: false });
+
+      // ── Drag pan ───────────────────────────────────────────────────
+
+      const onPointerDown = (e: PointerEvent) => {
+        dragRef.current = {
+          startX: e.clientX, startY: e.clientY,
+          panX: world.x, panY: world.y,
+        };
+        app.canvas.setPointerCapture(e.pointerId);
+        // Hide tooltip and hover during drag
+        hoverGfx.clear();
+        lastHexKey = "";
+        if (tooltipRef.current) tooltipRef.current.style.display = "none";
+      };
+      const onPointerMove = (e: PointerEvent) => {
+        if (!dragRef.current) return;
+        const dpr = app.screen.width / app.canvas.getBoundingClientRect().width;
+        world.x = dragRef.current.panX + (e.clientX - dragRef.current.startX) * dpr;
+        world.y = dragRef.current.panY + (e.clientY - dragRef.current.startY) * dpr;
+        wrapAndClamp();
+      };
+      const onPointerUp = () => { dragRef.current = null; };
+
+      app.canvas.addEventListener("pointerdown", onPointerDown);
+      app.canvas.addEventListener("pointermove", onPointerMove);
+      app.canvas.addEventListener("pointerup", onPointerUp);
 
       app.canvas.addEventListener("mouseleave", () => {
         hoverGfx.clear();
         lastHexKey = "";
+        dragRef.current = null;
         if (tooltipRef.current) tooltipRef.current.style.display = "none";
       });
     })();
 
     return () => {
       destroyed = true;
-      const container = containerRef.current;
-      if (container?.contains(app.canvas)) {
-        container.removeChild(app.canvas);
+      worldContainerRef.current = null;
+      const el = containerRef.current;
+      if (el?.contains(app.canvas)) {
+        el.removeChild(app.canvas);
       }
       app.destroy(true, { children: true });
     };
   }, [
-    canvasW, canvasH, hexSize, terrain, gridW, gridH,
+    worldW, worldH, VIEWPORT_H, hexSize, terrain, gridW, gridH,
     playerColors, getOwnersAtTurn, getCitiesAtTurn, getRoadsAtTurn, players,
     attentionData,
   ]);
@@ -698,10 +792,11 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
         </div>
       </div>
 
-      {/* Pixi canvas container */}
+      {/* Pixi canvas container — fixed height viewport */}
       <div
         ref={containerRef}
-        className="overflow-x-auto rounded-sm border border-marble-300 bg-[#1a1a2e]"
+        className="overflow-hidden rounded-sm border border-marble-300 bg-[#1a1a2e] cursor-grab active:cursor-grabbing"
+        style={{ height: VIEWPORT_H }}
       />
 
       {/* Hover tooltip (fixed positioning — scroll-safe) */}
