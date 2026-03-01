@@ -32,6 +32,7 @@ import {
   Camera,
   Film,
   ImageIcon,
+  X,
 } from "lucide-react";
 import { exportPng, exportVideo, exportGif } from "@/lib/map-export";
 import { CivIcon, CivSymbol } from "./civ-icon";
@@ -167,6 +168,7 @@ export function StrategicMap({ gameId }: StrategicMapProps) {
 
   return (
     <MapRenderer
+      gameId={gameId}
       mapData={rawMapData}
       spatialMap={spatialMap ?? null}
       spatialTurns={(spatialTurns as SpatialTurn[] | undefined) ?? null}
@@ -185,7 +187,8 @@ interface SpatialMapDoc {
   tileCount: number; tiles: number[];
 }
 
-function MapRenderer({ mapData, spatialMap, spatialTurns }: {
+function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
+  gameId: string;
   mapData: MapDataDoc;
   spatialMap: SpatialMapDoc | null;
   spatialTurns: SpatialTurn[] | null;
@@ -212,6 +215,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
   const [exporting, setExporting] = useState<"video" | "gif" | null>(null);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportAbortRef = useRef<AbortController | null>(null);
 
   // Auto-advance: follow latest turn when slider is at the end
   const followingLatestRef = useRef(true);
@@ -831,6 +835,35 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
   // ── Export handler ───────────────────────────────────────────────────
 
+  // Compute crop region to show only the center map copy (not 3x cylindrical)
+  const getCropRegion = useCallback(() => {
+    const world = worldContainerRef.current;
+    if (!world) return undefined;
+    // The center copy starts at x=0 in world coords, spanning tileW wide
+    // Transform to screen coords using world's transform
+    const sx = world.x + 0 * world.scale.x;
+    const sy = world.y;
+    const sw = tileW * world.scale.x;
+    const sh = worldH * world.scale.y;
+    return { x: Math.round(sx), y: Math.round(sy), w: Math.round(sw), h: Math.round(sh) };
+  }, [tileW, worldH]);
+
+  // Build descriptive filename: civ_gameId_T5-T120.ext
+  const exportFilename = useCallback(
+    (ext: string, singleTurn?: number) => {
+      const agentPlayer = players.find((p) => !p.csType);
+      const civSlug = agentPlayer
+        ? canonicalCivName(cleanCivName(agentPlayer.civ)).toLowerCase().replace(/\s+/g, "-")
+        : "map";
+      const turnPart =
+        singleTurn != null
+          ? `T${singleTurn}`
+          : `T${initialTurn}-T${maxTurn}`;
+      return `${civSlug}_${gameId}_${turnPart}.${ext}`;
+    },
+    [players, gameId, initialTurn, maxTurn],
+  );
+
   const handleExport = useCallback(
     async (format: "png" | "video" | "gif") => {
       const app = appRef.current;
@@ -839,12 +872,16 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       setExportMenuOpen(false);
       hoverGfxRef.current?.clear();
 
+      const crop = getCropRegion();
+
       if (format === "png") {
-        const blob = await exportPng(app);
-        triggerDownload(blob, `map-T${currentTurn}.png`);
+        const blob = await exportPng(app, crop);
+        triggerDownload(blob, exportFilename("png", currentTurn));
         return;
       }
 
+      const abort = new AbortController();
+      exportAbortRef.current = abort;
       setExporting(format);
       setExportProgress(0);
       setPlaying(false);
@@ -857,17 +894,26 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
           initialTurn,
           maxTurn,
           onProgress: setExportProgress,
+          signal: abort.signal,
+          cropRegion: crop,
         });
-        const ext = format === "video" ? "webm" : "gif";
-        triggerDownload(blob, `map.${ext}`);
+        if (!abort.signal.aborted) {
+          const ext = format === "video" ? "webm" : "gif";
+          triggerDownload(blob, exportFilename(ext));
+        }
       } finally {
+        exportAbortRef.current = null;
         setExporting(null);
         setExportProgress(0);
         renderTurnRef.current?.(currentTurnRef.current);
       }
     },
-    [initialTurn, maxTurn, currentTurn],
+    [initialTurn, maxTurn, currentTurn, getCropRegion, exportFilename],
   );
+
+  const cancelExport = useCallback(() => {
+    exportAbortRef.current?.abort();
+  }, []);
 
   // Close export menu on outside click
   useEffect(() => {
@@ -931,7 +977,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       <div className="flex items-center gap-3">
         <button
           onClick={() => { setPlaying(false); setCurrentTurn(initialTurn); followingLatestRef.current = false; }}
-          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
+          disabled={!!exporting}
+          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30 disabled:pointer-events-none"
           title="Reset to start"
         >
           <SkipBack className="h-4 w-4" />
@@ -945,7 +992,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             }
             setPlaying(!playing);
           }}
-          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
+          disabled={!!exporting}
+          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30 disabled:pointer-events-none"
           title={playing ? "Pause" : "Play"}
         >
           {playing ? (
@@ -957,7 +1005,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
         <button
           onClick={() => { setPlaying(false); setCurrentTurn(maxTurn); followingLatestRef.current = true; }}
-          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
+          disabled={!!exporting}
+          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30 disabled:pointer-events-none"
           title="Jump to end"
         >
           <SkipForward className="h-4 w-4" />
@@ -968,18 +1017,20 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
           min={initialTurn}
           max={maxTurn}
           value={currentTurn}
+          disabled={!!exporting}
           onChange={(e) => {
             setPlaying(false);
             const newTurn = Number(e.target.value);
             setCurrentTurn(newTurn);
             followingLatestRef.current = newTurn === maxTurn;
           }}
-          className="flex-1 accent-gold-dark"
+          className="flex-1 accent-gold-dark disabled:opacity-30"
         />
 
         <button
           onClick={() => setSpeed((s) => (s + 1) % speedLabels.length)}
-          className="rounded border border-marble-300 px-2 py-0.5 font-mono text-[10px] tabular-nums text-marble-600 hover:bg-marble-200"
+          disabled={!!exporting}
+          className="rounded border border-marble-300 px-2 py-0.5 font-mono text-[10px] tabular-nums text-marble-600 hover:bg-marble-200 disabled:opacity-30 disabled:pointer-events-none"
           title="Change speed"
         >
           {speedLabels[speed]}
@@ -997,6 +1048,13 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             <span className="font-mono text-[10px] tabular-nums text-marble-500">
               {Math.round(exportProgress * 100)}%
             </span>
+            <button
+              onClick={cancelExport}
+              className="rounded p-0.5 text-marble-400 hover:bg-marble-200 hover:text-marble-700"
+              title="Cancel export"
+            >
+              <X className="h-3 w-3" />
+            </button>
           </div>
         ) : (
           <div className="relative">

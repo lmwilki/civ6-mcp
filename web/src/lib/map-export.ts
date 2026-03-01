@@ -1,4 +1,4 @@
-import type { Application } from "pixi.js";
+import { Rectangle, type Application } from "pixi.js";
 
 export interface ExportOptions {
   app: Application;
@@ -6,6 +6,9 @@ export interface ExportOptions {
   initialTurn: number;
   maxTurn: number;
   onProgress: (pct: number) => void;
+  signal?: AbortSignal;
+  /** Crop region in CSS pixels (excludes cylindrical wrap copies) */
+  cropRegion?: { x: number; y: number; w: number; h: number };
 }
 
 /** Compute FPS to target ~30 second clip */
@@ -13,14 +16,29 @@ function targetFps(totalTurns: number): number {
   return Math.max(4, Math.min(30, Math.ceil(totalTurns / 30)));
 }
 
-// ── PNG (single frame) ──────────────────────────────────────────────────────
-
-export async function exportPng(app: Application): Promise<Blob> {
-  app.render();
-  const canvas = app.renderer.extract.canvas({
+/** Extract a single-map-width canvas, cropping out the 3x cylindrical copies */
+function extractFrame(app: Application, crop?: ExportOptions["cropRegion"]): HTMLCanvasElement {
+  if (crop) {
+    return app.renderer.extract.canvas({
+      target: app.stage,
+      resolution: 1,
+      frame: new Rectangle(crop.x, crop.y, crop.w, crop.h),
+    }) as HTMLCanvasElement;
+  }
+  return app.renderer.extract.canvas({
     target: app.stage,
     resolution: 1,
   }) as HTMLCanvasElement;
+}
+
+// ── PNG (single frame) ──────────────────────────────────────────────────────
+
+export async function exportPng(
+  app: Application,
+  crop?: ExportOptions["cropRegion"],
+): Promise<Blob> {
+  app.render();
+  const canvas = extractFrame(app, crop);
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))),
@@ -32,16 +50,23 @@ export async function exportPng(app: Application): Promise<Blob> {
 // ── Video (WebM via MediaRecorder) ──────────────────────────────────────────
 
 export async function exportVideo(opts: ExportOptions): Promise<Blob> {
-  const { app, renderTurn, initialTurn, maxTurn, onProgress } = opts;
+  const { app, renderTurn, initialTurn, maxTurn, onProgress, signal, cropRegion } = opts;
   const totalFrames = maxTurn - initialTurn + 1;
   const fps = targetFps(totalFrames);
   const frameDuration = 1000 / fps;
 
-  const canvas = app.canvas as HTMLCanvasElement;
-  const stream = canvas.captureStream(0);
+  // If cropping, render to an offscreen canvas and stream from that
+  const cropW = cropRegion ? cropRegion.w : Math.round(app.screen.width);
+  const cropH = cropRegion ? cropRegion.h : Math.round(app.screen.height);
+
+  const offscreen = document.createElement("canvas");
+  offscreen.width = cropW;
+  offscreen.height = cropH;
+  const offCtx = offscreen.getContext("2d")!;
+
+  const stream = offscreen.captureStream(0);
   const videoTrack = stream.getVideoTracks()[0];
 
-  // Pick best supported codec
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
     ? "video/webm;codecs=vp9"
     : "video/webm;codecs=vp8";
@@ -64,21 +89,23 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
   recorder.start();
 
   for (let turn = initialTurn; turn <= maxTurn; turn++) {
+    if (signal?.aborted) break;
+
     renderTurn(turn);
     app.render();
 
-    // Signal new frame
+    const frame = extractFrame(app, cropRegion);
+    offCtx.clearRect(0, 0, cropW, cropH);
+    offCtx.drawImage(frame, 0, 0);
+
     if ("requestFrame" in videoTrack) {
       (videoTrack as unknown as { requestFrame: () => void }).requestFrame();
     }
 
     onProgress((turn - initialTurn + 1) / totalFrames);
-
-    // Pace frames — MediaRecorder uses real-time timing
     await new Promise((r) => setTimeout(r, Math.max(1, frameDuration / 4)));
   }
 
-  // Hold last frame briefly
   await new Promise((r) => setTimeout(r, 200));
   recorder.stop();
   return done;
@@ -87,33 +114,29 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
 // ── GIF (via modern-gif) ────────────────────────────────────────────────────
 
 export async function exportGif(opts: ExportOptions): Promise<Blob> {
-  const { app, renderTurn, initialTurn, maxTurn, onProgress } = opts;
+  const { app, renderTurn, initialTurn, maxTurn, onProgress, signal, cropRegion } = opts;
   const { Encoder } = await import("modern-gif");
 
   const totalFrames = maxTurn - initialTurn + 1;
   const fps = targetFps(totalFrames);
   const delay = Math.round(1000 / fps);
 
-  // Use CSS pixel dimensions (not DPR-scaled) for reasonable file size
-  const width = Math.round(app.screen.width);
-  const height = Math.round(app.screen.height);
+  const width = cropRegion ? cropRegion.w : Math.round(app.screen.width);
+  const height = cropRegion ? cropRegion.h : Math.round(app.screen.height);
 
   const encoder = new Encoder({ width, height, maxColors: 256 });
 
   for (let turn = initialTurn; turn <= maxTurn; turn++) {
+    if (signal?.aborted) break;
+
     renderTurn(turn);
     app.render();
 
-    const extractedCanvas = app.renderer.extract.canvas({
-      target: app.stage,
-      resolution: 1,
-    }) as HTMLCanvasElement;
-
-    await encoder.encode({ data: extractedCanvas, delay });
+    const frame = extractFrame(app, cropRegion);
+    await encoder.encode({ data: frame, delay });
 
     onProgress((turn - initialTurn + 1) / totalFrames);
 
-    // Yield to main thread periodically
     if ((turn - initialTurn) % 3 === 0) {
       await new Promise((r) => setTimeout(r, 0));
     }
