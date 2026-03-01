@@ -1308,8 +1308,8 @@ async def set_city_production(
         city_id: City ID (from get_cities output)
         item_type: UNIT, BUILDING, DISTRICT, or PROJECT
         item_name: e.g. UNIT_WARRIOR, BUILDING_MONUMENT, DISTRICT_CAMPUS, PROJECT_LAUNCH_EARTH_SATELLITE
-        target_x: X coordinate for district/wonder placement. If omitted for districts, the best adjacency tile is auto-selected.
-        target_y: Y coordinate for district/wonder placement.
+        target_x: X coordinate for district/wonder placement (required for districts — use get_district_advisor to find best tile)
+        target_y: Y coordinate for district/wonder placement
 
     Tip: call get_cities first to see your cities and their IDs.
     """

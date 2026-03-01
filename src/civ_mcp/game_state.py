@@ -506,20 +506,7 @@ class GameState:
         target_x: int | None = None,
         target_y: int | None = None,
     ) -> str:
-        auto_placed: lq.DistrictPlacement | None = None
         itype = item_type.upper()
-
-        # Auto-select best tile for districts when no coordinates provided.
-        # Matches human UX: game highlights valid tiles with best pre-selected.
-        if itype == "DISTRICT" and (target_x is None or target_y is None):
-            placements = await self.get_district_advisor(city_id, item_name)
-            if isinstance(placements, str):
-                return f"Error: {placements}"
-            if not placements:
-                return f"Error: No valid placement tiles for {item_name}."
-            best = placements[0]
-            target_x, target_y = best.x, best.y
-            auto_placed = best
 
         lua = lq.build_produce_item(city_id, item_type, item_name, target_x, target_y)
         lines = await self.conn.execute_write(lua)
@@ -566,15 +553,6 @@ class GameState:
             except Exception:
                 log.debug("Production readback failed", exc_info=True)
                 return f"Error: CANNOT_START|{item_name} (readback failed)"
-
-        # Append auto-placement info to success message
-        if auto_placed and "PRODUCING" in result:
-            adj_parts = [f"{v} {k}" for k, v in auto_placed.adjacency.items()]
-            adj_str = ", ".join(adj_parts) if adj_parts else "none"
-            result += (
-                f" (placed at ({auto_placed.x},{auto_placed.y})"
-                f" — Adj: +{auto_placed.total_adjacency}, {adj_str})"
-            )
 
         return result
 
