@@ -7,7 +7,7 @@ export interface ExportOptions {
   maxTurn: number;
   onProgress: (pct: number) => void;
   signal?: AbortSignal;
-  /** Crop region in CSS pixels (excludes cylindrical wrap copies) */
+  /** Crop region in screen pixels (excludes cylindrical wrap copies) */
   cropRegion?: { x: number; y: number; w: number; h: number };
 }
 
@@ -16,29 +16,39 @@ function targetFps(totalTurns: number): number {
   return Math.max(4, Math.min(30, Math.ceil(totalTurns / 30)));
 }
 
-/** Extract a single-map-width canvas, cropping out the 3x cylindrical copies */
-function extractFrame(app: Application, crop?: ExportOptions["cropRegion"]): HTMLCanvasElement {
+/** Extract a cropped frame at given resolution */
+function extractFrame(
+  app: Application,
+  crop: ExportOptions["cropRegion"],
+  resolution: number,
+): HTMLCanvasElement {
   if (crop) {
     return app.renderer.extract.canvas({
       target: app.stage,
-      resolution: 1,
+      resolution,
       frame: new Rectangle(crop.x, crop.y, crop.w, crop.h),
     }) as HTMLCanvasElement;
   }
   return app.renderer.extract.canvas({
     target: app.stage,
-    resolution: 1,
+    resolution,
   }) as HTMLCanvasElement;
 }
 
-// ── PNG (single frame) ──────────────────────────────────────────────────────
+/** Read raw RGBA pixel data from a canvas */
+function canvasToImageData(canvas: HTMLCanvasElement): ImageData {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+// ── PNG (single frame, 2x resolution) ───────────────────────────────────────
 
 export async function exportPng(
   app: Application,
   crop?: ExportOptions["cropRegion"],
 ): Promise<Blob> {
   app.render();
-  const canvas = extractFrame(app, crop);
+  const canvas = extractFrame(app, crop, 2);
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("toBlob failed"))),
@@ -55,17 +65,17 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
   const fps = targetFps(totalFrames);
   const frameDuration = 1000 / fps;
 
-  // If cropping, render to an offscreen canvas and stream from that
   const cropW = cropRegion ? cropRegion.w : Math.round(app.screen.width);
   const cropH = cropRegion ? cropRegion.h : Math.round(app.screen.height);
 
+  // Offscreen canvas that MediaRecorder streams from
   const offscreen = document.createElement("canvas");
   offscreen.width = cropW;
   offscreen.height = cropH;
   const offCtx = offscreen.getContext("2d")!;
 
-  const stream = offscreen.captureStream(0);
-  const videoTrack = stream.getVideoTracks()[0];
+  // Use fps-based capture — MediaRecorder samples at this rate
+  const stream = offscreen.captureStream(fps);
 
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
     ? "video/webm;codecs=vp9"
@@ -88,25 +98,33 @@ export async function exportVideo(opts: ExportOptions): Promise<Blob> {
 
   recorder.start();
 
-  for (let turn = initialTurn; turn <= maxTurn; turn++) {
+  // Paint first frame before starting the timed loop
+  renderTurn(initialTurn);
+  app.render();
+  const firstFrame = extractFrame(app, cropRegion, 1);
+  offCtx.drawImage(firstFrame, 0, 0);
+
+  // Wait one frame duration so MediaRecorder captures the first frame
+  await new Promise((r) => setTimeout(r, frameDuration));
+
+  for (let turn = initialTurn + 1; turn <= maxTurn; turn++) {
     if (signal?.aborted) break;
 
     renderTurn(turn);
     app.render();
 
-    const frame = extractFrame(app, cropRegion);
+    const frame = extractFrame(app, cropRegion, 1);
     offCtx.clearRect(0, 0, cropW, cropH);
     offCtx.drawImage(frame, 0, 0);
 
-    if ("requestFrame" in videoTrack) {
-      (videoTrack as unknown as { requestFrame: () => void }).requestFrame();
-    }
-
     onProgress((turn - initialTurn + 1) / totalFrames);
-    await new Promise((r) => setTimeout(r, Math.max(1, frameDuration / 4)));
+
+    // Hold frame for the target duration so MediaRecorder captures it
+    await new Promise((r) => setTimeout(r, frameDuration));
   }
 
-  await new Promise((r) => setTimeout(r, 200));
+  // Hold last frame briefly
+  await new Promise((r) => setTimeout(r, 300));
   recorder.stop();
   return done;
 }
@@ -132,8 +150,10 @@ export async function exportGif(opts: ExportOptions): Promise<Blob> {
     renderTurn(turn);
     app.render();
 
-    const frame = extractFrame(app, cropRegion);
-    await encoder.encode({ data: frame, delay });
+    // Extract at 1x and read raw RGBA pixels for accurate color reproduction
+    const frame = extractFrame(app, cropRegion, 1);
+    const imageData = canvasToImageData(frame);
+    await encoder.encode({ data: imageData.data, delay });
 
     onProgress((turn - initialTurn + 1) / totalFrames);
 
