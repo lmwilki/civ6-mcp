@@ -260,6 +260,10 @@ else
     -- Map.GetPlotDistance can misreport distance on offset hex grids, so we
     -- do not use it as a gate here — only as a diagnostic in the error message.
     local myCS = unitInfo and unitInfo.Combat or 0
+    -- Movement check: melee attack requires movement points (ranged does not)
+    if unit:GetMovesRemaining() <= 0 then
+        {_bail("ERR:NO_MOVES|Unit has no movement points for melee attack. Melee requires movement to close distance. Wait until next turn.")}
+    end
     -- ZOC check: if unit entered enemy ZOC this turn, it cannot attack until next turn.
     -- CanStartOperation returns true but RequestOperation silently queues for next turn.
     if unit:HasMovedIntoZOC() then
@@ -1196,3 +1200,131 @@ def parse_pathing_estimate(lines: list[str]) -> PathingEstimate:
         elif line.startswith("WAYPOINTS|"):
             est.waypoints = line.split("|", 1)[1].split(";")
     return est
+
+
+# ── Post-move visibility ────────────────────────────────────────────────
+
+
+def build_post_move_visibility_query(now_x: int, now_y: int, radius: int = 4) -> str:
+    """GameCore: scan tiles around a position and return revealed tile data.
+
+    Used after a unit move to compute newly-revealed tiles via Python-side diff.
+    Radius 4 covers all standard sight ranges (2 for most units, 3 for scouts).
+    Output: ``TILE|x,y|terrain|feature|resource:class|hills|camp|units|city``
+    """
+    return f"""
+local cx, cy, r = {now_x}, {now_y}, {radius}
+local me = Game.GetLocalPlayer()
+local vis = PlayersVisibility[me]
+local pTech = Players[me]:GetTechs()
+local function resVis(re)
+    if not re.PrereqTech then return true end
+    local t = GameInfo.Technologies[re.PrereqTech]
+    return t and pTech:HasTech(t.Index)
+end
+for dy = -r, r do
+    for dx = -r, r do
+        local x, y = cx + dx, cy + dy
+        local plot = Map.GetPlot(x, y)
+        if plot and vis:IsRevealed(plot:GetX(), plot:GetY()) then
+            local terrain = GameInfo.Terrains[plot:GetTerrainType()].TerrainType
+            local feature = "none"
+            local fi = plot:GetFeatureType()
+            if fi >= 0 then feature = GameInfo.Features[fi].FeatureType end
+            local resource = "none"
+            local ri = plot:GetResourceType()
+            if ri >= 0 then
+                local re = GameInfo.Resources[ri]
+                if resVis(re) then
+                    resource = re.ResourceType .. ":" .. (re.ResourceClassType or "")
+                end
+            end
+            local hills = plot:IsHills() and "1" or "0"
+            local camp = "0"
+            local ii = plot:GetImprovementType()
+            if ii >= 0 then
+                local iInfo = GameInfo.Improvements[ii]
+                if iInfo and iInfo.ImprovementType == "IMPROVEMENT_BARBARIAN_CAMP" then
+                    camp = "1"
+                end
+            end
+            local units = "none"
+            if vis:IsVisible(plot:GetX(), plot:GetY()) then
+                local uParts = {{}}
+                for pid = 0, 63 do
+                    if pid ~= me and Players[pid] and Players[pid]:IsAlive() then
+                        for _, u in Players[pid]:GetUnits():Members() do
+                            if u:GetX() == x and u:GetY() == y then
+                                local entry = GameInfo.Units[u:GetType()]
+                                local nm = entry and entry.UnitType or "UNKNOWN"
+                                local ownerLabel = "Barbarian"
+                                if pid ~= 63 then
+                                    local cfg = PlayerConfigurations[pid]
+                                    if cfg then ownerLabel = Locale.Lookup(cfg:GetCivilizationShortDescription()) end
+                                end
+                                table.insert(uParts, ownerLabel .. " " .. nm:gsub("UNIT_", ""))
+                            end
+                        end
+                    end
+                end
+                if #uParts > 0 then units = table.concat(uParts, ";") end
+            end
+            local cityName = "none"
+            if plot:IsCity() then
+                local cOwner = plot:GetOwner()
+                if cOwner >= 0 and cOwner ~= me then
+                    pcall(function()
+                        for _, c in Players[cOwner]:GetCities():Members() do
+                            if c:GetX() == x and c:GetY() == y then
+                                cityName = Locale.Lookup(c:GetName())
+                                break
+                            end
+                        end
+                    end)
+                end
+            end
+            print("TILE|" .. x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. camp .. "|" .. units .. "|" .. cityName)
+        end
+    end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_post_move_visibility(
+    lines: list[str],
+) -> list[tuple[int, int, dict]]:
+    """Parse TILE| lines from post-move visibility query.
+
+    Returns (x, y, metadata) tuples where metadata contains terrain, feature,
+    resource, resource_class, hills, camp, units, and city fields.
+    """
+    results: list[tuple[int, int, dict]] = []
+    for line in lines:
+        if not line.startswith("TILE|"):
+            continue
+        parts = line.split("|")
+        if len(parts) < 9:
+            continue
+        xy = parts[1].split(",")
+        x, y = int(xy[0]), int(xy[1])
+        # Parse resource into name + class
+        resource = None
+        resource_class = None
+        if parts[4] != "none":
+            rp = parts[4].split(":", 1)
+            resource = rp[0]
+            if len(rp) > 1 and rp[1]:
+                resource_class = rp[1].replace("RESOURCECLASS_", "").lower()
+        meta = {
+            "terrain": parts[2],
+            "feature": None if parts[3] == "none" else parts[3],
+            "resource": resource,
+            "resource_class": resource_class,
+            "hills": parts[5] == "1",
+            "camp": parts[6] == "1",
+            "units": None if parts[7] == "none" else parts[7].split(";"),
+            "city": None if parts[8] == "none" else parts[8],
+        }
+        results.append((x, y, meta))
+    return results

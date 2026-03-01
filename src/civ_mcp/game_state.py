@@ -12,9 +12,14 @@ import asyncio
 import logging
 import re
 
+from typing import TYPE_CHECKING
+
 from civ_mcp import lua as lq
 from civ_mcp.connection import GameConnection
-from civ_mcp.narrate import narrate_combat_estimate, narrate_settle_candidates
+from civ_mcp.narrate import narrate_combat_estimate, narrate_move_discoveries, narrate_settle_candidates
+
+if TYPE_CHECKING:
+    from civ_mcp.spatial import SpatialTracker
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +29,7 @@ class GameState:
 
     def __init__(self, connection: GameConnection):
         self.conn = connection
+        self.spatial: SpatialTracker | None = None
         self._last_snapshot: lq.TurnSnapshot | None = None
         self._game_identity: tuple[str, int] | None = None  # (civ_type, seed)
         self._diary_written_turn: int | None = (
@@ -177,6 +183,11 @@ class GameState:
     # ------------------------------------------------------------------
 
     async def move_unit(self, unit_index: int, target_x: int, target_y: int) -> str:
+        # Pre-dismiss any blocking popups that would silently eat the move
+        try:
+            await self.dismiss_popup()
+        except Exception:
+            pass
         lua = lq.build_move_unit(unit_index, target_x, target_y)
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
@@ -216,6 +227,44 @@ class GameState:
                         break
             except Exception:
                 pass
+        # Post-move: visibility diff for discovery feedback
+        blocked = "|BLOCKED" in result
+        if (
+            not blocked
+            and self.spatial is not None
+            and self.spatial._revealed_seeded
+        ):
+            try:
+                # Extract actual position from result
+                now_match = re.search(r"now_at:(\d+),(\d+)", result)
+                if now_match:
+                    vis_x, vis_y = int(now_match.group(1)), int(now_match.group(2))
+                    vis_lines = await self.conn.execute_read(
+                        lq.build_post_move_visibility_query(vis_x, vis_y)
+                    )
+                    vis_tiles = lq.parse_post_move_visibility(vis_lines)
+                    all_revealed = {(x, y) for x, y, _ in vis_tiles}
+                    newly_revealed = self.spatial.mark_revealed(all_revealed)
+                    if newly_revealed:
+                        new_tile_data = [
+                            (x, y, m)
+                            for x, y, m in vis_tiles
+                            if (x, y) in newly_revealed
+                        ]
+                        discovery_text = narrate_move_discoveries(
+                            new_tile_data, len(newly_revealed)
+                        )
+                        if discovery_text:
+                            result += "\n" + discovery_text
+                        # Record discovery event in spatial tracker
+                        await self.spatial.record_discovery(
+                            "unit_action",
+                            (vis_x, vis_y),
+                            newly_revealed,
+                            0,
+                        )
+            except Exception:
+                log.debug("Post-move visibility diff failed", exc_info=True)
         return result
 
     async def attack_unit(self, unit_index: int, target_x: int, target_y: int) -> str:
@@ -239,7 +288,10 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         result = _action_result(lines)
         # Follow up with GameCore read for actual post-combat HP
+        # Brief delay: RequestOperation is async — combat resolves on the next
+        # C++ frame, so same-frame reads return stale pre-combat HP values.
         if result.startswith("RANGE_ATTACK") or result.startswith("MELEE_ATTACK"):
+            await asyncio.sleep(0.15)
             try:
                 followup = await self.conn.execute_read(
                     lq.build_attack_followup_query(target_x, target_y)
