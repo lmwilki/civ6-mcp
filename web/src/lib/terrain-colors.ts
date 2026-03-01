@@ -58,9 +58,9 @@ export const FEATURE_OVERLAY_ALPHA = 0.35;
 
 /** Road colors by route type */
 export const ROAD_COLORS: Record<number, string> = {
-  0: "#8a7a5a",   // Ancient road
-  1: "#7a6a4a",   // Classical road
-  2: "#5a5a5a",   // Industrial railroad
+  0: "#b09870",   // Ancient road — tan
+  1: "#a08858",   // Classical road — darker tan
+  2: "#888888",   // Industrial railroad — grey
 };
 
 /** Unowned territory tint */

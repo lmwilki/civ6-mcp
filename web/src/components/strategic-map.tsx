@@ -511,17 +511,42 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             borderGfx.stroke({ width: bw, color: colors.secondary, cap: "round" });
           }
 
-          // Roads (dots)
+          // Roads — lines connecting adjacent road tiles
           const roads = getRoadsAtTurn(turn);
+          const roadWidth = Math.max(1, hexSize * 0.18);
           for (let y = 0; y < gridH; y++) {
             for (let x = 0; x < gridW; x++) {
               const idx = y * gridW + x;
               const routeType = roads[idx];
               if (routeType < 0) continue;
               const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-              roadGfx
-                .circle(cx + ox, cy, hexSize * 0.15)
-                .fill(ROAD_COLORS[routeType] ?? ROAD_COLORS[0]);
+              const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
+
+              // Draw segments to neighbors that also have roads (all 6 dirs)
+              let hasNeighborRoad = false;
+              for (let d = 0; d < 6; d++) {
+                const nx = x + deltas[d][0];
+                const ny = y + deltas[d][1];
+                if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
+                const nIdx = ny * gridW + nx;
+                if (roads[nIdx] < 0) continue;
+                hasNeighborRoad = true;
+                const [ncx, ncy] = hexCenter(nx, ny, hexSize, gridH);
+                // Draw half-segment (to midpoint) so each tile draws its half
+                const mx = (cx + ncx) / 2;
+                const my = (cy + ncy) / 2;
+                const color = ROAD_COLORS[routeType] ?? ROAD_COLORS[0];
+                roadGfx
+                  .moveTo(cx + ox, cy)
+                  .lineTo(mx + ox, my)
+                  .stroke({ width: roadWidth, color, cap: "round" });
+              }
+              // Isolated road tiles get a dot
+              if (!hasNeighborRoad) {
+                roadGfx
+                  .circle(cx + ox, cy, roadWidth)
+                  .fill(ROAD_COLORS[routeType] ?? ROAD_COLORS[0]);
+              }
             }
           }
 
