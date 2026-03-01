@@ -9,7 +9,6 @@ import {
   unpackTerrain,
   unpackOwnerFrames,
   unpackCityFrames,
-  unpackRoadFrames,
   unpackSpatialTiles,
   type MapDataDoc,
   type MapCitySnapshot,
@@ -18,7 +17,6 @@ import {
   getTerrainColor,
   getFeatureOverlay,
   FEATURE_OVERLAY_ALPHA,
-  ROAD_COLORS,
   CITY_MARKER,
 } from "@/lib/terrain-colors";
 import { getCivColors, getDefaultLeader, canonicalCivName } from "@/lib/civ-registry";
@@ -198,7 +196,6 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     terrain,
     ownerKeyframes,
     cityKeyframes,
-    roadKeyframes,
     gridW,
     gridH,
     players,
@@ -209,12 +206,9 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     const initialOwnersArr: number[] = JSON.parse(mapData.initialOwners);
     const ownerFramesArr: number[] = JSON.parse(mapData.ownerFrames);
     const cityFramesArr: number[] = JSON.parse(mapData.cityFrames);
-    const roadFramesArr: number[] = JSON.parse(mapData.roadFrames);
-
     const t = unpackTerrain(terrainArr);
     const of_ = unpackOwnerFrames(ownerFramesArr);
     const cf = unpackCityFrames(cityFramesArr);
-    const rf = unpackRoadFrames(roadFramesArr);
 
     const tileCount = mapData.gridW * mapData.gridH;
 
@@ -231,25 +225,10 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       ownerKf.push({ turn: frame.turn, owners: Int8Array.from(owners) });
     }
 
-    // Road keyframes (accumulating) — seed from initialRoutes if available
-    const roads = new Int8Array(tileCount).fill(-1);
-    if (mapData.initialRoutes) {
-      const ir: number[] = JSON.parse(mapData.initialRoutes);
-      for (let i = 0; i < ir.length && i < tileCount; i++) roads[i] = ir[i];
-    }
-    const roadKf: { turn: number; roads: Int8Array }[] = [
-      { turn: mapData.initialTurn, roads: Int8Array.from(roads) },
-    ];
-    for (const frame of rf) {
-      for (const ch of frame.changes) roads[ch.tileIdx] = ch.owner;
-      roadKf.push({ turn: frame.turn, roads: Int8Array.from(roads) });
-    }
-
     return {
       terrain: t,
       ownerKeyframes: ownerKf,
       cityKeyframes: cf,
-      roadKeyframes: roadKf,
       gridW: mapData.gridW,
       gridH: mapData.gridH,
       players: mapData.players,
@@ -331,20 +310,6 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     [cityKeyframes],
   );
 
-  const getRoadsAtTurn = useCallback(
-    (turn: number): Int8Array => {
-      let lo = 0;
-      let hi = roadKeyframes.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (roadKeyframes[mid].turn <= turn) lo = mid;
-        else hi = mid - 1;
-      }
-      return roadKeyframes[lo].roads;
-    },
-    [roadKeyframes],
-  );
-
   // ── Pixi.js lifecycle ─────────────────────────────────────────────────
 
   useEffect(() => {
@@ -378,13 +343,12 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       const terrainGfx = new Graphics();
       const territoryGfx = new Graphics();
       const borderGfx = new Graphics();
-      const roadGfx = new Graphics();
       const cityGfx = new Graphics();
       const attentionGfx = new Graphics();
       const hoverGfx = new Graphics();
       world.addChild(
         terrainGfx, territoryGfx, borderGfx, attentionGfx,
-        roadGfx, cityGfx, hoverGfx,
+        cityGfx, hoverGfx,
       );
 
       // X offsets for cylindrical wrapping — draw world 3 times using tile period
@@ -446,7 +410,6 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       const renderTurn = (turn: number) => {
         territoryGfx.clear();
         borderGfx.clear();
-        roadGfx.clear();
         cityGfx.clear();
 
         const owners = getOwnersAtTurn(turn);
@@ -543,45 +506,6 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             }
 
             borderGfx.stroke({ width: bw, color: colors.secondary, join: "miter", alignment: 1 });
-          }
-
-          // Roads — lines connecting adjacent road tiles
-          const roads = getRoadsAtTurn(turn);
-          const roadWidth = Math.max(1, hexSize * 0.18);
-          for (let y = 0; y < gridH; y++) {
-            for (let x = 0; x < gridW; x++) {
-              const idx = y * gridW + x;
-              const routeType = roads[idx];
-              if (routeType < 0) continue;
-              const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-              const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
-
-              // Draw segments to neighbors that also have roads (all 6 dirs)
-              let hasNeighborRoad = false;
-              for (let d = 0; d < 6; d++) {
-                const nx = x + deltas[d][0];
-                const ny = y + deltas[d][1];
-                if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) continue;
-                const nIdx = ny * gridW + nx;
-                if (roads[nIdx] < 0) continue;
-                hasNeighborRoad = true;
-                const [ncx, ncy] = hexCenter(nx, ny, hexSize, gridH);
-                // Draw half-segment (to midpoint) so each tile draws its half
-                const mx = (cx + ncx) / 2;
-                const my = (cy + ncy) / 2;
-                const color = ROAD_COLORS[routeType] ?? ROAD_COLORS[0];
-                roadGfx
-                  .moveTo(cx + ox, cy)
-                  .lineTo(mx + ox, my)
-                  .stroke({ width: roadWidth, color, cap: "round" });
-              }
-              // Isolated road tiles get a dot
-              if (!hasNeighborRoad) {
-                roadGfx
-                  .circle(cx + ox, cy, roadWidth)
-                  .fill(ROAD_COLORS[routeType] ?? ROAD_COLORS[0]);
-              }
-            }
           }
 
           // Cities — radius scales with population
@@ -779,7 +703,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     };
   }, [
     worldW, worldH, VIEWPORT_H, hexSize, terrain, gridW, gridH,
-    playerColors, getOwnersAtTurn, getCitiesAtTurn, getRoadsAtTurn, players,
+    playerColors, getOwnersAtTurn, getCitiesAtTurn, players,
     attentionData,
   ]);
 
