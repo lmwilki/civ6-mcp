@@ -255,12 +255,24 @@ local function getGoldCost(hash, isUnit)
     if ok and cost and cost > 0 then return math.floor(cost) end
     return -1
 end
+-- Check Trader cap: game silently rejects Traders when count >= route capacity
+local pTrade = Players[me]:GetTrade()
+local traderCount = 0
+for _, u in Players[me]:GetUnits():Members() do
+    if GameInfo.Units[u:GetType()].UnitType == "UNIT_TRADER" then traderCount = traderCount + 1 end
+end
+local routeCap = pTrade:GetOutgoingRouteCapacity()
+local traderCapped = (traderCount >= routeCap)
 print("UNITS:")
 for unit in GameInfo.Units() do
     if bq:CanProduce(unit.Hash, true) then
-        local t = bq:GetTurnsLeft(unit.Hash)
-        local gc = getGoldCost(unit.Hash, true)
-        print("UNIT|" .. unit.UnitType .. "|" .. unit.Cost .. "|" .. t .. "|" .. gc)
+        if unit.UnitType == "UNIT_TRADER" and traderCapped then
+            -- skip: game will silently reject (traders >= route capacity)
+        else
+            local t = bq:GetTurnsLeft(unit.Hash)
+            local gc = getGoldCost(unit.Hash, true)
+            print("UNIT|" .. unit.UnitType .. "|" .. unit.Cost .. "|" .. t .. "|" .. gc)
+        end
     end
 end
 print("BUILDINGS:")
@@ -305,8 +317,17 @@ def build_produce_item(
     Uses .Hash for item refs and VALUE_REPLACE_AT position 0 to replace current production.
     For districts, pass target_x/target_y to specify placement tile.
     """
-    table_name = _ITEM_TABLE_MAP.get(item_type.upper(), "Units")
-    param_key = _ITEM_PARAM_MAP.get(item_type.upper(), "PARAM_UNIT_TYPE")
+    itype = item_type.upper()
+    table_name = _ITEM_TABLE_MAP.get(itype, "Units")
+    param_key = _ITEM_PARAM_MAP.get(itype, "PARAM_UNIT_TYPE")
+    # Districts require placement coordinates
+    if itype == "DISTRICT" and (target_x is None or target_y is None):
+        return (
+            f'print("ERR:MISSING_COORDS|{item_name} is a district and requires '
+            f"target_x/target_y for placement. Use get_district_advisor(city_id, "
+            f"'{item_name}') to find the best tile.\")\n"
+            f'print("{SENTINEL}")'
+        )
     # Extra params for district placement
     xy_params = ""
     xy_check_params = ""
@@ -321,6 +342,20 @@ local bq = pCity:GetBuildQueue()
 local isCorrupted = bq:GetSize() > 0 and bq:GetCurrentProductionTypeHash() == 0
 if not bq:CanProduce(item.Hash, true) then
     {_bail(f"ERR:CANNOT_PRODUCE|{item_name} cannot be produced in this city")}
+end
+-- Trader cap check: game silently rejects when count >= route capacity
+if "{item_name}" == "UNIT_TRADER" then
+    local pTrade = Players[me]:GetTrade()
+    local traderCount = 0
+    for _, u in Players[me]:GetUnits():Members() do
+        if GameInfo.Units[u:GetType()].UnitType == "UNIT_TRADER" then traderCount = traderCount + 1 end
+    end
+    local routeCap = pTrade:GetOutgoingRouteCapacity()
+    if traderCount >= routeCap then
+        print("ERR:TRADER_CAP|Cannot build Trader: you have " .. traderCount .. " Traders but only " .. routeCap .. " trade route capacity. Build Markets or Lighthouses to increase capacity.")
+        print("{SENTINEL}")
+        return
+    end
 end
 local tCheck = {{}}
 tCheck[CityOperationTypes.{param_key}] = item.Hash

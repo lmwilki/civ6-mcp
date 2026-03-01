@@ -183,21 +183,20 @@ def build_trade_capacity_check() -> str:
     """Lightweight trade route capacity check (InGame context).
 
     Returns a single TRCAP|capacity|active line.
-    Much cheaper than build_trade_routes_query for just checking idle routes.
+    Uses city route records (GetOutgoingRoutes) — the same authoritative source
+    as build_trade_routes_query. The per-unit HasTradeRoute() boolean is unreliable
+    and causes persistent false "idle route" warnings.
     """
     return f"""
 local me = Game.GetLocalPlayer()
 local tr = Players[me]:GetTrade()
 local cap = tr:GetOutgoingRouteCapacity()
 local active = 0
-for _, u in Players[me]:GetUnits():Members() do
-    if u:GetX() ~= -9999 then
-        local info = GameInfo.Units[u:GetType()]
-        if info and info.MakeTradeRoute then
-            local ok, routes = pcall(function() return u:GetTrade():HasTradeRoute() end)
-            if ok and routes then active = active + 1 end
-        end
-    end
+for _, city in Players[me]:GetCities():Members() do
+    pcall(function()
+        local routes = city:GetTrade():GetOutgoingRoutes()
+        if routes then active = active + #routes end
+    end)
 end
 print("TRCAP|" .. cap .. "|" .. active)
 print("{SENTINEL}")
