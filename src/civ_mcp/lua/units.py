@@ -1155,8 +1155,15 @@ if unit:GetMovesRemaining() <= 0 then
     print("{SENTINEL}")
     return
 end
+local targetPlot = Map.GetPlot({target_x}, {target_y})
+if not targetPlot then {_bail(f"ERR:INVALID_TARGET|Target ({target_x},{target_y}) is out of bounds")} end
 local path = UnitManager.GetMoveToPath(unit, {target_x}, {target_y})
 if not path or #path == 0 then {_bail("ERR:NO_PATH|No path found to target")} end
+-- Validate path reaches destination (GetMoveToPath returns garbage for unreachable targets)
+local lastPlot = Map.GetPlotByIndex(path[#path])
+if lastPlot:GetX() ~= {target_x} or lastPlot:GetY() ~= {target_y} then
+    {_bail(f"ERR:UNREACHABLE|Path does not reach ({target_x},{target_y}) — destination may be unreachable")}
+end
 local reach = UnitManager.GetReachableMovement(unit)
 local reachSet = {{}}
 if reach then

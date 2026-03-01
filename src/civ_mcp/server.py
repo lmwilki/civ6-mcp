@@ -1759,8 +1759,10 @@ async def get_district_advisor(ctx: Context, city_id: int, district_type: str) -
     gs = _get_game(ctx)
 
     async def _run():
-        placements = await gs.get_district_advisor(city_id, district_type)
-        return nr.narrate_district_advisor(placements, district_type)
+        result = await gs.get_district_advisor(city_id, district_type)
+        if isinstance(result, str):
+            return f"Error: {result}"  # propagate specific error reason
+        return nr.narrate_district_advisor(result, district_type)
 
     return await _logged(
         ctx,

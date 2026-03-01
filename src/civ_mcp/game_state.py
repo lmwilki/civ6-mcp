@@ -985,9 +985,15 @@ class GameState:
 
     async def get_district_advisor(
         self, city_id: int, district_type: str
-    ) -> list[lq.DistrictPlacement]:
+    ) -> list[lq.DistrictPlacement] | str:
+        """Returns placements list, or an error string if placement is impossible."""
         lua = lq.build_district_advisor_query(city_id, district_type)
         lines = await self.conn.execute_write(lua)
+        # Check for error bail lines (parser only looks for DPLOT| and silently
+        # discards errors, losing the actual reason for failure)
+        for line in lines:
+            if line.startswith("ERR:"):
+                return line  # propagate the specific error to the agent
         return lq.parse_district_advisor_response(lines)
 
     async def get_wonder_advisor(

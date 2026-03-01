@@ -1041,7 +1041,13 @@ local function handler()
     local costs = wc:GetVotesandFavorCost()
     local maxV = costs.MaxVotes or 5
     local ress = wc:GetResolutions()
-    if not ress or #ress == 0 then return end
+    if not ress or #ress == 0 then
+        UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_SUBMIT_TURN, {{}})
+        __civmcp_wc_votes = nil
+        pcall(function() Events.WorldCongressStage1.Remove(__civmcp_wc_handler) end)
+        __civmcp_wc_handler = nil
+        return
+    end
 
     local prefs = __civmcp_wc_votes
     local nRes = #ress

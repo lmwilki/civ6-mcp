@@ -321,19 +321,23 @@ async def execute_end_turn(gs: GameState) -> str:
     try:
         wc_status = await gs.get_world_congress()
         if wc_status.turns_until_next <= 0 or wc_status.is_in_session:
-            handler_lines = await gs.conn.execute_write(
-                f'print(__civmcp_wc_handler and "HANDLER_SET" or "NO_HANDLER"); '
-                f'print("{lq.SENTINEL}")'
-            )
-            handler_set = any("HANDLER_SET" in l for l in handler_lines)
-            if not handler_set:
-                n_res = len(wc_status.resolutions) if wc_status.resolutions else 0
-                return (
-                    f"World Congress fires this turn ({n_res} resolution(s), {wc_status.favor} favor). "
-                    f"Use get_world_congress() to review resolutions and targets, "
-                    f"then queue_wc_votes() to register your votes, "
-                    f"then call end_turn() again."
+            n_res = len(wc_status.resolutions) if wc_status.resolutions else 0
+            # Skip gate when WC fires with 0 resolutions — nothing to vote on
+            if n_res == 0 and not wc_status.is_in_session:
+                log.info("WC fires this turn with 0 resolutions — auto-proceeding")
+            else:
+                handler_lines = await gs.conn.execute_write(
+                    f'print(__civmcp_wc_handler and "HANDLER_SET" or "NO_HANDLER"); '
+                    f'print("{lq.SENTINEL}")'
                 )
+                handler_set = any("HANDLER_SET" in l for l in handler_lines)
+                if not handler_set:
+                    return (
+                        f"World Congress fires this turn ({n_res} resolution(s), {wc_status.favor} favor). "
+                        f"Use get_world_congress() to review resolutions and targets, "
+                        f"then queue_wc_votes() to register your votes, "
+                        f"then call end_turn() again."
+                    )
     except Exception:
         log.debug("WC imminence check failed", exc_info=True)
 
@@ -630,12 +634,11 @@ async def execute_end_turn(gs: GameState) -> str:
                     continue
 
                 # --- Stale promotion notifications ---
-                # GameCore SetPromotion doesn't clear InGame notification and
-                # doesn't consume XP or advance level, so CanPromote() and
-                # GetStoredPromotions() are permanently stale. Instead, count
-                # actual promotions via HasPromotion and use the XP-threshold
-                # formula: threshold(n) = T1 * (n+1) * (n+2) / 2 where T1 is
-                # the stuck GetExperienceForNextLevel() value.
+                # GameCore SetPromotion doesn't consume XP or advance level,
+                # so the engine perpetually thinks the unit needs promotion.
+                # Use CanPromote() on each available promotion as the
+                # authoritative check — if no promotion is actually available,
+                # dismiss the notification as stale.
                 if blocking_type == "ENDTURN_BLOCKING_UNIT_PROMOTION":
                     try:
                         check_lines = await gs.conn.execute_read(
@@ -648,16 +651,15 @@ async def execute_end_turn(gs: GameState) -> str:
                             f"      local ui = GameInfo.Units[u:GetType()]; "
                             f'      local promClass = ui and ui.PromotionClass or ""; '
                             f'      if promClass ~= "" then '
-                            f"        local promoCount = 0; "
                             f"        for p in GameInfo.UnitPromotions() do "
-                            f"          if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then "
-                            f"            promoCount = promoCount + 1 "
+                            f"          if p.PromotionClass == promClass "
+                            f"             and not exp:HasPromotion(p.Index) then "
+                            f"            local ok, can = pcall(function() "
+                            f"              return exp:CanPromote(p.Index) "
+                            f"            end); "
+                            f"            if ok and can then anyNeed = true; break end "
                             f"          end "
-                            f"        end; "
-                            f"        local t1 = exp:GetExperienceForNextLevel(); "
-                            f"        local xp = exp:GetExperiencePoints(); "
-                            f"        local needed = t1 * (promoCount + 1) * (promoCount + 2) / 2; "
-                            f"        if xp >= needed then anyNeed = true end "
+                            f"        end "
                             f"      end "
                             f"    end "
                             f"  end; "
