@@ -181,6 +181,7 @@ _ACTION_KEYWORDS = (
     "INFLUENCE_TOKEN",
     "COMMEMORATION",
     "WORLD_CONGRESS",
+    "ESCAPE",
 )
 
 
@@ -202,4 +203,5 @@ BLOCKING_TOOL_MAP: dict[str, str] = {
     "ENDTURN_BLOCKING_CONSIDER_RAZE_CITY": "Use city_action(city_id=..., action='keep') or 'raze'/'liberate'",
     "ENDTURN_BLOCKING_CONSIDER_DISLOYAL_CITY": "Use city_action(city_id=..., action='keep') or 'reject'",
     "ENDTURN_BLOCKING_GIVE_INFLUENCE_TOKEN": "Use get_city_states() then send_envoy(player_id=...)",
+    "ENDTURN_BLOCKING_SPY_CHOOSE_ESCAPE_ROUTE": "Auto-resolved: spy chooses fastest escape route",
 }

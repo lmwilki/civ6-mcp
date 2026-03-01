@@ -77,7 +77,10 @@ for i, u in Players[me]:GetUnits():Members() do
                     end
                 end
             end
-            print(uid.."|"..name.."|"..x.."|"..y.."|"..rank.."|"..xp.."|"..moves.."|"..cityName.."|"..cityOwner.."|"..opStr.."|"..currentOp)
+            local escaping = "idle"
+            local ok_esc, escID = pcall(function() return Players[me]:GetDiplomacy():GetNextEscapingSpyID() end)
+            if ok_esc and escID and escID == u:GetID() then escaping = "escaping" end
+            print(uid.."|"..name.."|"..x.."|"..y.."|"..rank.."|"..xp.."|"..moves.."|"..cityName.."|"..cityOwner.."|"..opStr.."|"..currentOp.."|"..escaping)
         end
     end
 end
@@ -107,6 +110,9 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
             ops_str = parts[9].strip()
             available_ops = [op for op in ops_str.split(",") if op]
             current_mission = parts[10].strip() if len(parts) > 10 else "none"
+            is_escaping = (
+                parts[11].strip() == "escaping" if len(parts) > 11 else False
+            )
             spies.append(
                 SpyInfo(
                     unit_id=uid,
@@ -121,6 +127,7 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
                     city_owner=city_owner,
                     available_ops=available_ops,
                     current_mission=current_mission,
+                    is_escaping=is_escaping,
                 )
             )
         except (ValueError, IndexError):
@@ -196,4 +203,79 @@ def build_spy_mission(
             f'print("OK:SPY_MISSION|{mission_type} mission launched at ({target_x},{target_y}).")',
             f'print("{sentinel}")',
         ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Escape route resolution
+# ---------------------------------------------------------------------------
+
+# District priority for escape: fastest travel time first.
+# City Center is always available (every city has one) so it's the fallback.
+_ESCAPE_DISTRICTS = [
+    "DISTRICT_AERODROME",
+    "DISTRICT_HARBOR",
+    "DISTRICT_COMMERCIAL_HUB",
+    "DISTRICT_CITY_CENTER",
+]
+
+
+def build_spy_escape_route() -> str:
+    """InGame context: auto-resolve spy escape by choosing the fastest available district.
+
+    Uses the same API as the game's EspionageEscape.lua popup:
+    - GetNextEscapingSpyID() to find the caught spy
+    - HasDistrict() to check which escape routes are available
+    - SET_ESCAPE_ROUTE PlayerOperation to choose the district
+    """
+    sentinel = SENTINEL
+    # Build Lua table of districts to try in priority order
+    district_checks = []
+    for dist in _ESCAPE_DISTRICTS:
+        if dist == "DISTRICT_CITY_CENTER":
+            # City Center is always available — no HasDistrict check needed
+            district_checks.append(
+                f'if not chosen then '
+                f'  chosen = GameInfo.Districts["{dist}"]; '
+                f'  chosenName = "{dist}" '
+                f'end'
+            )
+        else:
+            district_checks.append(
+                f'if not chosen and city:GetDistricts():HasDistrict('
+                f'GameInfo.Districts["{dist}"].Index, true, true) then '
+                f'  chosen = GameInfo.Districts["{dist}"]; '
+                f'  chosenName = "{dist}" '
+                f'end'
+            )
+    checks_lua = " ".join(district_checks)
+
+    return (
+        f"local me = Game.GetLocalPlayer() "
+        f"local pDiplo = Players[me]:GetDiplomacy() "
+        f"local spyID = pDiplo:GetNextEscapingSpyID() "
+        f"if spyID == nil or spyID < 0 then "
+        f'  print("NO_ESCAPING_SPY") print("{sentinel}") do return end '
+        f"end "
+        f"local spy = Players[me]:GetUnits():FindID(spyID) "
+        f"if not spy then "
+        f'  print("ERR:SPY_NOT_FOUND") print("{sentinel}") do return end '
+        f"end "
+        f"local city = Cities.GetPlotPurchaseCity(spy:GetX(), spy:GetY()) "
+        f"if not city then "
+        f'  print("ERR:NO_CITY") print("{sentinel}") do return end '
+        f"end "
+        f"local chosen = nil "
+        f"local chosenName = nil "
+        f"{checks_lua} "
+        f"if not chosen then "
+        f'  print("ERR:NO_DISTRICT") print("{sentinel}") do return end '
+        f"end "
+        f"local params = {{}} "
+        f"params[PlayerOperations.PARAM_DISTRICT_TYPE] = chosen.Index "
+        f"UI.RequestPlayerOperation(me, PlayerOperations.SET_ESCAPE_ROUTE, params) "
+        f'local popup = ContextPtr:LookUpControl("/InGame/EspionageEscape") '
+        f"if popup then popup:SetHide(true) end "
+        f'print("OK:ESCAPE_ROUTE|" .. Locale.Lookup(spy:GetName()) .. " escaping via " .. chosenName) '
+        f'print("{sentinel}")'
     )

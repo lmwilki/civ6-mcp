@@ -78,9 +78,10 @@ def narrate_spies(spies: list[lq.SpyInfo]) -> str:
         mission_tag = (
             f" | mission: {s.current_mission}" if s.current_mission != "none" else ""
         )
+        escape_tag = " ** [ESCAPING — needs escape route] **" if s.is_escaping else ""
         lines.append(
             f"  id:{s.unit_id} [{rank_name}] {s.name} — at {loc} | moves:{s.moves}"
-            f" | xp:{s.xp}{mission_tag} | ops: {ops}"
+            f" | xp:{s.xp}{mission_tag} | ops: {ops}{escape_tag}"
         )
     lines.append("")
     lines.append("Actions:")
