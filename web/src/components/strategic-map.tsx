@@ -379,8 +379,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       const attentionGfx = new Graphics();
       const hoverGfx = new Graphics();
       world.addChild(
-        terrainGfx, territoryGfx, borderGfx, roadGfx, cityGfx,
-        attentionGfx, hoverGfx,
+        terrainGfx, territoryGfx, borderGfx, attentionGfx,
+        roadGfx, cityGfx, hoverGfx,
       );
 
       // X offsets for cylindrical wrapping — draw world 3 times using tile period
@@ -463,8 +463,9 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             }
           }
 
-          // Territory borders — batch segments by owner, flush with hex edge
+          // Territory borders — inset inside hex, square caps for clean joins
           const bordersByOwner = new Map<number, number[]>();
+          const INSET = 0.82;
           const h = (SQRT3 / 2) * hexSize * 0.98;
           const s98 = hexSize * 0.98;
           const vOffsets: [number, number][] = [
@@ -493,14 +494,14 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
                 let segs = bordersByOwner.get(owner);
                 if (!segs) { segs = []; bordersByOwner.set(owner, segs); }
                 segs.push(
-                  cx + ox + vOffsets[vi][0], cy + vOffsets[vi][1],
-                  cx + ox + vOffsets[vj][0], cy + vOffsets[vj][1],
+                  cx + ox + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET,
+                  cx + ox + vOffsets[vj][0] * INSET, cy + vOffsets[vj][1] * INSET,
                 );
               }
             }
           }
 
-          const bw = Math.max(1, hexSize * 0.25);
+          const bw = Math.max(1, hexSize * 0.2);
           for (const [owner, segs] of bordersByOwner) {
             const colors = playerColors.get(owner);
             if (!colors) continue;
