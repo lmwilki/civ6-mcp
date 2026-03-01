@@ -463,9 +463,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             }
           }
 
-          // Territory borders — batch segments by owner for fewer draw calls
+          // Territory borders — batch segments by owner, flush with hex edge
           const bordersByOwner = new Map<number, number[]>();
-          const INSET = 0.82;
           const h = (SQRT3 / 2) * hexSize * 0.98;
           const s98 = hexSize * 0.98;
           const vOffsets: [number, number][] = [
@@ -494,21 +493,21 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
                 let segs = bordersByOwner.get(owner);
                 if (!segs) { segs = []; bordersByOwner.set(owner, segs); }
                 segs.push(
-                  cx + ox + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET,
-                  cx + ox + vOffsets[vj][0] * INSET, cy + vOffsets[vj][1] * INSET,
+                  cx + ox + vOffsets[vi][0], cy + vOffsets[vi][1],
+                  cx + ox + vOffsets[vj][0], cy + vOffsets[vj][1],
                 );
               }
             }
           }
 
-          const bw = Math.max(1, hexSize * 0.2);
+          const bw = Math.max(1, hexSize * 0.25);
           for (const [owner, segs] of bordersByOwner) {
             const colors = playerColors.get(owner);
             if (!colors) continue;
             for (let i = 0; i < segs.length; i += 4) {
               borderGfx.moveTo(segs[i], segs[i + 1]).lineTo(segs[i + 2], segs[i + 3]);
             }
-            borderGfx.stroke({ width: bw, color: colors.secondary, cap: "round" });
+            borderGfx.stroke({ width: bw, color: colors.secondary, cap: "butt" });
           }
 
           // Roads — lines connecting adjacent road tiles
