@@ -137,8 +137,11 @@ print("{SENTINEL}")
 def build_move_unit(unit_index: int, target_x: int, target_y: int) -> str:
     return f"""
 {_lua_get_unit(unit_index)}
+if unit:GetMovesRemaining() <= 0 then
+    {_bail("ERR:NO_MOVES|Unit has no movement points remaining this turn. Use skip or wait until next turn.")}
+end
 if not UnitManager.CanStartOperation(unit, UnitOperationTypes.MOVE_TO, nil, true) then
-    {_bail("ERR:CANNOT_MOVE|Unit cannot move (no movement points or invalid state)")}
+    {_bail("ERR:CANNOT_MOVE|Unit cannot move (invalid state)")}
 end
 -- Pre-check: stacking conflict at target tile
 local unitInfo = GameInfo.Units[unit:GetType()]
@@ -217,6 +220,16 @@ if tgtUnits then
 end
 if enemy == nil then
     {_bail(f"ERR:NO_ENEMY|No hostile unit at ({target_x},{target_y})")}
+end
+-- Check diplomatic status — can only attack units you're at war with (barbarians always attackable)
+local enemyOwner = enemy:GetOwner()
+if enemyOwner ~= 63 then
+    local pDiplo = Players[me]:GetDiplomacy()
+    if not pDiplo:IsAtWarWith(enemyOwner) then
+        local ownerCfg = PlayerConfigurations[enemyOwner]
+        local ownerName = ownerCfg and Locale.Lookup(ownerCfg:GetCivilizationDescription()) or ("player " .. enemyOwner)
+        {_bail_lua('"ERR:NOT_AT_WAR|Cannot attack " .. enemyName .. " — you are at peace with " .. ownerName .. ". Declare war first or target a different unit."')}
+    end
 end
 local enemyHP = enemy:GetMaxDamage() - enemy:GetDamage()
 local enemyMaxHP = enemy:GetMaxDamage()
@@ -331,6 +344,18 @@ if tgtUnits then
     end
 end
 if enemy == nil then {_bail(f"ERR:NO_ENEMY|No hostile unit at ({target_x},{target_y})")} end
+-- Check diplomatic status — estimates for units at peace are misleading
+local enemyOwner = enemy:GetOwner()
+if enemyOwner ~= 63 then
+    local pDiplo = Players[me]:GetDiplomacy()
+    if not pDiplo:IsAtWarWith(enemyOwner) then
+        local ownerCfg = PlayerConfigurations[enemyOwner]
+        local ownerName = ownerCfg and Locale.Lookup(ownerCfg:GetCivilizationDescription()) or ("player " .. enemyOwner)
+        local eInfo2 = GameInfo.Units[enemy:GetType()]
+        local eName = eInfo2 and eInfo2.UnitType or "UNKNOWN"
+        {_bail_lua('"ERR:NOT_AT_WAR|Cannot attack " .. eName .. " — you are at peace with " .. ownerName .. ". Declare war first."')}
+    end
+end
 local eInfo = GameInfo.Units[enemy:GetType()]
 local defType = eInfo and eInfo.UnitType or "UNKNOWN"
 local defCS = eInfo and eInfo.Combat or 0
@@ -836,32 +861,44 @@ if not canBuild then
         end
     end
     local reasonStr = #reasons > 0 and table.concat(reasons, "; ") or "unknown reason"
-    -- Detect blocking feature and suggest alternatives
-    local featureHint = ""
+    -- Add diagnostic context
+    local diag = {{}}
+    local charges = unit:GetBuildCharges()
+    if charges <= 0 then
+        table.insert(diag, "builder has 0 charges (will be consumed)")
+    end
+    local existImp = plot:GetImprovementType()
+    if existImp >= 0 then
+        local eiRow = GameInfo.Improvements[existImp]
+        table.insert(diag, "tile already has " .. (eiRow and eiRow.ImprovementType or "improvement"))
+    end
     local fType = plot:GetFeatureType()
     if fType >= 0 then
         local fInfo = GameInfo.Features[fType]
         local fName = fInfo and fInfo.FeatureType or "UNKNOWN"
-        -- List what CAN be built here (including feature removal)
-        local alts = {{}}
-        for altImp in GameInfo.Improvements() do
-            if altImp.Buildable and not altImp.TraitType then
-                local aParams = {{}}
-                aParams[UnitOperationTypes.PARAM_X] = unit:GetX()
-                aParams[UnitOperationTypes.PARAM_Y] = unit:GetY()
-                aParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = altImp.Hash
-                local ok3, canAlt = pcall(function()
-                    return UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, aParams)
-                end)
-                if ok3 and canAlt then table.insert(alts, altImp.ImprovementType) end
-            end
-        end
-        featureHint = " Tile has " .. fName .. ". Use remove_feature action first."
-        if #alts > 0 then
-            featureHint = featureHint .. " Or build directly: " .. table.concat(alts, ", ") .. "."
+        table.insert(diag, "tile has " .. fName .. " (use remove_feature first)")
+    end
+    -- List what CAN be built here
+    local alts = {{}}
+    for altImp in GameInfo.Improvements() do
+        if altImp.Buildable and not altImp.TraitType then
+            local aParams = {{}}
+            aParams[UnitOperationTypes.PARAM_X] = unit:GetX()
+            aParams[UnitOperationTypes.PARAM_Y] = unit:GetY()
+            aParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = altImp.Hash
+            local ok3, canAlt = pcall(function()
+                return UnitManager.CanStartOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, nil, aParams)
+            end)
+            if ok3 and canAlt then table.insert(alts, altImp.ImprovementType) end
         end
     end
-    print("ERR:CANNOT_IMPROVE|" .. reasonStr .. featureHint)
+    if #alts > 0 then
+        table.insert(diag, "can build here: " .. table.concat(alts, ", "))
+    else
+        table.insert(diag, "no improvements can be built on this tile")
+    end
+    local diagStr = #diag > 0 and ". " .. table.concat(diag, ". ") or ""
+    print("ERR:CANNOT_IMPROVE|" .. reasonStr .. diagStr .. ". Builder at " .. unit:GetX() .. "," .. unit:GetY())
     print("{SENTINEL}"); return
 end
 UnitManager.RequestOperation(unit, UnitOperationTypes.BUILD_IMPROVEMENT, params)
@@ -1107,6 +1144,13 @@ def build_pathing_estimate_query(
     """
     return f"""
 {_lua_get_unit(unit_index)}
+-- Guard: GetMoveToPath returns degenerate paths for units with 0 moves
+if unit:GetMovesRemaining() <= 0 then
+    print("PATH|1|1|0")
+    print("WAYPOINTS|(" .. unit:GetX() .. "," .. unit:GetY() .. ")")
+    print("{SENTINEL}")
+    return
+end
 local path = UnitManager.GetMoveToPath(unit, {target_x}, {target_y})
 if not path or #path == 0 then {_bail("ERR:NO_PATH|No path found to target")} end
 local reach = UnitManager.GetReachableMovement(unit)
