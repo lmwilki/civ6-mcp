@@ -289,7 +289,10 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
 
   // ── World dimensions (fixed at base hexSize) ────────────────────────
 
-  const worldW = Math.ceil(SQRT3 * hexSize * (gridW + 0.5) + SQRT3 * hexSize);
+  // Tile period for cylindrical wrapping — exactly one column-width per grid column
+  const tileW = SQRT3 * hexSize * gridW;
+  // Full world includes the half-hex padding on each side for rendering
+  const worldW = Math.ceil(tileW + SQRT3 * hexSize);
   const worldH = Math.ceil(1.5 * hexSize * gridH + hexSize * 2);
   const VIEWPORT_H = 500;
 
@@ -380,8 +383,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
         attentionGfx, hoverGfx,
       );
 
-      // X offsets for cylindrical wrapping — draw world 3 times
-      const xOffsets = [-worldW, 0, worldW];
+      // X offsets for cylindrical wrapping — draw world 3 times using tile period
+      const xOffsets = [-tileW, 0, tileW];
 
       // ── Static terrain (drawn once, 3 copies for wrapping) ─────────
 
@@ -413,20 +416,23 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       }
 
       function wrapAndClamp() {
-        const scaledW = worldW * world.scale.x;
-        // Horizontal wrap: keep world.x in [-scaledW, 0)
-        world.x = ((world.x % scaledW) + scaledW) % scaledW - scaledW;
-        // Vertical clamp
+        const scaledTileW = tileW * world.scale.x;
+        // Horizontal wrap: keep world.x in [-scaledTileW, 0)
+        world.x = ((world.x % scaledTileW) + scaledTileW) % scaledTileW - scaledTileW;
+        // Vertical clamp — center if map smaller than viewport
         const scaledH = worldH * world.scale.y;
         if (scaledH <= viewH) {
-          world.y = (viewH - scaledH) / 2; // center if smaller than viewport
+          world.y = (viewH - scaledH) / 2;
         } else {
           world.y = clamp(world.y, viewH - scaledH, 0);
         }
       }
 
-      // Initial view: fit to viewport width, vertically centered
-      const fitZoom = viewW / worldW;
+      // Initial view: fit to viewport, ensuring map fills viewport vertically
+      const fitZoomW = viewW / worldW;
+      const fitZoomH = viewH / worldH;
+      const minZoom = Math.max(fitZoomW, fitZoomH); // never smaller than viewport
+      const fitZoom = Math.max(minZoom, fitZoomW);
       world.scale.set(fitZoom);
       world.x = 0;
       wrapAndClamp();
@@ -582,8 +588,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
         const { x: sx, y: sy } = e.global;
         const wx = (sx - world.x) / world.scale.x;
         const wy = (sy - world.y) / world.scale.y;
-        // Wrap horizontally into [0, worldW)
-        const wrappedWx = ((wx % worldW) + worldW) % worldW;
+        // Wrap horizontally into [0, tileW) using tile period
+        const wrappedWx = ((wx % tileW) + tileW) % tileW;
         const hex = screenToHex(wrappedWx, wy, hexSize, gridW, gridH);
         const tooltip = tooltipRef.current;
 
@@ -653,7 +659,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       const onWheel = (e: WheelEvent) => {
         e.preventDefault();
         const factor = e.deltaY < 0 ? 1.1 : 0.9;
-        const newScale = clamp(world.scale.x * factor, 0.3, 6);
+        const newScale = clamp(world.scale.x * factor, minZoom, 6);
 
         const rect = app.canvas.getBoundingClientRect();
         const mx = (e.clientX - rect.left) * (app.screen.width / rect.width);
