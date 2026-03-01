@@ -260,18 +260,60 @@ async def quicksave(conn: GameConnection) -> str:
     return "Quicksave may have failed: " + " ".join(lines)
 
 
-async def list_saves(conn: GameConnection) -> str:
-    """Query available saves (normal + autosave + quicksave).
+async def save_game(conn: GameConnection, name: str) -> str:
+    """Create a named save. Used for MCP per-turn autosaves."""
+    lines = await conn.execute_write(
+        f"local gf = {{}}; "
+        f'gf.Name = "{name}"; '
+        f"gf.Location = SaveLocations.LOCAL_STORAGE; "
+        f"gf.Type = SaveTypes.SINGLE_PLAYER; "
+        f"gf.IsAutosave = false; "
+        f"gf.IsQuicksave = false; "
+        f"Network.SaveGame(gf); "
+        f'print("OK|{name}"); '
+        f'print("{lq.SENTINEL}")'
+    )
+    if any("OK|" in l for l in lines):
+        return f"Saved: {name}"
+    return f"Save may have failed: {' '.join(lines)}"
 
-    Tries Lua-based in-game query first, falls back to filesystem scan.
-    Returns a list of save names. Use load_save(index) to load one.
+
+def cleanup_old_autosaves(keep: int = 10) -> None:
+    """Delete MCP autosaves older than the most recent `keep` saves."""
+    import glob
+    import os
+
+    from .game_launcher import SINGLE_SAVE_DIR
+
+    pattern = os.path.join(SINGLE_SAVE_DIR, "MCP_AutoSave_*.Civ6Save")
+    saves = glob.glob(pattern)
+    if len(saves) <= keep:
+        return
+    saves.sort(key=os.path.getmtime, reverse=True)
+    for old in saves[keep:]:
+        try:
+            os.remove(old)
+            log.debug("Deleted old MCP autosave: %s", old)
+        except OSError as e:
+            log.debug("Failed to delete %s: %s", old, e)
+
+
+async def list_saves(conn: GameConnection) -> str:
+    """List available saves (normal + autosave + quicksave).
+
+    Uses filesystem scan (reliable — finds all save types including
+    autosaves and quicksaves). Falls back to Lua query if filesystem
+    scan finds nothing.
     """
-    result = await _list_saves_lua(conn)
-    if result is not None:
+    result = _list_saves_filesystem()
+    if "No saves found" not in result:
         return result
 
-    # Fallback: direct filesystem scan
-    return _list_saves_filesystem()
+    # Fallback: Lua-based query (may miss autosaves/quicksaves)
+    lua_result = await _list_saves_lua(conn)
+    if lua_result is not None:
+        return lua_result
+    return result
 
 
 async def _list_saves_lua(conn: GameConnection) -> str | None:
@@ -385,6 +427,90 @@ async def load_save(conn: GameConnection, save_index: int) -> str:
             name = line.split("|", 1)[1]
             return f"Loading save: {name}. Game will reload — wait ~10 seconds then call get_game_overview to verify."
     return "Load command sent. Wait for game to reload."
+
+
+async def load_game_save(conn: GameConnection, save_name: str) -> str:
+    """Load a save by name — no list_saves() prerequisite.
+
+    Two-tier approach:
+    1. Lua: query save list, find by name, load in one async operation.
+    2. Filesystem: verify file exists, use OCR menu navigation (slow but
+       reliable — works for autosaves and quicksaves that Lua can't find).
+    """
+    import asyncio
+
+    # Tier 1: Lua query-match-load
+    try:
+        await conn.execute_write(
+            f"if not ExposedMembers then ExposedMembers = {{}} end; "
+            f"ExposedMembers.MCPLoadResult = nil; "
+            f"ExposedMembers.MCPLoadDone = false; "
+            f"local function OnResults(fileList, qid) "
+            f"  UI.CloseFileListQuery(qid); "
+            f"  LuaEvents.FileListQueryResults.Remove(OnResults); "
+            f"  for i, s in ipairs(fileList) do "
+            f'    if s.Name == "{save_name}" then '
+            f'      ExposedMembers.MCPLoadResult = "FOUND"; '
+            f"      ExposedMembers.MCPLoadDone = true; "
+            f"      Network.LeaveGame(); "
+            f"      Network.LoadGame(s, ServerType.SERVER_TYPE_NONE); "
+            f"      return "
+            f"    end "
+            f"  end; "
+            f'  ExposedMembers.MCPLoadResult = "NOT_FOUND"; '
+            f"  ExposedMembers.MCPLoadDone = true; "
+            f"end; "
+            f"LuaEvents.FileListQueryResults.Add(OnResults); "
+            f"local opts = SaveLocationOptions.NORMAL + SaveLocationOptions.AUTOSAVE "
+            f"  + SaveLocationOptions.QUICKSAVE + SaveLocationOptions.LOAD_METADATA; "
+            f"UI.QuerySaveGameList(SaveLocations.LOCAL_STORAGE, SaveTypes.SINGLE_PLAYER, opts); "
+            f'print("QUERY_SENT"); '
+            f'print("{lq.SENTINEL}")'
+        )
+
+        for _ in range(20):
+            await asyncio.sleep(0.25)
+            check = await conn.execute_write(
+                f"if ExposedMembers.MCPLoadDone then "
+                f'  print("RESULT|" .. tostring(ExposedMembers.MCPLoadResult)) '
+                f'else print("PENDING") end; '
+                f'print("{lq.SENTINEL}")'
+            )
+            for line in check:
+                if line == "RESULT|FOUND":
+                    return (
+                        f"Loading save: {save_name}. Game will reload — "
+                        f"wait ~10 seconds then call get_game_overview to verify."
+                    )
+                if line == "RESULT|NOT_FOUND":
+                    break  # fall through to Tier 2
+            else:
+                continue
+            break  # NOT_FOUND — try filesystem
+
+        log.info("Lua query did not find '%s', trying filesystem", save_name)
+    except Exception:
+        log.debug("Lua load_game_save failed", exc_info=True)
+
+    # Tier 2: Filesystem verify + OCR menu load
+    import os
+
+    from .game_launcher import SAVE_DIR, SINGLE_SAVE_DIR
+
+    auto_path = os.path.join(SAVE_DIR, f"{save_name}.Civ6Save")
+    single_path = os.path.join(SINGLE_SAVE_DIR, f"{save_name}.Civ6Save")
+
+    if not os.path.exists(auto_path) and not os.path.exists(single_path):
+        return (
+            f"Error: Save '{save_name}' not found in Lua query or on filesystem. "
+            f"Check the name and try list_saves() to see available saves."
+        )
+
+    # File exists but Lua couldn't find it — use restart_and_load (OCR menu nav)
+    from . import game_launcher
+
+    log.info("Falling back to restart_and_load for '%s'", save_name)
+    return await game_launcher.restart_and_load(save_name)
 
 
 async def execute_lua(

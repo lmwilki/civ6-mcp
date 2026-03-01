@@ -34,6 +34,7 @@ class GameState:
         self._pending_end_turn_from: int | None = (
             None  # turn number when ACTION_ENDTURN was sent
         )
+        self._high_water_turn: int = 0  # highest turn seen (for regression detection)
 
     async def get_game_identity(self) -> tuple[str, int]:
         """Return (civ_type_lower, random_seed) for the current game.
@@ -470,9 +471,22 @@ class GameState:
                             turns = vl.split("|", 1)[1]
                     return f"PRODUCING|{item_name}|{turns} (bypassed stale CanStartOperation)"
                 else:
+                    hint = ""
+                    itype = item_type.upper()
+                    if itype == "DISTRICT" and target_x is None:
+                        hint = (
+                            " Hint: Districts require target_x/target_y for"
+                            " placement. Use get_district_advisor first."
+                        )
+                    elif itype == "BUILDING":
+                        bld_info = item_name.replace("BUILDING_", "")
+                        hint = (
+                            f" Hint: {bld_info} may require a completed"
+                            " district or prerequisite building."
+                        )
                     return (
-                        f"Error: CANNOT_START|{item_name} cannot start "
-                        f"(CanProduce=true but RequestOperation failed)"
+                        f"Error: CANNOT_START|{item_name} cannot start"
+                        f" (CanProduce=true but RequestOperation failed).{hint}"
                     )
             except Exception:
                 log.debug("Production readback failed", exc_info=True)
@@ -1346,6 +1360,12 @@ class GameState:
         from civ_mcp.game_lifecycle import load_save
 
         return await load_save(self.conn, save_index)
+
+    async def load_game_save(self, save_name: str) -> str:
+        """Load a save file by name (no list_saves prerequisite)."""
+        from civ_mcp.game_lifecycle import load_game_save
+
+        return await load_game_save(self.conn, save_name)
 
     async def execute_lua(self, code: str, context: str = "gamecore") -> str:
         """Escape hatch: run arbitrary Lua code."""

@@ -248,9 +248,9 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     if not lines:
         raise ValueError("Empty overview response")
     parts = lines[0].split("|")
-    if len(parts) < 13:
+    if len(parts) < 14:
         raise ValueError(
-            f"Overview response has {len(parts)} fields, expected 13: {lines[0]}"
+            f"Overview response has {len(parts)} fields, expected >=14: {lines[0]}"
         )
     rankings: list[ScoreEntry] = []
     explored_land = 0
