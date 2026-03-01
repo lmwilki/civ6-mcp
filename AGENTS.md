@@ -20,9 +20,9 @@ An MCP server connecting to a live Civilization VI game via FireTuner. You can r
 Before your first turn:
 1. Read your civ's unique abilities, units, and buildings — what is this civ designed to do?
 2. Identify the tech/civic that unlocks your unique unit; plan a research path to reach it.
-3. Form a working hypothesis for a victory path. Hold it loosely — geography and rivals will clarify things by T80-100.
+3. Form a working hypothesis for a victory path. Hold it loosely — geography and rivals will clarify things through the Classical era.
 
-Early choices compound. What you build first shapes what's available at T20, T40, T60. A scout reveals the map early; a defensive unit lets your settlers move safely; more cities mean more districts which mean more everything. Religious civs often benefit from Holy Site infrastructure before the Great Prophet pool fills. What you don't build early, you pay for later.
+Early choices compound. Each decision shapes what's available 20, 40, 60 turns later. A scout reveals the map early; a defensive unit lets your settlers move safely; more cities mean more districts which mean more everything. Religious civs often benefit from Holy Site infrastructure before the Great Prophet pool fills. What you don't build early, you pay for later.
 
 ## Turn Loop
 
@@ -95,18 +95,18 @@ Gold sitting above 500 with no specific plan is usually better deployed. A build
 Faith above 500 is usually better spent: Great Person patronage, Monumentality settlers/builders (Golden Age), Grand Master's Chapel military units (wartime), or Naturalists (late-game tourism). If it's accumulating past 500, consider what it could buy this turn.
 
 ### Expansion
-Each city multiplies your districts, yields, and Great Person generation. The gap between a 3-city and 5-city empire at T100 is hard to recover from. By the mid-game benchmarks:
-- T40: 2 cities underway
-- T60: 3 cities
-- T80: 4 cities
-- T100: 4-5 cities
+Each city multiplies your districts, yields, and Great Person generation. The gap between a 3-city and 5-city empire by the Medieval era is hard to recover from. Rough benchmarks:
+- Late Ancient: 2 cities underway
+- Early Classical: 3 cities
+- Late Classical: 4 cities
+- Medieval: 4-5 cities
 If city count is lagging, a settler is typically the highest-impact production choice — more so than most infrastructure in existing cities. Check loyalty before settling: negative-loyalty sites near rivals need a governor (Victor or Amani) assigned immediately or they'll flip.
 
 ### Growth
 Stagnant cities fall behind exponentially. If any city has food surplus ≤ 0, that's worth fixing this turn (Farm, Granary, domestic Trade Route, or citizen reassignment). Turns-to-growth over 15 is a signal the city needs food infrastructure.
 
 ### Exploration
-You can't settle what you can't see, and you can't counter threats you don't know exist. A scout set to `automate` is one of the best investments in the early game. If a scout is lost or stuck, replacing it early keeps the information flow going. Exploration benchmarks: T25 ≥15%, T50 ≥25%, T75 ≥35%, T100 ≥50%.
+You can't settle what you can't see, and you can't counter threats you don't know exist. A scout set to `automate` is one of the best investments in the early game. If a scout is lost or stuck, replacing it early keeps the information flow going. Aim for ≥25% explored by Classical, ≥50% by Medieval.
 
 ### Diplomacy
 Diplomacy generates yield: each alliance +1 favor/turn per alliance level, each suzerainty +1 favor/turn. Government tier also gives favor. This compounds. Friendships don't give favor directly but enable alliances (which do). Delegations (25g) are cheap on first meeting. Friendships open up when a civ is Friendly. Alliances require friendship (30+ turns) and Diplomatic Service civic. Embassies are available once Writing is researched.
@@ -120,7 +120,7 @@ During war, keeping a military unit garrisoned in or near each city is worth the
 Check rival military strength in `get_diplomacy` periodically. A neighbor at 2x+ your strength who isn't a friend or ally is a risk worth taking seriously. Minimum useful peacetime: 1 garrison per city plus a mobile unit. Units become progressively weaker relative to rivals if not upgraded when new techs unlock (Slinger→Archer with Archery, Warrior→Swordsman with Iron Working).
 
 ### Barbarian Camps
-Camps upgrade with the era — a camp at T50 spawns Warriors; the same camp at T150 spawns Man-at-Arms. Clearing a camp within a few turns of finding it is almost always easier than fighting the units it produces over 100 turns.
+Camps upgrade with the era — an Ancient-era camp spawns Warriors; the same camp in the Medieval era spawns Man-at-Arms. Clearing a camp within a few turns of finding it is almost always easier than fighting the units it produces over many turns.
 
 ### Religion
 Religious victory is the easiest win condition to miss because it produces no notifications and unfolds slowly. `get_religion_spread` shows the picture. If a rival religion reaches majority in most civs, the window for a response narrows quickly. Religious units bought from a city carry **that city's majority religion** — buy them from cities where your own religion is majority, not a converted city.
@@ -130,11 +130,11 @@ Trade routes spread the origin city's religion to the destination — worth fact
 ### Victory Path Viability
 Some paths close. It's worth checking periodically:
 
-- **Science**: 4+ cities with Campuses and Universities generating 80+ science by ~T150. Late game: Spaceport district (1 per city is enough), then 4 space projects in sequence. Research Agreements (from Research Alliances) and Great Scientists accelerate. If behind on techs at T200, this path is very difficult.
+- **Science**: 4+ cities with Campuses and Universities generating 80+ science by the Renaissance era. Late game: Spaceport district (1 per city is enough), then 4 space projects in sequence. Research Agreements (from Research Alliances) and Great Scientists accelerate. If significantly behind on techs by the Industrial era, this path is very difficult.
 
-- **Culture**: Tourism ≠ culture. Culture generates domestic tourists (your defense); tourism generates visiting tourists against other civs (your offense). Win when your visiting tourists from each civ exceed their domestic tourists. Key infrastructure: Theater Squares with Museums, Great Works with theming bonuses, Wonders. Key multipliers (per civ): Open Borders +25%, Trade Route +25% — pursue these with every civ. Late-game accelerants: National Parks (Naturalists cost faith), Seaside Resorts, Rock Bands (send to tiles with Wonders for large bursts), Heritage Tourism civic (+100% from Art/Artifacts), Online Communities civic (+50% to all). Zero Theater Squares at T100 puts this path very far behind.
+- **Culture**: Tourism ≠ culture. Culture generates domestic tourists (your defense); tourism generates visiting tourists against other civs (your offense). Win when your visiting tourists from each civ exceed their domestic tourists. Key infrastructure: Theater Squares with Museums, Great Works with theming bonuses, Wonders. Key multipliers (per civ): Open Borders +25%, Trade Route +25% — pursue these with every civ. Late-game accelerants: National Parks (Naturalists cost faith), Seaside Resorts, Rock Bands (send to tiles with Wonders for large bursts), Heritage Tourism civic (+100% from Art/Artifacts), Online Communities civic (+50% to all). Zero Theater Squares by the Medieval era puts this path very far behind.
 
-- **Religious**: Requires a founded religion — the Great Prophet pool fills early (roughly half the major civs), so Holy Site infrastructure in the first 30 turns matters. Pipeline: Holy Site → Shrine (enables Missionaries, 3 spread charges each) → Temple (enables Apostles, which fight in theological combat). Theological combat is the primary conversion tool at scale: killing an enemy religious unit applies 250 pressure in a 10-tile radius. Key apostle promotions: Proselytizer (removes 75% foreign pressure on spread). Theocracy government gives +5 theological combat strength and -15% faith purchase cost. Inquisitors defend your cities (+35 RS in own territory). If T80 arrives with no religion, this path is closed. If pursuing: buy religious units only from cities where your religion is majority.
+- **Religious**: Requires a founded religion — the Great Prophet pool fills early (roughly half the major civs), so Holy Site infrastructure in the early Ancient era matters. Pipeline: Holy Site → Shrine (enables Missionaries, 3 spread charges each) → Temple (enables Apostles, which fight in theological combat). Theological combat is the primary conversion tool at scale: killing an enemy religious unit applies 250 pressure in a 10-tile radius. Key apostle promotions: Proselytizer (removes 75% foreign pressure on spread). Theocracy government gives +5 theological combat strength and -15% faith purchase cost. Inquisitors defend your cities (+35 RS in own territory). If the Classical era arrives with no religion, this path is closed. If pursuing: buy religious units only from cities where your religion is majority.
 
 - **Diplomatic**: 20 DVP to win. Sources: World Congress resolutions (+2 from DVP-specific resolution, +1 for winning any resolution's outcome), scored competitions (Aid Requests, World Games), wonders (Statue of Liberty +4, Mahabodhi Temple +2, Potala Palace +1). Favor income stacks: government tier (higher = more), each alliance (+1/t per alliance level), each suzerainty (+1/t). Defensive technique: if a DVP-stripping resolution targets you, voting Option B targeting yourself costs only -1 DVP (vs -2 from Option A), and winning that outcome gives +1 back = net 0. Viable at most empire sizes; the main requirement is diplomatic relationships and favor accumulation.
 
@@ -284,9 +284,9 @@ WC fires synchronously inside `end_turn()` — register votes **before** calling
 | Science | 4 space projects complete | `get_victory_progress` |
 | Domination | Own all rival original capitals | military strength in `get_diplomacy` |
 | Culture | Foreign tourists > every civ's domestic | tourism in `get_victory_progress` |
-| Religious | Your religion majority in ALL civs | `get_religion_spread` every 20t |
+| Religious | Your religion majority in ALL civs | `get_religion_spread` regularly |
 | Diplomatic | 20 diplomatic victory points | World Congress votes |
-| Score | Highest score at T500 | fallback |
+| Score | Highest score at turn limit | fallback |
 
 All victories trigger immediately when the condition is met — they do not wait for a turn boundary or WC session. A rival reaching 20 DVP wins before your next turn. The only counter is stripping DVP at a World Congress *before* they reach 20.
 
@@ -294,12 +294,21 @@ All victories trigger immediately when the condition is met — they do not wait
 
 ## Game Recovery
 
-When the game hangs (AI turn loop):
+**MCP autosaves:** `end_turn` automatically saves every turn as `MCP_AutoSave_NNNN` (last 10 kept). These are your primary recovery points.
+
+**Load by name** (preferred — no `list_saves` needed):
 ```
-restart_and_load("AutoSave_NNNN")   # kill + relaunch + load (~90s)
-# wait 10s, then:
-get_game_overview                    # verify load
+load_game_save("MCP_AutoSave_0079")  # load specific turn (~5s via Lua, ~90s via menu fallback)
+get_game_overview                     # verify load
 ```
+
+**When the game hangs** (AI turn loop):
+```
+restart_and_load("MCP_AutoSave_NNNN")   # kill + relaunch + load (~90s)
+get_game_overview                        # verify load
+```
+
+**Turn regression detection:** If you accidentally load a wrong save (e.g. the T1 scenario save instead of your autosave), `end_turn` will emit a CRITICAL warning with the correct autosave name to reload.
 
 Other tools: `quicksave`, `list_saves`, `load_save(index)`, `kill_game`, `launch_game`, `load_save_from_menu(name)`.
 Save names omit extension: `"AutoSave_0221"` not `"AutoSave_0221.Civ6Save"`.
