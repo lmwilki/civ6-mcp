@@ -1,6 +1,6 @@
 # Benchmark Scenario Specification
 
-Five scenarios forming an evaluation battery, ordered by difficulty. Each isolates a specific capability the sensorium effect undermines. All use Quick speed.
+Five scenarios forming an evaluation battery, ordered by difficulty. Each isolates a specific capability the sensorium effect undermines. All use Quick speed (330-turn game length) to keep per-game cost and wall-clock time practical across multi-model comparison.
 
 ## Common Settings
 
@@ -16,7 +16,7 @@ Five scenarios forming an evaluation battery, ordered by difficulty. Each isolat
 | Victory Conditions | All enabled |
 | Save Format | T1 save files for exact reproducibility |
 
-Record map seed, game seed, game version, and DLC list for each save. Create 3-5 saves per scenario with different seeds for statistical coverage.
+Record map seed, game seed, game version, and DLC list for each save. One save per scenario — all models play the exact same map for comparison clarity.
 
 ---
 

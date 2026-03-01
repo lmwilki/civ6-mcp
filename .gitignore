@@ -18,6 +18,7 @@ wheels/
 
 # Logs
 *.log
+logs/
 
 # Next.js web viewer
 web/node_modules/
