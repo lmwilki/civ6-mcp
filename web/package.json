@@ -19,6 +19,7 @@
     "fumadocs-mdx": "^14.2.8",
     "fumadocs-ui": "^16.6.5",
     "lucide-react": "^0.563.0",
+    "modern-gif": "^2.0.4",
     "next": "16.1.6",
     "next-themes": "^0.4.6",
     "pixi.js": "^8.16.0",
