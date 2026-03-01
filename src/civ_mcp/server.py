@@ -1308,16 +1308,20 @@ async def set_city_production(
         city_id: City ID (from get_cities output)
         item_type: UNIT, BUILDING, DISTRICT, or PROJECT
         item_name: e.g. UNIT_WARRIOR, BUILDING_MONUMENT, DISTRICT_CAMPUS, PROJECT_LAUNCH_EARTH_SATELLITE
-        target_x: X coordinate for district placement (use get_district_advisor to find best tile)
-        target_y: Y coordinate for district placement
+        target_x: X coordinate for district/wonder placement. If omitted for districts, the best adjacency tile is auto-selected.
+        target_y: Y coordinate for district/wonder placement.
 
     Tip: call get_cities first to see your cities and their IDs.
     """
     gs = _get_game(ctx)
+    params: dict = {"city_id": city_id, "item_type": item_type, "item_name": item_name}
+    if target_x is not None:
+        params["target_x"] = target_x
+        params["target_y"] = target_y
     return await _logged(
         ctx,
         "set_city_production",
-        {"city_id": city_id, "item_type": item_type, "item_name": item_name},
+        params,
         lambda: gs.set_city_production(
             city_id, item_type, item_name, target_x, target_y
         ),
