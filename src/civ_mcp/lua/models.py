@@ -956,7 +956,7 @@ class StaticMapDump:
     tiles: list[StaticMapTile]  # row-major: index = y * grid_w + x
     initial_owners: list[int]  # one per tile, -1 = unowned
     initial_routes: list[int]  # one per tile, -1 = none
-    initial_cities: list[tuple[int, int, int, int]]  # (x, y, pid, pop)
+    initial_cities: list[tuple[int, int, int, int, str]]  # (x, y, pid, pop, name)
     players: list[tuple[int, str, str | None]]  # (pid, civ_type, cs_type)
 
 
@@ -966,7 +966,7 @@ class OwnershipDelta:
 
     owner_changes: list[tuple[int, int]]  # (tile_idx, new_owner)
     road_changes: list[tuple[int, int]]  # (tile_idx, route_type)
-    cities: list[tuple[int, int, int, int]]  # (x, y, pid, pop)
+    cities: list[tuple[int, int, int, int, str]]  # (x, y, pid, pop, name)
 
 
 @dataclass

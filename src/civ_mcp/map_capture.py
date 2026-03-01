@@ -83,7 +83,7 @@ class MapCapture:
                 "initialOwners": dump.initial_owners,
                 "initialRoutes": dump.initial_routes,
                 "initialCities": [
-                    {"x": c[0], "y": c[1], "pid": c[2], "pop": c[3]}
+                    {"x": c[0], "y": c[1], "pid": c[2], "pop": c[3], "name": c[4]}
                     for c in dump.initial_cities
                 ],
                 "players": [
@@ -130,7 +130,7 @@ class MapCapture:
                 entry["roads"] = flat_r
             if delta.cities:
                 entry["cities"] = [
-                    {"x": c[0], "y": c[1], "pid": c[2], "pop": c[3]}
+                    {"x": c[0], "y": c[1], "pid": c[2], "pop": c[3], "name": c[4]}
                     for c in delta.cities
                 ]
 

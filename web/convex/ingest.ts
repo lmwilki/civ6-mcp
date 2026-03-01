@@ -411,62 +411,71 @@ export const setModelOverride = mutation({
   },
 });
 
-export const deleteGame = mutation({
-  args: { gameId: v.string() },
-  handler: async (ctx, { gameId }) => {
-    const game = await ctx.db
-      .query("games")
-      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
-      .unique();
-    if (game) await ctx.db.delete(game._id);
+/** Delete up to `limit` rows from a single table for a game.
+ *  Returns how many were deleted — call repeatedly until 0. */
+export const deleteGameBatch = mutation({
+  args: {
+    gameId: v.string(),
+    table: v.union(
+      v.literal("playerRows"),
+      v.literal("cityRows"),
+      v.literal("logEntries"),
+      v.literal("spatialTurns"),
+      v.literal("spatialMaps"),
+      v.literal("mapData"),
+      v.literal("games"),
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { gameId, table, limit }) => {
+    const batchSize = limit ?? 500;
 
-    const playerRows = await ctx.db
-      .query("playerRows")
-      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
-      .collect();
-    for (const row of playerRows) await ctx.db.delete(row._id);
+    if (table === "games") {
+      const game = await ctx.db
+        .query("games")
+        .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
+        .unique();
+      if (game) {
+        await ctx.db.delete(game._id);
+        return { deleted: 1 };
+      }
+      return { deleted: 0 };
+    }
 
-    const cityRows = await ctx.db
-      .query("cityRows")
-      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
-      .collect();
-    for (const row of cityRows) await ctx.db.delete(row._id);
-
-    const logEntries = await ctx.db
-      .query("logEntries")
-      .withIndex("by_game_line", (q) => q.eq("gameId", gameId))
-      .collect();
-    for (const row of logEntries) await ctx.db.delete(row._id);
-
-    const spatialTurns = await ctx.db
-      .query("spatialTurns")
-      .withIndex("by_game_turn", (q) => q.eq("gameId", gameId))
-      .collect();
-    for (const row of spatialTurns) await ctx.db.delete(row._id);
-
-    const spatialMaps = await ctx.db
-      .query("spatialMaps")
-      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
-      .collect();
-    for (const row of spatialMaps) await ctx.db.delete(row._id);
-
-    const mapDataDocs = await ctx.db
-      .query("mapData")
-      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
-      .collect();
-    for (const row of mapDataDocs) await ctx.db.delete(row._id);
-
-    return {
-      deleted: {
-        game: game ? 1 : 0,
-        playerRows: playerRows.length,
-        cityRows: cityRows.length,
-        logEntries: logEntries.length,
-        spatialTurns: spatialTurns.length,
-        spatialMaps: spatialMaps.length,
-        mapData: mapDataDocs.length,
-      },
-    };
+    // Each table has its own index — query explicitly to satisfy TS
+    let deleted = 0;
+    if (table === "playerRows") {
+      const rows = await ctx.db.query("playerRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId)).take(batchSize);
+      for (const r of rows) await ctx.db.delete(r._id);
+      deleted = rows.length;
+    } else if (table === "cityRows") {
+      const rows = await ctx.db.query("cityRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId)).take(batchSize);
+      for (const r of rows) await ctx.db.delete(r._id);
+      deleted = rows.length;
+    } else if (table === "logEntries") {
+      const rows = await ctx.db.query("logEntries")
+        .withIndex("by_game_line", (q) => q.eq("gameId", gameId)).take(batchSize);
+      for (const r of rows) await ctx.db.delete(r._id);
+      deleted = rows.length;
+    } else if (table === "spatialTurns") {
+      const rows = await ctx.db.query("spatialTurns")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", gameId)).take(batchSize);
+      for (const r of rows) await ctx.db.delete(r._id);
+      deleted = rows.length;
+    } else if (table === "spatialMaps") {
+      const rows = await ctx.db.query("spatialMaps")
+        .withIndex("by_gameId", (q) => q.eq("gameId", gameId)).take(batchSize);
+      for (const r of rows) await ctx.db.delete(r._id);
+      deleted = rows.length;
+    } else if (table === "mapData") {
+      const rows = await ctx.db.query("mapData")
+        .withIndex("by_gameId", (q) => q.eq("gameId", gameId)).take(batchSize);
+      for (const r of rows) await ctx.db.delete(r._id);
+      deleted = rows.length;
+    }
+    return { deleted };
   },
 });
 
@@ -701,6 +710,7 @@ export const ingestMapData = mutation({
     ownerFrames: v.string(),
     cityFrames: v.string(),
     roadFrames: v.string(),
+    cityNames: v.optional(v.string()),
     players: v.array(v.object({ pid: v.number(), civ: v.string(), csType: v.optional(v.string()) })),
     maxTurn: v.number(),
   },

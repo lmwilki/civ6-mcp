@@ -196,6 +196,8 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     terrain,
     ownerKeyframes,
     cityKeyframes,
+    cityNames,
+    cityHistory,
     gridW,
     gridH,
     players,
@@ -225,10 +227,31 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
       ownerKf.push({ turn: frame.turn, owners: Int8Array.from(owners) });
     }
 
+    // City name lookup: "x,y" → name
+    const cn: Record<string, string> = mapData.cityNames
+      ? JSON.parse(mapData.cityNames)
+      : {};
+
+    // City ownership history: "x,y" → [{pid, turn}] sorted by turn
+    const ch = new Map<string, { pid: number; turn: number }[]>();
+    for (const frame of cf) {
+      for (const city of frame.cities) {
+        const k = `${city.x},${city.y}`;
+        let hist = ch.get(k);
+        if (!hist) { hist = []; ch.set(k, hist); }
+        // Only add if pid changed from previous entry
+        if (hist.length === 0 || hist[hist.length - 1].pid !== city.pid) {
+          hist.push({ pid: city.pid, turn: frame.turn });
+        }
+      }
+    }
+
     return {
       terrain: t,
       ownerKeyframes: ownerKf,
       cityKeyframes: cf,
+      cityNames: cn,
+      cityHistory: ch,
       gridW: mapData.gridW,
       gridH: mapData.gridH,
       players: mapData.players,
@@ -625,7 +648,24 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
           html += ` <span style="opacity:0.6">(${player.csType})</span>`;
         }
         if (city) {
-          html += `<br/><span style="opacity:0.6">Pop ${city.pop}</span>`;
+          const name = cityNames[`${col},${row}`];
+          if (name) {
+            html = `<span class="font-medium">${name}</span>`;
+            html += `<br/><span style="opacity:0.6">${civName} · Pop ${city.pop}</span>`;
+          } else {
+            html += `<br/><span style="opacity:0.6">Pop ${city.pop}</span>`;
+          }
+          // Ownership history
+          const hist = cityHistory.get(`${col},${row}`);
+          if (hist && hist.length > 1) {
+            html += `<br/><span style="opacity:0.5; font-size:10px">`;
+            html += hist.map((h) => {
+              const p = players.find((pp) => pp.pid === h.pid);
+              const cn = p ? canonicalCivName(cleanCivName(p.civ)) : `P${h.pid}`;
+              return `T${h.turn} ${cn}`;
+            }).join(" → ");
+            html += `</span>`;
+          }
         }
 
         tooltip.innerHTML = html;
@@ -703,7 +743,7 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
     };
   }, [
     worldW, worldH, VIEWPORT_H, hexSize, terrain, gridW, gridH,
-    playerColors, getOwnersAtTurn, getCitiesAtTurn, players,
+    playerColors, getOwnersAtTurn, getCitiesAtTurn, players, cityNames, cityHistory,
     attentionData,
   ]);
 

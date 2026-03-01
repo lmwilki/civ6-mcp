@@ -222,6 +222,7 @@ export default defineSchema({
     ownerFrames: v.string(),   // packed [turn, count, tileIdx, owner, ...]
     cityFrames: v.string(),    // packed [turn, count, x, y, pid, pop, ...]
     roadFrames: v.string(),    // packed [turn, count, tileIdx, routeType, ...]
+    cityNames: v.optional(v.string()), // JSON object {"x,y": "CityName"}
     // Player→civ mapping for territory coloring
     players: v.array(v.object({ pid: v.number(), civ: v.string(), csType: v.optional(v.string()) })),
     maxTurn: v.number(),

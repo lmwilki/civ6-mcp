@@ -1176,7 +1176,8 @@ end
 for i = 0, 62 do
     if Players[i] and Players[i]:IsAlive() then
         for _, c in Players[i]:GetCities():Members() do
-            print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation())
+            local name = c:GetName() or ""
+            print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation() .. "|" .. name)
         end
     end
 end
@@ -1245,8 +1246,9 @@ def parse_static_map_dump(lines: list[str]) -> StaticMapDump:
             parts = line.split("|")
             if len(parts) >= 4:
                 xy = parts[1].split(",")
+                name = parts[4] if len(parts) >= 5 else ""
                 cities.append(
-                    (int(xy[0]), int(xy[1]), int(parts[2]), int(parts[3]))
+                    (int(xy[0]), int(xy[1]), int(parts[2]), int(parts[3]), name)
                 )
         elif line.startswith("PLAYER|"):
             parts = line.split("|")
@@ -1304,7 +1306,8 @@ end
 for i = 0, 62 do
     if Players[i] and Players[i]:IsAlive() then
         for _, c in Players[i]:GetCities():Members() do
-            print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation())
+            local name = c:GetName() or ""
+            print("CITY|" .. c:GetX() .. "," .. c:GetY() .. "|" .. i .. "|" .. c:GetPopulation() .. "|" .. name)
         end
     end
 end
@@ -1333,8 +1336,9 @@ def parse_ownership_delta(lines: list[str]) -> OwnershipDelta:
             parts = line.split("|")
             if len(parts) >= 4:
                 xy = parts[1].split(",")
+                name = parts[4] if len(parts) >= 5 else ""
                 cities.append(
-                    (int(xy[0]), int(xy[1]), int(parts[2]), int(parts[3]))
+                    (int(xy[0]), int(xy[1]), int(parts[2]), int(parts[3]), name)
                 )
 
     return OwnershipDelta(

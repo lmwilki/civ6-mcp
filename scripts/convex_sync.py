@@ -572,7 +572,15 @@ async def sync_map_data(
     owner_frames: list[int] = []
     city_frames: list[int] = []
     road_frames: list[int] = []
+    # city names: "x,y" → name (last seen name wins)
+    city_names: dict[str, str] = {}
     max_turn = static_data.get("initialTurn", 0)
+
+    # Seed city names from initial cities
+    for c in static_data.get("initialCities", []):
+        name = c.get("name", "")
+        if name:
+            city_names[f"{c['x']},{c['y']}"] = name
 
     for entry in turn_entries:
         turn = entry.get("turn", 0)
@@ -590,6 +598,9 @@ async def sync_map_data(
             city_frames.append(len(cities))
             for c in cities:
                 city_frames.extend([c["x"], c["y"], c["pid"], c["pop"]])
+                name = c.get("name", "")
+                if name:
+                    city_names[f"{c['x']},{c['y']}"] = name
 
         roads = entry.get("roads", [])
         if roads:
@@ -609,6 +620,7 @@ async def sync_map_data(
         "ownerFrames": json.dumps(owner_frames),
         "cityFrames": json.dumps(city_frames),
         "roadFrames": json.dumps(road_frames),
+        "cityNames": json.dumps(city_names) if city_names else None,
         "players": static_data.get("players", []),
         "maxTurn": max_turn,
     }
