@@ -103,15 +103,15 @@ Think step by step each turn. Observe the full game state before acting.
 # ---------------------------------------------------------------------------
 
 
-def build_scenario_prompt(scenario: Scenario, seed_index: int = 0) -> str:
+def build_scenario_prompt(scenario: Scenario) -> str:
     """Build the user message for a scenario, including save loading instructions."""
-    save_name = scenario.save_files[seed_index].replace(".Civ6Save", "")
+    save_name = scenario.save_file.replace(".Civ6Save", "")
     return (
         f"## Scenario: {scenario.name}\n\n"
         f"**Civilisation:** {scenario.civilization}\n"
         f"**Difficulty:** {scenario.difficulty}\n"
         f"**Map:** {scenario.map_type}\n"
-        f"**Game Speed:** Quick\n"
+        f"**Game Speed:** {scenario.game_speed}\n"
         f"**Turn Budget:** {scenario.turn_limit} turns\n\n"
         f"### Objective\n\n"
         f"{scenario.objective}\n\n"
@@ -119,7 +119,12 @@ def build_scenario_prompt(scenario: Scenario, seed_index: int = 0) -> str:
         f"The game is running. Call `get_game_overview` first — if you're "
         f"already in the correct game (playing as {scenario.civilization}), "
         f"continue from where you are. If the overview fails or shows a "
-        f"different civilisation, call `list_saves` to find `{save_name}` "
-        f"and `load_save` with its index, then `get_game_overview` to "
-        f"orient yourself."
+        f"different civilisation, call `load_game_save(\"{save_name}\")` to "
+        f"load the scenario save, then `get_game_overview` to orient yourself.\n\n"
+        f"### Save Management\n\n"
+        f"The game auto-saves every turn as `MCP_AutoSave_NNNN`. If you need "
+        f"to recover from a crash or bad state, call `list_saves` to find the "
+        f"most recent MCP autosave, then `load_game_save(\"MCP_AutoSave_NNNN\")` "
+        f"to reload it. Do NOT load `{save_name}` to recover — that is the "
+        f"Turn 1 starting save and will erase all progress."
     )

@@ -35,6 +35,7 @@ Usage:
     uv run python evals/runner.py --model anthropic/claude-sonnet-4-5-20250929
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -47,8 +48,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 from inspect_ai import Task, task
 from inspect_ai.agent import AgentPrompt, AgentState, react
 from inspect_ai.dataset import Sample
+from inspect_ai.model import ChatMessageTool
 from inspect_ai.model import CompactionAuto
 from inspect_ai.tool import mcp_server_stdio
+from inspect_ai.util import store
 
 from evals.prompts import (
     BASELINE_SYSTEM_PROMPT,
@@ -73,9 +76,88 @@ CONTINUE_PLAYING = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Store extraction — capture structured data before compaction destroys it
+# ---------------------------------------------------------------------------
+
+
+def _parse_overview(text: str) -> dict:
+    """Extract structured fields from a get_game_overview result."""
+    data: dict = {}
+    for pat, key, conv in [
+        (r"Turn\s+(\d+)", "turn", int),
+        (r"Score:\s*(\d+)", "score", int),
+        (r"Science:\s*([\d.]+)", "science", float),
+        (r"Culture:\s*([\d.]+)", "culture", float),
+        (r"Faith:\s*([\d.]+)", "faith", float),
+        (r"Cities:\s*(\d+)", "cities", int),
+    ]:
+        m = re.search(pat, text)
+        if m:
+            data[key] = conv(m.group(1))
+    m = re.search(r"Gold:\s*([\d.]+)\s*\(([+-]?[\d.]+)/turn\)", text)
+    if m:
+        data["gold"] = float(m.group(1))
+        data["gold_per_turn"] = float(m.group(2))
+    return data
+
+
+def _extract_to_store(state: AgentState) -> None:
+    """Scan recent tool results and write structured data to the store.
+
+    Runs inside on_continue — after tool results are appended to messages,
+    before the next compaction cycle. The store survives compaction; the
+    tool result text may not.
+    """
+    s = store()
+    scanned = s.get("_scanned", 0)
+
+    for i in range(scanned, len(state.messages)):
+        msg = state.messages[i]
+        if not isinstance(msg, ChatMessageTool):
+            continue
+        func = getattr(msg, "function", None)
+        if getattr(msg, "error", None) is not None:
+            continue
+        text = msg.content if isinstance(msg.content, str) else ""
+        if isinstance(msg.content, list):
+            text = " ".join(
+                c.text for c in msg.content if hasattr(c, "text")
+            )
+
+        if func == "get_game_overview":
+            parsed = _parse_overview(text)
+            if parsed:
+                if s.get("first_overview") is None:
+                    s.set("first_overview", parsed)
+                s.set("last_overview", parsed)
+
+        elif func == "end_turn":
+            m = re.search(r"Turn\s+(\d+)\s*->\s*(\d+)", text)
+            if m:
+                turn_to = int(m.group(2))
+                s.set("last_turn", turn_to)
+            m = re.search(r"Score:\s*(\d+)", text)
+            if m:
+                s.set("last_score", int(m.group(1)))
+
+    s.set("_scanned", len(state.messages))
+
+
+# ---------------------------------------------------------------------------
+# on_continue callback
+# ---------------------------------------------------------------------------
+
+
 async def _keep_playing(state: AgentState) -> str:
-    """Nudge the model to keep playing when it stops calling tools."""
+    """Extract structured data to store, then nudge model to keep playing."""
+    _extract_to_store(state)
     return CONTINUE_PLAYING
+
+
+# ---------------------------------------------------------------------------
+# MCP server and dataset
+# ---------------------------------------------------------------------------
 
 
 def _civ_mcp_server():
@@ -90,8 +172,8 @@ def _civ_mcp_server():
 def _make_dataset(scenario_ids: list[str] | None = None) -> list[Sample]:
     """Convert scenarios into Inspect Sample objects.
 
-    Each scenario may have multiple save files (seeds). Each seed becomes
-    a separate Sample, enabling statistical coverage across map variations.
+    One Sample per scenario — single save file for comparison clarity.
+    All models play the exact same map.
     """
     if scenario_ids:
         scenarios = [SCENARIOS[sid] for sid in scenario_ids if sid in SCENARIOS]
@@ -100,27 +182,25 @@ def _make_dataset(scenario_ids: list[str] | None = None) -> list[Sample]:
 
     samples = []
     for s in scenarios:
-        for seed_idx, save_file in enumerate(s.save_files):
-            samples.append(
-                Sample(
-                    id=f"{s.scenario_id}_s{seed_idx}",
-                    input=build_scenario_prompt(s, seed_idx),
-                    target=str(s.turn_limit),
-                    metadata={
-                        "scenario_id": s.scenario_id,
-                        "scenario_name": s.name,
-                        "seed_index": seed_idx,
-                        "save_file": save_file,
-                        "turn_limit": s.turn_limit,
-                        "difficulty": s.difficulty,
-                        "map_type": s.map_type,
-                        "civilization": s.civilization,
-                        "opponents": list(s.opponents),
-                        "blind_spot": s.blind_spot,
-                        "description": s.description,
-                    },
-                )
+        samples.append(
+            Sample(
+                id=s.scenario_id,
+                input=build_scenario_prompt(s),
+                target=str(s.turn_limit),
+                metadata={
+                    "scenario_id": s.scenario_id,
+                    "scenario_name": s.name,
+                    "save_file": s.save_file,
+                    "turn_limit": s.turn_limit,
+                    "difficulty": s.difficulty,
+                    "map_type": s.map_type,
+                    "civilization": s.civilization,
+                    "opponents": list(s.opponents),
+                    "blind_spot": s.blind_spot,
+                    "description": s.description,
+                },
             )
+        )
     return samples
 
 

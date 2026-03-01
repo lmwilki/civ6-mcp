@@ -108,7 +108,7 @@ def run_scenario(
         "-T",
         f"scenarios={scenario}",
         "--max-samples",
-        "1",  # sequential: one sample (seed) at a time
+        "1",  # one game at a time
     ]
     # Azure doesn't support the OpenAI Responses API
     deployment = model.rsplit("/", 1)[-1]

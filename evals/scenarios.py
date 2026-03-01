@@ -3,9 +3,10 @@
 Five benchmark scenarios ordered by difficulty, each isolating a specific
 Sensorium Effect blind spot. See docs/paper/scenario-spec.md for rationale.
 
-Each scenario specifies a starting save file (or set of seeds), turn budget,
-and evaluation context. Scenarios are converted to Inspect Sample objects
-at task launch.
+Each scenario specifies a single starting save file, turn budget, and
+evaluation context. One save per scenario ensures comparison clarity —
+all models play the exact same map. Scenarios are converted to Inspect
+Sample objects at task launch.
 """
 
 from dataclasses import dataclass
@@ -20,18 +21,19 @@ class Scenario:
 
     scenario_id: str
     name: str  # human-readable, e.g. "Ground Control"
-    save_files: tuple[str, ...]  # multiple seeds for statistical coverage
+    save_file: str  # single save for comparison clarity
     turn_limit: int  # Quick speed turn budget
     difficulty: str  # Warlord/Prince/King/Emperor/Immortal
     map_type: str  # e.g. "Pangaea, Standard"
     civilization: str  # e.g. "Babylon (Hammurabi)"
+    game_speed: str = "Quick"  # Online/Quick/Standard/Epic/Marathon
     opponents: tuple[str, ...] = ()
     blind_spot: str = ""  # what the scenario tests (not shown to agent)
     objective: str = ""  # shown to agent as user message
     description: str = ""  # longer context for eval logs
 
-    def save_path(self, seed_index: int = 0) -> Path:
-        return SAVES_DIR / self.save_files[seed_index]
+    def save_path(self) -> Path:
+        return SAVES_DIR / self.save_file
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +54,7 @@ ground_control = _register(
     Scenario(
         scenario_id="ground_control",
         name="Ground Control",
-        save_files=("GROUND_CONTROL_SA.Civ6Save",),
+        save_file="GROUND_CONTROL_SA.Civ6Save",
         turn_limit=350,
         difficulty="Warlord",
         map_type="Pangaea, Standard",
@@ -89,7 +91,7 @@ empty_canvas = _register(
     Scenario(
         scenario_id="empty_canvas",
         name="Empty Canvas",
-        save_files=("EMPTY_CANVAS_SB.Civ6Save",),
+        save_file="EMPTY_CANVAS_SB.Civ6Save",
         turn_limit=350,
         difficulty="Prince",
         map_type="Pangaea, Small",
@@ -124,7 +126,7 @@ deus_vult = _register(
     Scenario(
         scenario_id="deus_vult",
         name="Deus Vult",
-        save_files=("DEUS_VULT_SC.Civ6Save",),
+        save_file="DEUS_VULT_SC.Civ6Save",
         turn_limit=350,
         difficulty="King",
         map_type="Pangaea, Small",
@@ -160,7 +162,7 @@ snowflake = _register(
     Scenario(
         scenario_id="snowflake",
         name="Snowflake",
-        save_files=("SNOWFLAKE_SD.Civ6Save",),
+        save_file="SNOWFLAKE_SD.Civ6Save",
         turn_limit=350,
         difficulty="Emperor",
         map_type="Six-Armed Snowflake, Small",
@@ -195,7 +197,7 @@ cry_havoc = _register(
     Scenario(
         scenario_id="cry_havoc",
         name="Cry Havoc",
-        save_files=("CRY_HAVOC_SE.Civ6Save",),
+        save_file="CRY_HAVOC_SE.Civ6Save",
         turn_limit=350,
         difficulty="Immortal",
         map_type="Pangaea, Tiny",

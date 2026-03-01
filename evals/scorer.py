@@ -1,6 +1,10 @@
 """Multi-dimensional scorer for CivBench.
 
-Extracts metrics from the full tool-call transcript in TaskState.messages.
+Primary data source: state.store (populated by on_continue in civbench.py).
+The store survives context compaction — tool results in messages may not.
+Fallback: regex-parse tool results from state.messages for backwards
+compatibility with older eval logs.
+
 Universal metrics (score, economy, tool fluency) apply to all scenarios.
 Scenario-specific metrics are dispatched via state.metadata["scenario_id"].
 
@@ -92,10 +96,16 @@ def _extract_tool_calls(state: TaskState) -> list[ToolCall]:
 
 
 def _find_last_overview(calls: list[ToolCall]) -> dict[str, Any] | None:
-    """Find the last successful get_game_overview result and parse it."""
+    """Find the last successful get_game_overview result and parse it.
+
+    After context compaction, tool results may be replaced with summary text
+    that doesn't match our regexes. Skip empty parses and keep searching.
+    """
     for call in reversed(calls):
         if call.name == "get_game_overview" and not call.is_error:
-            return _parse_overview_text(call.result)
+            parsed = _parse_overview_text(call.result)
+            if parsed:  # skip empty dicts from compacted/garbled results
+                return parsed
     return None
 
 
@@ -148,7 +158,9 @@ def _find_first_overview(calls: list[ToolCall]) -> dict[str, Any] | None:
     """Find the first successful get_game_overview result."""
     for call in calls:
         if call.name == "get_game_overview" and not call.is_error:
-            return _parse_overview_text(call.result)
+            parsed = _parse_overview_text(call.result)
+            if parsed:
+                return parsed
     return None
 
 
@@ -162,6 +174,38 @@ def _count_unique_tools(calls: list[ToolCall]) -> int:
 
 def _count_end_turns(calls: list[ToolCall]) -> int:
     return sum(1 for c in calls if c.name == "end_turn")
+
+
+def _find_last_turn_from_end_turns(calls: list[ToolCall]) -> int | None:
+    """Extract the highest turn number from end_turn results.
+
+    end_turn results contain "Turn X -> Y" on success. This survives
+    compaction better than overview results and serves as a fallback.
+    """
+    highest = None
+    for call in reversed(calls):
+        if call.name == "end_turn" and not call.is_error:
+            m = re.search(r"Turn\s+\d+\s*->\s*(\d+)", call.result)
+            if m:
+                turn = int(m.group(1))
+                if highest is None or turn > highest:
+                    highest = turn
+                    break  # reversed order, first match is latest
+    return highest
+
+
+def _find_last_score_from_end_turns(calls: list[ToolCall]) -> int | None:
+    """Extract score from end_turn results as fallback.
+
+    end_turn results contain "Turn X -> Y | Score: N" when available.
+    More resilient to compaction than get_game_overview results.
+    """
+    for call in reversed(calls):
+        if call.name == "end_turn" and not call.is_error:
+            m = re.search(r"Turn\s+\d+\s*->\s*\d+\s*\|\s*Score:\s*(\d+)", call.result)
+            if m:
+                return int(m.group(1))
+    return None
 
 
 def _count_attacks(calls: list[ToolCall]) -> int:
@@ -258,11 +302,29 @@ def civbench_scorer():
                 metadata={"total_calls": 0, "errors": 0},
             )
 
-        first_overview = _find_first_overview(calls)
-        last_overview = _find_last_overview(calls)
+        # --- Primary: read from store (survives compaction) ---
+        store_first = state.store.get("first_overview")
+        store_last = state.store.get("last_overview")
+        store_turn = state.store.get("last_turn")
+        store_score = state.store.get("last_score")
 
-        # --- Overall score ---
-        overall = float(last_overview.get("score", 0)) if last_overview else 0.0
+        # --- Fallback: parse from messages (may be incomplete) ---
+        msg_first = _find_first_overview(calls)
+        msg_last = _find_last_overview(calls)
+
+        first_overview = store_first or msg_first
+        last_overview = store_last or msg_last
+
+        # --- Overall score (store > end_turn > overview) ---
+        overall = 0.0
+        if store_score is not None:
+            overall = float(store_score)
+        elif last_overview:
+            overall = float(last_overview.get("score", 0))
+        if overall == 0.0:
+            et_score = _find_last_score_from_end_turns(calls)
+            if et_score is not None:
+                overall = float(et_score)
 
         # --- Economic: yield growth ---
         economic = 0.0
@@ -291,13 +353,24 @@ def civbench_scorer():
         errors = _count_errors(calls)
         tool_fluency = 1.0 - (errors / total_calls) if total_calls > 0 else 0.0
 
-        # --- Turns played (actual game turns advanced, not end_turn calls) ---
-        if first_overview and last_overview:
-            t0 = first_overview.get("turn", 0)
-            t1 = last_overview.get("turn", 0)
-            turns_played = float(max(0, t1 - t0))
+        # --- Turns played ---
+        # Priority: store > overview delta > end_turn parsing > call count
+        t0 = first_overview.get("turn", 0) if first_overview else 0
+        t1 = last_overview.get("turn", 0) if last_overview else 0
+        if store_turn is not None and t0 > 0:
+            turns_played = float(max(0, store_turn - t0))
+        elif store_turn is not None:
+            turns_played = float(store_turn)
+        elif t1 > t0:
+            turns_played = float(t1 - t0)
         else:
-            turns_played = float(_count_end_turns(calls))
+            last_turn = _find_last_turn_from_end_turns(calls)
+            if last_turn is not None and t0 > 0:
+                turns_played = float(max(0, last_turn - t0))
+            elif last_turn is not None:
+                turns_played = float(last_turn)
+            else:
+                turns_played = float(_count_end_turns(calls))
 
         # --- Scenario-specific metrics ---
         scenario_id = state.metadata.get("scenario_id", "")
@@ -314,11 +387,11 @@ def civbench_scorer():
             scenario_metrics = metrics.score_cry_havoc(calls)
 
         # Build summary
-        turn_info = (
-            f"Turn {last_overview.get('turn', '?')}"
-            if last_overview
-            else "unknown turn"
-        )
+        if last_overview and last_overview.get("turn"):
+            turn_info = f"Turn {last_overview['turn']}"
+        else:
+            last_turn = _find_last_turn_from_end_turns(calls)
+            turn_info = f"Turn ~{last_turn}" if last_turn else "unknown turn"
         summary = (
             f"Score {overall:.0f} at {turn_info} | "
             f"{turns_played:.0f} turns | "
@@ -343,6 +416,7 @@ def civbench_scorer():
             answer=summary,
             explanation=(
                 f"Extracted from {total_calls} tool calls over {turns_played:.0f} turns.\n"
+                f"Data source: {'store' if store_last else 'messages'}\n"
                 f"Final overview: {last_overview or 'not found'}\n"
                 f"Unique tools used: {_count_unique_tools(calls)}\n"
                 f"Error rate: {errors}/{total_calls} = {(1 - tool_fluency) * 100:.1f}%"
@@ -355,6 +429,7 @@ def civbench_scorer():
                 "turns_played": int(turns_played),
                 "first_overview": first_overview,
                 "last_overview": last_overview,
+                "data_source": "store" if store_last else "messages",
                 "tool_distribution": dict(Counter(c.name for c in calls)),
             },
         )
