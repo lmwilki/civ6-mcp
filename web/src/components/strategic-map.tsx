@@ -463,17 +463,19 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
             }
           }
 
-          // Territory borders — continuous polylines per hex with miter joins
-          // For each hex, find border edges and trace connected runs so corners join cleanly.
-          const INSET = 0.93;
+          // Territory borders — boundary edge graph walk for continuous contours.
+          // Collect directed boundary edges per owner, then walk closed loops.
+          const INSET = 0.92;
           const bh = (SQRT3 / 2) * hexSize;
           const vOffsets: [number, number][] = [
             [0, -hexSize],      [bh, -hexSize / 2], [bh, hexSize / 2],
             [0, hexSize],       [-bh, hexSize / 2],  [-bh, -hexSize / 2],
           ];
+          const vKey = (vx: number, vy: number) =>
+            `${Math.round(vx * 100)},${Math.round(vy * 100)}`;
 
-          // Collect polyline runs per owner: each run is [x0,y0, x1,y1, ...] for a connected path
-          const polysByOwner = new Map<number, number[][]>();
+          // Per-owner edge map: fullVertexKey → { inset coords of destination, full key of destination }
+          const edgesByOwner = new Map<number, Map<string, { ix: number; iy: number; nk: string }>>();
 
           for (let y = 0; y < gridH; y++) {
             for (let x = 0; x < gridW; x++) {
@@ -483,8 +485,6 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
               const [cx, cy] = hexCenter(x, y, hexSize, gridH);
               const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
 
-              // Determine which of 6 edges are border edges
-              const isBorder: boolean[] = [];
               for (let d = 0; d < 6; d++) {
                 const nx = x + deltas[d][0];
                 const ny = y + deltas[d][1];
@@ -492,64 +492,58 @@ function MapRenderer({ mapData, spatialMap, spatialTurns }: {
                   nx >= 0 && nx < gridW && ny >= 0 && ny < gridH
                     ? owners[ny * gridW + nx]
                     : -1;
-                isBorder.push(nOwner !== owner);
-              }
+                if (nOwner === owner) continue;
 
-              if (!isBorder.some(Boolean)) continue;
+                const [vi, vj] = EDGE_VERTICES[d];
+                // Full-size vertex positions (shared exactly between adjacent hexes)
+                const fromFX = cx + ox + vOffsets[vi][0];
+                const fromFY = cy + vOffsets[vi][1];
+                const toFX = cx + ox + vOffsets[vj][0];
+                const toFY = cy + vOffsets[vj][1];
+                // Inset destination vertex (shifted toward this hex's center)
+                const toIX = cx + ox + vOffsets[vj][0] * INSET;
+                const toIY = cy + vOffsets[vj][1] * INSET;
 
-              // Group consecutive border edges into runs (handle wrap-around)
-              // Find first non-border edge to use as starting point for clean grouping
-              let start = isBorder.indexOf(false);
-              if (start < 0) start = 0; // all 6 edges are borders — full hex outline
-
-              const allBorder = isBorder.every(Boolean);
-              let polys = polysByOwner.get(owner);
-              if (!polys) { polys = []; polysByOwner.set(owner, polys); }
-
-              if (allBorder) {
-                // Full hex border — closed polygon
-                const path: number[] = [];
-                for (let d = 0; d < 6; d++) {
-                  const [vi] = EDGE_VERTICES[d];
-                  path.push(cx + ox + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET);
+                let edges = edgesByOwner.get(owner);
+                if (!edges) { edges = new Map(); edgesByOwner.set(owner, edges); }
+                const fk = vKey(fromFX, fromFY);
+                // Only store first writer (avoids overwrite from adjacent hex)
+                if (!edges.has(fk)) {
+                  edges.set(fk, { ix: toIX, iy: toIY, nk: vKey(toFX, toFY) });
                 }
-                // Close: repeat first vertex
-                path.push(path[0], path[1]);
-                polys.push(path);
-              } else {
-                // Trace runs of consecutive border edges
-                let inRun = false;
-                let path: number[] = [];
-                for (let i = 0; i < 6; i++) {
-                  const d = (start + i) % 6;
-                  if (isBorder[d]) {
-                    const [vi, vj] = EDGE_VERTICES[d];
-                    if (!inRun) {
-                      path = [cx + ox + vOffsets[vi][0] * INSET, cy + vOffsets[vi][1] * INSET];
-                      inRun = true;
-                    }
-                    path.push(cx + ox + vOffsets[vj][0] * INSET, cy + vOffsets[vj][1] * INSET);
-                  } else if (inRun) {
-                    polys.push(path);
-                    inRun = false;
-                  }
-                }
-                if (inRun) polys.push(path);
               }
             }
           }
 
+          // Walk closed loops per owner and render
           const bw = Math.max(1, hexSize * 0.22);
-          for (const [owner, polys] of polysByOwner) {
+          for (const [owner, edges] of edgesByOwner) {
             const colors = playerColors.get(owner);
             if (!colors) continue;
-            for (const path of polys) {
-              borderGfx.moveTo(path[0], path[1]);
-              for (let i = 2; i < path.length; i += 2) {
-                borderGfx.lineTo(path[i], path[i + 1]);
+            const visited = new Set<string>();
+
+            for (const [startKey] of edges) {
+              if (visited.has(startKey)) continue;
+              // Walk the loop
+              const loop: number[] = [];
+              let key = startKey;
+              while (!visited.has(key)) {
+                visited.add(key);
+                const edge = edges.get(key);
+                if (!edge) break;
+                loop.push(edge.ix, edge.iy);
+                key = edge.nk;
               }
+              if (loop.length < 6) continue; // need at least 3 vertices
+
+              borderGfx.moveTo(loop[0], loop[1]);
+              for (let i = 2; i < loop.length; i += 2) {
+                borderGfx.lineTo(loop[i], loop[i + 1]);
+              }
+              borderGfx.closePath();
             }
-            borderGfx.stroke({ width: bw, color: colors.secondary, cap: "square", join: "miter" });
+
+            borderGfx.stroke({ width: bw, color: colors.secondary, join: "miter" });
           }
 
           // Roads — lines connecting adjacent road tiles
