@@ -221,7 +221,7 @@ class PopupWatcher:
             await asyncio.sleep(POPUP_POLL_INTERVAL)
             try:
                 status = await self._poll()
-                now = asyncio.get_event_loop().time()
+                now = asyncio.get_running_loop().time()
 
                 if status == "POPUP":
                     if first_seen is None:

@@ -134,7 +134,7 @@ async def interactive_repl(
 
     while True:
         try:
-            line = await asyncio.get_event_loop().run_in_executor(
+            line = await asyncio.get_running_loop().run_in_executor(
                 None, lambda: input(f"[{state_index}]> ")
             )
         except (EOFError, KeyboardInterrupt):

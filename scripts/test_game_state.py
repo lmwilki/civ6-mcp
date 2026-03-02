@@ -10,6 +10,14 @@ import asyncio
 
 from civ_mcp.connection import GameConnection
 from civ_mcp.game_state import GameState
+from civ_mcp.narrate import (
+    narrate_overview,
+    narrate_units,
+    narrate_cities,
+    narrate_map,
+    narrate_diplomacy,
+    narrate_tech_civics,
+)
 
 
 async def main():
@@ -20,17 +28,17 @@ async def main():
     # Overview
     ov = await gs.get_game_overview()
     print("=== OVERVIEW ===")
-    print(gs.narrate_overview(ov))
+    print(narrate_overview(ov))
 
     # Units
     units = await gs.get_units()
     print("\n=== UNITS ===")
-    print(gs.narrate_units(units))
+    print(narrate_units(units))
 
     # Cities
-    cities = await gs.get_cities()
+    cities, distances = await gs.get_cities()
     print("\n=== CITIES ===")
-    print(gs.narrate_cities(cities))
+    print(narrate_cities(cities, distances))
 
     # Map — use first city's coordinates if available, otherwise a default
     if cities:
@@ -39,17 +47,17 @@ async def main():
         cx, cy = 0, 0
     tiles = await gs.get_map_area(cx, cy, 1)
     print(f"\n=== MAP (around {cx},{cy}) ===")
-    print(gs.narrate_map(tiles))
+    print(narrate_map(tiles))
 
     # Diplomacy
     civs = await gs.get_diplomacy()
     print("\n=== DIPLOMACY ===")
-    print(gs.narrate_diplomacy(civs))
+    print(narrate_diplomacy(civs))
 
     # Tech/Civics
     tc = await gs.get_tech_civics()
     print("\n=== TECH/CIVICS ===")
-    print(gs.narrate_tech_civics(tc))
+    print(narrate_tech_civics(tc))
 
     await conn.disconnect()
 

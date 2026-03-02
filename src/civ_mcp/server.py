@@ -2351,8 +2351,10 @@ def main():
     # conn.disconnect() closes the FireTuner TCP connection cleanly).
     # Without this, SIGTERM kills the process immediately, leaving the game
     # with an abrupt TCP RST which can cause it to crash.
-    signal.signal(
-        signal.SIGTERM, lambda sig, frame: os.kill(os.getpid(), signal.SIGINT)
-    )
+    # SIGTERM is not available on Windows, so skip the remap there.
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(
+            signal.SIGTERM, lambda sig, frame: os.kill(os.getpid(), signal.SIGINT)
+        )
 
     mcp.run(transport="stdio")
