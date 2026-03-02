@@ -635,10 +635,10 @@ async def execute_end_turn(gs: GameState) -> str:
 
                 # --- Stale promotion notifications ---
                 # GameCore SetPromotion doesn't consume XP or advance level,
-                # so the engine perpetually thinks the unit needs promotion.
-                # Use CanPromote() on each available promotion as the
-                # authoritative check — if no promotion is actually available,
-                # dismiss the notification as stale.
+                # so CanPromote() perpetually returns TRUE. Use XP-threshold
+                # formula (matching promote_unit's post-promote dismiss) to
+                # determine if any unit genuinely has enough XP for another
+                # promotion: needed = T1 * (promoCount+1) * (promoCount+2) / 2
                 if blocking_type == "ENDTURN_BLOCKING_UNIT_PROMOTION":
                     try:
                         check_lines = await gs.conn.execute_read(
@@ -646,23 +646,24 @@ async def execute_end_turn(gs: GameState) -> str:
                             f"local anyNeed = false; "
                             f"for i, u in Players[me]:GetUnits():Members() do "
                             f"  if u:GetX() ~= -9999 then "
-                            f"    local exp = u:GetExperience(); "
-                            f"    if exp then "
+                            f"    local ok, exp = pcall(function() return u:GetExperience() end); "
+                            f"    if ok and exp then "
                             f"      local ui = GameInfo.Units[u:GetType()]; "
                             f'      local promClass = ui and ui.PromotionClass or ""; '
                             f'      if promClass ~= "" then '
+                            f"        local promoCount = 0; "
                             f"        for p in GameInfo.UnitPromotions() do "
-                            f"          if p.PromotionClass == promClass "
-                            f"             and not exp:HasPromotion(p.Index) then "
-                            f"            local ok, can = pcall(function() "
-                            f"              return exp:CanPromote(p.Index) "
-                            f"            end); "
-                            f"            if ok and can then anyNeed = true; break end "
+                            f"          if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then "
+                            f"            promoCount = promoCount + 1 "
                             f"          end "
-                            f"        end "
+                            f"        end; "
+                            f"        local t1 = exp:GetExperienceForNextLevel(); "
+                            f"        local xp = exp:GetExperiencePoints(); "
+                            f"        local needed = t1 * (promoCount + 1) * (promoCount + 2) / 2; "
+                            f"        if xp >= needed then anyNeed = true end "
                             f"      end "
                             f"    end "
-                            f"  end; "
+                            f"  end "
                             f"  if anyNeed then break end "
                             f"end; "
                             f'print(anyNeed and "NEEDS_PROMO" or "NO_PROMO_NEEDED"); '

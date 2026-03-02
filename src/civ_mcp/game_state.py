@@ -41,6 +41,7 @@ class GameState:
             None  # turn number when ACTION_ENDTURN was sent
         )
         self._high_water_turn: int = 0  # highest turn seen (for regression detection)
+        self._local_player_id: int = 0  # human player (always 0 in single-player)
 
     async def get_game_identity(self) -> tuple[str, int]:
         """Return (civ_type_lower, random_seed) for the current game.
@@ -290,23 +291,27 @@ class GameState:
         # Follow up with GameCore read for actual post-combat HP
         # Brief delay: RequestOperation is async — combat resolves on the next
         # C++ frame, so same-frame reads return stale pre-combat HP values.
-        if result.startswith("RANGE_ATTACK") or result.startswith("MELEE_ATTACK"):
-            await asyncio.sleep(0.15)
+        is_melee = result.startswith("MELEE_ATTACK")
+        if result.startswith("RANGE_ATTACK") or is_melee:
+            # Melee needs more time: unit must path then attack resolves
+            await asyncio.sleep(0.4 if is_melee else 0.15)
             try:
                 followup = await self.conn.execute_read(
                     lq.build_attack_followup_query(target_x, target_y)
                 )
-                followup_str = _format_attack_followup(followup)
+                # Filter out our own units from followup (after melee kill,
+                # attacker occupies target tile and would be misread as defender)
+                local_player = self._local_player_id
+                followup_str = _format_attack_followup(followup, local_player)
 
                 # Calculate damage from pre-attack HP vs post-combat HP
                 pre_hp = _extract_pre_hp(result)
-                post_hp = _extract_post_hp(followup)
+                post_hp = _extract_post_hp(followup, local_player)
                 damage_info = ""
                 if pre_hp is not None and post_hp is not None:
                     dmg = pre_hp - post_hp
                     if dmg > 0:
                         damage_info = f"|damage dealt:{dmg}"
-                    # dmg <= 0: attacker moved onto tile after kill; post_hp is our unit
                 elif pre_hp is not None and followup_str == "Target eliminated":
                     damage_info = f"|damage dealt:{pre_hp}"
 
@@ -1482,13 +1487,27 @@ def _action_result(lines: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _format_attack_followup(lines: list[str]) -> str:
-    """Format the GameCore follow-up read after an attack."""
+def _format_attack_followup(lines: list[str], attacker_owner: int = 0) -> str:
+    """Format the GameCore follow-up read after an attack.
+
+    Filters out units belonging to ``attacker_owner`` so that after a melee
+    kill (where the attacker moves onto the target tile) we don't misreport
+    our own unit's HP as the defender's.
+    """
     parts = []
     for line in lines:
         if line.startswith("UNIT|"):
             fields = line.split("|")
-            if len(fields) >= 3:
+            if len(fields) >= 4:
+                # fields: UNIT|TYPE|hp/max|owner:N
+                owner_str = fields[3]  # "owner:N"
+                try:
+                    owner_id = int(owner_str.split(":")[1])
+                except (IndexError, ValueError):
+                    owner_id = -1
+                label = "(yours) " if owner_id == attacker_owner else ""
+                parts.append(f"{label}{fields[1]} {fields[2]}")
+            elif len(fields) >= 3:
                 parts.append(f"{fields[1]} {fields[2]}")
     if not parts:
         return "Target eliminated"
@@ -1510,15 +1529,26 @@ def _extract_pre_hp(result: str) -> int | None:
     return None
 
 
-def _extract_post_hp(followup_lines: list[str]) -> int | None:
-    """Extract post-combat enemy HP from followup query lines.
+def _extract_post_hp(
+    followup_lines: list[str], attacker_owner: int = 0
+) -> int | None:
+    """Extract post-combat *enemy* HP from followup query lines.
 
     Followup format: UNIT|UNIT_TYPE|hp/max|owner:N
-    Returns HP of first unit found (None if eliminated).
+    Skips units belonging to ``attacker_owner`` (after melee kill, attacker
+    occupies the target tile and would otherwise be misread as defender).
+    Returns HP of first enemy unit found (None if eliminated).
     """
     for line in followup_lines:
         if line.startswith("UNIT|"):
             parts = line.split("|")
+            if len(parts) >= 4:
+                try:
+                    owner_id = int(parts[3].split(":")[1])
+                except (IndexError, ValueError):
+                    owner_id = -1
+                if owner_id == attacker_owner:
+                    continue  # our unit, not the target
             if len(parts) >= 3:
                 hp_part = parts[2].split("/")[0]
                 try:
