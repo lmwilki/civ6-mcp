@@ -115,6 +115,7 @@ async def dismiss_popup(conn: GameConnection) -> str:
     # to find these.  This pre-check costs one round-trip (~500ms) and skips
     # Phase 2+3 entirely when no ExclusivePopups are active (>99% of calls).
     exclusive_popup_names = [
+        "TechCivicCompletedPopup",
         "NaturalWonderPopup",
         "NaturalDisasterPopup",
         "WonderBuiltPopup",
