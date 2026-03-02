@@ -70,7 +70,9 @@ AZURE_MODELS = [
     "openai/azure/DeepSeek-V3.2",
 ]
 
-# Azure doesn't support the OpenAI Responses API — force chat completions
+# Azure supports Responses API but NOT /responses/input_tokens (token counting)
+# or /responses/compact — Inspect's context compaction crashes with 404.
+# Force chat completions until Azure adds full v1 parity.
 _NEEDS_CHAT_COMPLETIONS = {"gpt-5.2", "gpt-5.1", "gpt-5"}
 
 # GCP Vertex AI
