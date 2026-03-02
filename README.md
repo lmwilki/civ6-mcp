@@ -30,7 +30,7 @@ Every turn, `end_turn` takes before/after snapshots and reports what happened: u
 
 ### 1. Configure Civ 6
 
-**In-game (easiest):** Options → the settings screen has these under the gameplay section:
+Enable the FireTuner debug interface and configure recommended settings:
 
 | Setting | Value | Why |
 |---------|-------|-----|
@@ -38,14 +38,12 @@ Every turn, `end_turn` takes before/after snapshots and reports what happened: u
 | **Auto End Turn** | Disabled | The agent controls when turns end. Auto-end interferes with the blocker resolution flow. |
 | **Windowed mode** | Recommended | Lets you watch the game while the agent plays, and required for the screenshot tool. |
 
-You can also edit `AppOptions.txt` directly (set `EnableTuner 1`):
+**Windows:** All three settings are available in the in-game Options menu. The Tuner setting appears as "Tuner (disables achievements)" under gameplay options.
+
+**macOS:** The Tuner setting is not exposed in the menu. Edit `AppOptions.txt` directly and set `EnableTuner 1`:
 
 ```
-# macOS
 ~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid Meier's Civilization VI/AppOptions.txt
-
-# Windows
-%LOCALAPPDATA%\Firaxis Games\Sid Meier's Civilization VI\AppOptions.txt
 ```
 
 <details>
