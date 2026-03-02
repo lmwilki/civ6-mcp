@@ -12,14 +12,14 @@ DIARY_DIR = Path.home() / ".civ6-mcp"
 _REFLECTION_FIELDS = ("tactical", "strategic", "tooling", "planning", "hypothesis")
 
 
-def diary_path(civ: str, seed: int) -> Path:
-    """Per-game diary file: diary_{civ}_{seed}.jsonl"""
-    return DIARY_DIR / f"diary_{civ}_{seed}.jsonl"
+def diary_path(civ: str, seed: int, run_id: str) -> Path:
+    """Per-game diary file: diary_{civ}_{seed}_{run_id}.jsonl"""
+    return DIARY_DIR / f"diary_{civ}_{seed}_{run_id}.jsonl"
 
 
-def cities_diary_path(civ: str, seed: int) -> Path:
-    """Per-game cities diary file: diary_{civ}_{seed}_cities.jsonl"""
-    return DIARY_DIR / f"diary_{civ}_{seed}_cities.jsonl"
+def cities_diary_path(civ: str, seed: int, run_id: str) -> Path:
+    """Per-game cities diary file: diary_{civ}_{seed}_{run_id}_cities.jsonl"""
+    return DIARY_DIR / f"diary_{civ}_{seed}_{run_id}_cities.jsonl"
 
 
 def write_diary_entry(path: Path, entry: dict) -> None:

@@ -34,14 +34,14 @@ class MapCapture:
         self._turns_path: Path | None = None
         self._has_static: bool = False
 
-    def bind_game(self, civ: str, seed: int) -> None:
+    def bind_game(self, civ: str, seed: int, run_id: str) -> None:
         """Bind to a game identity. Sets file paths."""
         game_id = f"{civ}_{seed}"
         if self._game == game_id:
             return
         self._game = game_id
-        self._static_path = LOG_DIR / f"mapstatic_{civ}_{seed}.json"
-        self._turns_path = LOG_DIR / f"mapturns_{civ}_{seed}.jsonl"
+        self._static_path = LOG_DIR / f"mapstatic_{civ}_{seed}_{run_id}.json"
+        self._turns_path = LOG_DIR / f"mapturns_{civ}_{seed}_{run_id}.jsonl"
         self._has_static = self._static_path.exists()
         LOG_DIR.mkdir(parents=True, exist_ok=True)
 

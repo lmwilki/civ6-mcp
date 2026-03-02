@@ -199,7 +199,7 @@ async def get_game_overview(ctx: Context) -> str:
         try:
             civ, seed = await gs.get_game_identity()
             logger.bind_game(civ, seed)
-            spatial.bind_game(civ, seed)
+            spatial.bind_game(civ, seed, logger.session_id)
             gs.spatial = spatial
         except Exception:
             pass
@@ -1450,6 +1450,7 @@ async def end_turn(
     _diary_player_id = -1
     _diary_civ_type = None
     _diary_seed = None
+    _diary_run_id = _get_logger(ctx).session_id
     _diary_snapshot = None
     _is_retry = getattr(gs, "_end_turn_blocked", False)
     try:
@@ -1472,7 +1473,7 @@ async def end_turn(
         # Merges into whichever turn that row belongs to — handles both
         # same-turn retries and turn-advanced-during-blocker cases.
         try:
-            path = _diary_path(_diary_civ_type, _diary_seed)
+            path = _diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
             merged = _merge_agent_reflections(path, gs._diary_written_turn, reflections)
             if merged:
                 log.info(
@@ -1503,8 +1504,8 @@ async def end_turn(
             except Exception:
                 pass
             try:
-                path = _diary_path(_diary_civ_type, _diary_seed)
-                cities_path = _cities_diary_path(_diary_civ_type, _diary_seed)
+                path = _diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
+                cities_path = _cities_diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
                 # Write one row per player
                 for pr in _diary_snapshot.players:
                     row = asdict(pr)
@@ -1564,7 +1565,7 @@ async def end_turn(
         if _diary_civ_type and _diary_seed:
             try:
                 mc = _get_map_capture(ctx)
-                mc.bind_game(_diary_civ_type, _diary_seed)
+                mc.bind_game(_diary_civ_type, _diary_seed, _diary_run_id)
                 capture_turn = new_turn if m else _diary_turn
                 await mc.capture(gs.conn, capture_turn)
             except Exception:
@@ -1615,7 +1616,7 @@ async def concede_game(ctx: Context, reason: str = "") -> str:
     try:
         civ, seed = await gs.get_game_identity()
         logger.bind_game(civ, seed)
-        spatial.bind_game(civ, seed)
+        spatial.bind_game(civ, seed, logger.session_id)
     except Exception:
         pass
 
@@ -1675,7 +1676,8 @@ async def get_diary(
     except Exception:
         return "Could not detect current game. Is the game running?"
 
-    path = _diary_path(civ_type, seed)
+    run_id = _get_logger(ctx).session_id
+    path = _diary_path(civ_type, seed, run_id)
     if not path.exists():
         return f"No diary entries yet for this game ({civ_type}, seed {seed})."
 

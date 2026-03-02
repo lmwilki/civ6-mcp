@@ -154,13 +154,13 @@ class SpatialTracker:
     def set_turn(self, turn: int) -> None:
         self._turn = turn
 
-    def bind_game(self, civ: str, seed: int) -> None:
+    def bind_game(self, civ: str, seed: int, run_id: str) -> None:
         """Bind to a game identity. Flushes any buffered observations."""
         game_id = f"{civ}_{seed}"
         if self._game == game_id:
             return
         self._game = game_id
-        self._path = LOG_DIR / f"spatial_{civ}_{seed}.jsonl"
+        self._path = LOG_DIR / f"spatial_{civ}_{seed}_{run_id}.jsonl"
         self._path.parent.mkdir(parents=True, exist_ok=True)
         # Reset revealed set for new game
         self._revealed.clear()

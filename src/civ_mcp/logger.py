@@ -21,9 +21,9 @@ _QUERY_TOOLS = frozenset({"screenshot"})
 _TURN_TOOLS = frozenset({"end_turn"})
 
 
-def log_path(civ: str, seed: int) -> Path:
-    """Per-game log file: log_{civ}_{seed}.jsonl"""
-    return LOG_DIR / f"log_{civ}_{seed}.jsonl"
+def log_path(civ: str, seed: int, run_id: str) -> Path:
+    """Per-game log file: log_{civ}_{seed}_{run_id}.jsonl"""
+    return LOG_DIR / f"log_{civ}_{seed}_{run_id}.jsonl"
 
 
 def _classify_tool(tool: str | None) -> str:
@@ -82,7 +82,7 @@ class GameLogger:
         self._game = game_id
         self._civ = civ
         self._seed = seed
-        self._path = log_path(civ, seed)
+        self._path = log_path(civ, seed, self.session_id)
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
         # Set seq counter from existing file length
