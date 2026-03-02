@@ -20,6 +20,7 @@ import asyncio
 import glob
 import logging
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -86,8 +87,10 @@ else:
 _KILL_SETTLE_SECONDS = 10
 # How long to wait for game process to appear after launch
 _LAUNCH_TIMEOUT_SECONDS = 60
-# How long to wait for main menu after process starts
-_MAIN_MENU_WAIT_SECONDS = 15
+# How long to wait for FireTuner port to open after game process starts
+_PORT_POLL_TIMEOUT = 180
+# Tuner TCP port
+_TUNER_PORT = 4318
 
 
 def _require_gui_deps() -> None:
@@ -212,16 +215,135 @@ def _wait_for_game_process(timeout: int = _LAUNCH_TIMEOUT_SECONDS) -> int | None
     return None
 
 
+def _is_tuner_port_open() -> bool:
+    """Check if the FireTuner port accepts TCP connections."""
+    try:
+        s = socket.create_connection(("127.0.0.1", _TUNER_PORT), timeout=2)
+        s.close()
+        return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
+def _send_key_win32(vk_code: int) -> None:
+    """Send a single keypress via SendInput (Windows)."""
+    import ctypes
+
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [
+            ("wVk", ctypes.c_ushort),
+            ("wScan", ctypes.c_ushort),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class INPUT(ctypes.Structure):
+        class _U(ctypes.Union):
+            _fields_ = [("ki", KEYBDINPUT)]
+        _anonymous_ = ("_u",)
+        _fields_ = [("type", ctypes.c_ulong), ("_u", _U)]
+
+    KEYEVENTF_KEYUP = 0x0002
+    user32 = ctypes.windll.user32
+
+    # Key down
+    inp_down = INPUT(type=1, ki=KEYBDINPUT(
+        wVk=vk_code, wScan=0, dwFlags=0, time=0, dwExtraInfo=None,
+    ))
+    user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(INPUT))
+    time.sleep(0.05)
+
+    # Key up
+    inp_up = INPUT(type=1, ki=KEYBDINPUT(
+        wVk=vk_code, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=None,
+    ))
+    user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(INPUT))
+
+
+def _wait_for_tuner_port(timeout: int = _PORT_POLL_TIMEOUT) -> bool:
+    """Poll TCP 4318 until it accepts connections.
+
+    Returns True if port became reachable within timeout.
+    """
+    interval = 3
+
+    for i in range(int(timeout / interval)):
+        if _is_tuner_port_open():
+            log.info("FireTuner port reachable after %ds", i * interval)
+            return True
+
+        if i % 10 == 0 and i > 0:
+            log.info("Waiting for FireTuner port... %ds elapsed", i * interval)
+        time.sleep(interval)
+
+    return False
+
+
+def _find_game_exe_win32() -> str | None:
+    """Find the Civ 6 DX12 EXE via Steam library folders."""
+    import re
+
+    steam_dir = os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "Steam")
+    vdf_path = os.path.join(steam_dir, "steamapps", "libraryfolders.vdf")
+
+    if not os.path.exists(vdf_path):
+        return None
+
+    # Parse VDF to find library paths containing app 289070
+    try:
+        with open(vdf_path, "r") as f:
+            content = f.read()
+    except OSError:
+        return None
+
+    # Split into library blocks and find ones containing our app ID
+    blocks = re.split(r'"\d+"\s*\{', content)
+    for block in blocks:
+        if f'"{STEAM_APP_ID}"' not in block:
+            continue
+        # Extract path from this block
+        m = re.search(r'"path"\s+"([^"]+)"', block)
+        if not m:
+            continue
+        lib_path = m.group(1).replace("\\\\", "\\")
+        exe = os.path.join(
+            lib_path, "steamapps", "common",
+            "Sid Meier's Civilization VI",
+            "Base", "Binaries", "Win64Steam", "CivilizationVI_DX12.exe",
+        )
+        if os.path.exists(exe):
+            return exe
+
+    # Fallback: check default location directly
+    exe = os.path.join(
+        steam_dir, "steamapps", "common",
+        "Sid Meier's Civilization VI",
+        "Base", "Binaries", "Win64Steam", "CivilizationVI_DX12.exe",
+    )
+    return exe if os.path.exists(exe) else None
+
+
 def _launch_game_sync() -> str:
-    """Launch Civ 6 via Steam and wait for process. Blocking.
+    """Launch Civ 6 and wait for the FireTuner port to open. Blocking.
 
     On macOS, Steam opens the Aspyr LaunchPad first (a splash screen
     with a PLAY button). This function auto-clicks through it if GUI
     deps are available.
+
+    On Windows, sends Escape keypresses during startup to dismiss intro
+    videos, and falls back to direct EXE launch if steam://run fails.
     """
     if is_game_running():
-        return "Game is already running."
+        if _is_tuner_port_open():
+            return "Game is already running and FireTuner port is open."
+        # Process exists but port not open — wait for it
+        log.info("Game process running but port not open yet, waiting...")
+        if _wait_for_tuner_port():
+            return "Game was starting up. FireTuner port is now open."
+        return "WARNING: Game process is running but FireTuner port never opened."
 
+    # Launch via Steam
     if sys.platform == "darwin":
         subprocess.run(["open", f"steam://run/{STEAM_APP_ID}"])
     elif sys.platform == "win32":
@@ -236,13 +358,24 @@ def _launch_game_sync() -> str:
         return f"WARNING: {launcher_err}"
 
     # Wait for actual game process
-    waited = _wait_for_game_process()
+    waited = _wait_for_game_process(timeout=15)
+    if waited is None and sys.platform == "win32":
+        # steam://run may have silently failed — try direct EXE launch
+        exe_path = _find_game_exe_win32()
+        if exe_path:
+            log.info("steam://run did not start game — launching EXE directly: %s", exe_path)
+            subprocess.Popen([exe_path])  # noqa: S603 — hardcoded game path
+            waited = _wait_for_game_process()
+
     if waited is None:
         return "WARNING: Game process not detected after launch. Check Steam."
 
-    # Wait for main menu / FireTuner to become reachable
-    time.sleep(_MAIN_MENU_WAIT_SECONDS)
-    return f"Game launched. Process started after {waited}s, waited {_MAIN_MENU_WAIT_SECONDS}s for main menu."
+    # Wait for FireTuner port to open (replaces blind sleep)
+    log.info("Game process started after %ds, waiting for FireTuner port...", waited)
+    if _wait_for_tuner_port():
+        return f"Game launched. Process started after {waited}s, FireTuner port is open."
+
+    return f"WARNING: Game launched (process after {waited}s) but FireTuner port did not open within {_PORT_POLL_TIMEOUT}s."
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +426,11 @@ def _find_game_window() -> WindowInfo | None:
 
 
 def _find_game_window_win32() -> WindowInfo | None:
-    """Find the Civ 6 window via win32gui.EnumWindows."""
+    """Find the Civ 6 window via win32gui.EnumWindows.
+
+    Returns the CLIENT area rect (matching _capture_window_win32 which
+    uses PW_CLIENTONLY). Uses ClientToScreen for correct screen mapping.
+    """
     import win32gui
     import win32process
 
@@ -304,12 +441,15 @@ def _find_game_window_win32() -> WindowInfo | None:
             return True
         title = win32gui.GetWindowText(hwnd)
         if any(p in title for p in _APP_NAME_PATTERNS):
-            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            # Use client rect (not window rect) to match PW_CLIENTONLY capture
+            cl, ct, cr, cb = win32gui.GetClientRect(hwnd)
+            # ClientToScreen maps client (0,0) to screen coordinates
+            screen_x, screen_y = win32gui.ClientToScreen(hwnd, (cl, ct))
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             results.append(WindowInfo(
                 window_id=hwnd,
-                x=left, y=top,
-                w=right - left, h=bottom - top,
+                x=screen_x, y=screen_y,
+                w=cr - cl, h=cb - ct,
                 pid=pid,
             ))
         return True
@@ -581,6 +721,11 @@ def _ocr_fullscreen_win32() -> list[tuple[str, int, int, int, int]]:
     return _ocr_winrt(img, 0, 0, w, h)
 
 
+def _normalize(s: str) -> str:
+    """Normalize text for OCR comparison (underscores ↔ spaces)."""
+    return s.lower().strip().replace("_", " ")
+
+
 def _find_text(
     ocr_results: list[tuple[str, int, int, int, int]],
     target: str,
@@ -589,18 +734,22 @@ def _find_text(
 ) -> tuple[str, int, int, int, int] | None:
     """Find OCR result matching target text.
 
+    Normalizes underscores to spaces for comparison, since the game UI
+    may display underscores but OCR can read them as spaces (or vice versa).
+
     Args:
         prefer_bottom: When True and multiple matches exist, return the one
             with the largest y coordinate (lowest on screen). Useful when a
             label and a button have the same text (e.g. "Load Game" title
             at top vs "Load Game" button at bottom).
     """
-    target_lower = target.lower().strip()
+    target_norm = _normalize(target)
     matches = []
     for text, x, y, w, h in ocr_results:
-        if exact and text.strip().lower() == target_lower:
+        text_norm = _normalize(text)
+        if exact and text_norm == target_norm:
             matches.append((text, x, y, w, h))
-        elif not exact and target_lower in text.lower():
+        elif not exact and target_norm in text_norm:
             matches.append((text, x, y, w, h))
     if not matches:
         return None
@@ -751,23 +900,47 @@ def _bring_to_front(pid: int | None = None) -> None:
 
 
 def _bring_to_front_win32() -> None:
-    """Bring the game window to foreground on Windows."""
+    """Bring the game window to foreground on Windows.
+
+    Uses the thread-attach trick to bypass Windows' foreground lock:
+    attach our thread to the foreground window's thread, then call
+    SetForegroundWindow, then detach.
+    """
+    import ctypes
     import win32gui
 
     win = _find_game_window_win32()
     if win is None:
         log.debug("Cannot bring to front: no game window found")
         return
+
+    hwnd = win.window_id
+    user32 = ctypes.windll.user32
+
+    # If already foreground, nothing to do
+    if user32.GetForegroundWindow() == hwnd:
+        return
+
     try:
-        win32gui.SetForegroundWindow(win.window_id)
+        # Attach our thread to the foreground window's thread
+        fg_thread = user32.GetWindowThreadProcessId(
+            user32.GetForegroundWindow(), None
+        )
+        our_thread = user32.GetCurrentThreadId()
+        attached = False
+        if fg_thread != our_thread:
+            attached = user32.AttachThreadInput(our_thread, fg_thread, True)
+
+        # Restore if minimized, then bring to front
+        SW_RESTORE = 9
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, SW_RESTORE)
+        win32gui.SetForegroundWindow(hwnd)
+
+        if attached:
+            user32.AttachThreadInput(our_thread, fg_thread, False)
     except Exception:
-        log.debug("SetForegroundWindow failed, trying ShowWindow + SetForegroundWindow")
-        try:
-            SW_RESTORE = 9
-            win32gui.ShowWindow(win.window_id, SW_RESTORE)
-            win32gui.SetForegroundWindow(win.window_id)
-        except Exception:
-            log.warning("Could not bring window to front")
+        log.debug("Could not bring window to front (non-fatal)")
 
 
 def _wait_for_text(
@@ -857,13 +1030,13 @@ def list_autosaves(limit: int = 10) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _navigate_to_save_sync(save_name: str, tab: str = "Autosaves") -> str:
-    """Navigate: Main Menu → Single Player → Load Game → tab → select → Load.
+def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str:
+    """Navigate: Main Menu → Single Player → Load Game → [tab] → select → Load.
 
     Args:
         save_name: Display name of the save (no extension).
-        tab: Which tab to click ("Autosaves" — the only tab that shows
-            all save types sorted by last modified).
+        tab: Filter checkbox to click (e.g. "Autosaves"), or None to use
+            the default view (regular saves shown by default).
 
     Blocking operation — takes 30-90 seconds. Returns status message.
     """
@@ -880,16 +1053,20 @@ def _navigate_to_save_sync(save_name: str, tab: str = "Autosaves") -> str:
         return "FAILED: Could not find 'Load Game' button."
     steps.append("Clicked Load Game")
 
-    log.info("[3/6] Clicking '%s' tab...", tab)
-    if not _click_text(tab, timeout=10, exact=True, post_delay=2):
-        log.info("%s tab not found — may already be selected", tab)
-        steps.append(f"{tab} tab (may already be selected)")
+    if tab is not None:
+        log.info("[3/6] Clicking '%s' filter...", tab)
+        if not _click_text(tab, timeout=10, exact=True, post_delay=2):
+            log.info("%s filter not found — may already be active", tab)
+            steps.append(f"{tab} filter (may already be active)")
+        else:
+            steps.append(f"Clicked {tab} filter")
     else:
-        steps.append(f"Clicked {tab} tab")
+        log.info("[3/6] Using default save list (no filter needed)")
+        steps.append("Default save list (regular saves)")
 
     log.info("[4/6] Looking for save '%s'...", save_name)
     if not _click_text(save_name, timeout=15, post_delay=2):
-        return f"FAILED: Save '{save_name}' not found in {tab} list. Steps completed: {', '.join(steps)}"
+        return f"FAILED: Save '{save_name}' not found. Steps completed: {', '.join(steps)}"
     steps.append(f"Selected save {save_name}")
 
     log.info("[5/6] Clicking 'Load Game' button (bottom, not title)...")
@@ -899,14 +1076,14 @@ def _navigate_to_save_sync(save_name: str, tab: str = "Autosaves") -> str:
         steps.append("Clicked Load Game button")
 
     log.info("[6/6] Checking for leader screen...")
-    match = _wait_for_text("CONTINUE GAME", timeout=30, exact=True)
+    match = _wait_for_text("CONTINUE", timeout=30)
     if match:
         text, x, y, w, h = match
-        log.info("Found CONTINUE GAME at (%d,%d) — clicking", x, y)
+        log.info("Found '%s' at (%d,%d) — clicking", text, x, y)
         _bring_to_front()
         _click(x, y)
         time.sleep(3)
-        steps.append("Clicked CONTINUE GAME")
+        steps.append("Clicked CONTINUE")
     else:
         steps.append("No leader screen (loading directly)")
 
@@ -945,14 +1122,15 @@ async def load_save_from_menu(save_name: str | None = None) -> str:
         if save_name is None:
             return "No autosaves found in save directory."
 
-    # All saves (autosaves, MCP saves, named saves) appear under the
-    # "Autosaves" tab in the Load Game screen, sorted by last modified.
-    # There is no separate "Game Saves" tab in the Civ 6 UI.
+    # The Load Game screen shows regular saves by default.
+    # "Autosaves" is a checkbox filter — only check it for autosaves.
     auto_path = os.path.join(SAVE_DIR, f"{save_name}.Civ6Save")
     single_path = os.path.join(SINGLE_SAVE_DIR, f"{save_name}.Civ6Save")
 
-    if os.path.exists(auto_path) or os.path.exists(single_path):
-        tab = "Autosaves"
+    if os.path.exists(auto_path):
+        tab = "Autosaves"  # need to toggle the Autosaves checkbox
+    elif os.path.exists(single_path):
+        tab = None  # regular saves shown by default, no tab click needed
     else:
         available = list_autosaves(5)
         # Also list regular saves

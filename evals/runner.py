@@ -35,6 +35,7 @@ Prerequisites:
 
 import argparse
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,58 @@ if _ENV_FILE.exists():
         key, value = key.strip(), value.strip()
         if key and value:
             os.environ.setdefault(key, value)
+
+# ---------------------------------------------------------------------------
+# Pre-flight: ensure game is running
+# ---------------------------------------------------------------------------
+
+_TUNER_PORT = 4318
+
+
+def _port_reachable(port: int = _TUNER_PORT) -> bool:
+    """Quick TCP connect test."""
+    try:
+        s = socket.create_connection(("127.0.0.1", port), timeout=2)
+        s.close()
+        return True
+    except (ConnectionRefusedError, OSError):
+        return False
+
+
+def ensure_game_ready() -> None:
+    """Ensure Civ 6 is running and the FireTuner port is reachable.
+
+    If the game isn't running, launches it and waits for the port to open.
+    Call this before spawning inspect eval so the game is ready.
+
+    Does NOT handshake with the tuner — the single tuner connection must
+    be reserved for the eval agent's MCP server.
+    """
+    # Import game_launcher from the project
+    project_src = str(EVALS_DIR.parent / "src")
+    if project_src not in sys.path:
+        sys.path.insert(0, project_src)
+
+    from civ_mcp.game_launcher import _launch_game_sync, is_game_running
+
+    if is_game_running() and _port_reachable():
+        print("Pre-flight: Civ 6 is running, FireTuner port is open.")
+        return
+
+    if _port_reachable() and not is_game_running():
+        print("Pre-flight: Port 4318 is open but game is NOT running "
+              "(likely FireTuner.exe or stale connection). Launching game...")
+    else:
+        print("Pre-flight: FireTuner port not reachable — launching Civ 6...")
+
+    result = _launch_game_sync()
+    print(f"Pre-flight: {result}")
+
+    if not _port_reachable():
+        print("FATAL: Game launched but FireTuner port never opened.")
+        print("Check that EnableTuner=1 is set and the Civ 6 SDK is installed.")
+        sys.exit(1)
+
 
 # ---------------------------------------------------------------------------
 # Model catalogue — verified working models
@@ -196,6 +249,9 @@ def main():
         if args.scenarios
         else ALL_SCENARIOS
     )
+
+    # Pre-flight: ensure game is running before first scenario
+    ensure_game_ready()
 
     # Run
     results: list[tuple[str, str, int]] = []
