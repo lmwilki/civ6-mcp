@@ -91,7 +91,7 @@ async def main() -> None:
     await writer.wait_closed()
 
     print("=== Test complete ===")
-    print("If steps 1-2 succeeded, the FireTuner protocol works on macOS!")
+    print("If steps 1-2 succeeded, the FireTuner protocol is working!")
     print("Run the interactive REPL with: uv run python -m civ_mcp.tuner_client")
 
 
