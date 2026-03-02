@@ -14,9 +14,15 @@ def narrate_overview(ov: lq.GameOverview) -> str:
     lines.extend(
         [
             f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}{diff_str}",
-            f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn) | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor} ({ov.favor_per_turn:+d}/turn)",
+            f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn)"
+            + (f" | Income: {ov.gold_income:.0f} | Maintenance: -{ov.total_maintenance:.0f} (units: {ov.unit_maintenance})"
+               if ov.gold_income > 0 or ov.total_maintenance > 0 else "")
+            + f" | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor} ({ov.favor_per_turn:+d}/turn)",
             f"Research: {ov.current_research} | Civic: {ov.current_civic}",
-            f"Cities: {ov.num_cities} | Population: {ov.total_population} | Units: {ov.num_units}",
+            f"Cities: {ov.num_cities} | Population: {ov.total_population} | Units: {ov.num_units}"
+            + (" — " + ", ".join(f"{count} {name}" for name, count in
+                sorted(ov.unit_breakdown.items(), key=lambda x: x[1], reverse=True))
+               if ov.unit_breakdown else ""),
         ]
     )
     if ov.total_land > 0:

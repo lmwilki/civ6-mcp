@@ -185,6 +185,12 @@ class GameOverview:
     era_golden_threshold: int = 0
     max_turns: int = 0  # 0 = unlimited / not set
     difficulty: str = ""  # e.g. "King", "Emperor"
+    # Gold breakdown
+    gold_income: float = 0.0  # gross gold yield before maintenance
+    total_maintenance: float = 0.0  # total maintenance cost
+    unit_maintenance: int = 0  # maintenance from units specifically
+    # Unit type breakdown
+    unit_breakdown: dict[str, int] | None = None  # e.g. {"Builder": 45}
 
 
 @dataclass

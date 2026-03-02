@@ -32,7 +32,18 @@ if techIdx >= 0 then techName = Locale.Lookup(GameInfo.Technologies[techIdx].Nam
 local civicName = "None"
 if civicIdx >= 0 then civicName = Locale.Lookup(GameInfo.Civics[civicIdx].Name) end
 local nCities = 0; local totalPop = 0; for i, c in p:GetCities():Members() do nCities = nCities + 1; totalPop = totalPop + c:GetPopulation() end
-local nUnits = 0; for _ in p:GetUnits():Members() do nUnits = nUnits + 1 end
+local nUnits = 0
+local unitCounts = {{}}
+local unitMaint = 0
+for i, u in p:GetUnits():Members() do
+    nUnits = nUnits + 1
+    local entry = GameInfo.Units[u:GetType()]
+    if entry then
+        local shortName = Locale.Lookup(entry.Name)
+        unitCounts[shortName] = (unitCounts[shortName] or 0) + 1
+        unitMaint = unitMaint + (entry.Maintenance or 0)
+    end
+end
 local myScore = p:GetScore()
 local favor = p:GetFavor()
 local favorPerTurn = 0
@@ -72,7 +83,7 @@ for i = 0, 62 do
         end
     end
 end
-print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor .. "|" .. favorPerTurn .. "|" .. totalPop)
+print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor .. "|" .. favorPerTurn .. "|" .. totalPop .. "|" .. string.format("%.1f", tr:GetGoldYield()) .. "|" .. string.format("%.1f", tr:GetTotalMaintenance()))
 for i = 0, 62 do
     if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
         local oCfg = PlayerConfigurations[i]
@@ -132,6 +143,14 @@ pcall(function()
     end
 end)
 print("DIFFICULTY|" .. diffName)
+local ubParts = {{}}
+for name, count in pairs(unitCounts) do
+    table.insert(ubParts, name .. ":" .. count)
+end
+table.sort(ubParts, function(a, b)
+    return tonumber(a:match(":(%d+)$")) > tonumber(b:match(":(%d+)$"))
+end)
+print("UNITBREAKDOWN|" .. table.concat(ubParts, ",") .. "|" .. unitMaint)
 print("{SENTINEL}")
 """
 
@@ -139,10 +158,10 @@ print("{SENTINEL}")
 def build_gameover_check() -> str:
     """InGame: check if the game is over (EndGameMenu visible).
 
-    TestVictory() is unreliable on the game-over screen (returns false for all
-    types because the snapshot may have shifted). Instead we use heuristic
-    checks: religious majority, diplo VP >= 20, science VP >= needed, and
-    capitals owned for domination.
+    Tries Game.TestVictory() first (direct engine query), then falls back to
+    heuristic checks: religious majority, diplo VP >= 20 (scans all winning-team
+    players), science VP >= needed, domination capitals, and culture tourism.
+    Each check is pcall-wrapped so failures don't block detection.
     """
     return f"""
 local egm = ContextPtr:LookUpControl("/InGame/EndGameMenu")
@@ -173,38 +192,54 @@ if winTeam >= 0 then
 end
 if winnerId >= 0 then
     local wp = Players[winnerId]
-    -- Religious: winner's religion is majority in all (or nearly all) major civs
+    -- Try each GameInfo.Victories row with Game.TestVictory first (direct engine query)
     pcall(function()
-        local relCreated = wp:GetReligion():GetReligionTypeCreated()
-        if relCreated >= 0 then
-            local totalM, convM = 0, 0
-            for i = 0, 62 do
-                local q = Players[i]
-                if q and q:IsMajor() and q:IsAlive() then
-                    totalM = totalM + 1
-                    if q:GetReligion():GetReligionInMajorityOfCities() == relCreated then convM = convM + 1 end
-                end
+        for row in GameInfo.Victories() do
+            if Game.TestVictory(row.Index) then
+                victoryType = row.VictoryType
             end
-            if convM >= totalM - 1 then victoryType = "VICTORY_RELIGIOUS" end
         end
     end)
-    -- Diplomatic: 20+ diplo VP
+    -- Fallback heuristics if TestVictory didn't work (can be stale on EndGameMenu)
     if victoryType == "Unknown" then
+        -- Religious: winner's religion is majority in all (or nearly all) major civs
         pcall(function()
-            local dvp = wp:GetStats():GetDiplomaticVictoryPoints()
-            if dvp and dvp >= 20 then victoryType = "VICTORY_DIPLOMATIC" end
+            local relCreated = wp:GetReligion():GetReligionTypeCreated()
+            if relCreated >= 0 then
+                local totalM, convM = 0, 0
+                for i = 0, 62 do
+                    local q = Players[i]
+                    if q and q:IsMajor() and q:IsAlive() then
+                        totalM = totalM + 1
+                        if q:GetReligion():GetReligionInMajorityOfCities() == relCreated then convM = convM + 1 end
+                    end
+                end
+                if convM >= totalM - 1 then victoryType = "VICTORY_RELIGIOUS" end
+            end
         end)
     end
-    -- Science: completed space projects
     if victoryType == "Unknown" then
+        -- Diplomatic: any player with 20+ diplo VP (check all, not just winner — GetStats may fail on winner)
         pcall(function()
-            local svp = wp:GetStats():GetScienceVictoryPoints()
-            local needed = wp:GetStats():GetScienceVictoryPointsTotalNeeded()
-            if svp and needed and svp >= needed then victoryType = "VICTORY_TECHNOLOGY" end
+            for i = 0, 62 do
+                local q = Players[i]
+                if q and q:IsMajor() and q:IsAlive() and q:GetTeam() == winTeam then
+                    local ok, dvp = pcall(function() return q:GetStats():GetDiplomaticVictoryPoints() end)
+                    if ok and dvp and dvp >= 20 then victoryType = "VICTORY_DIPLOMATIC" end
+                end
+            end
         end)
     end
-    -- Domination: owns all original capitals
     if victoryType == "Unknown" then
+        -- Science: completed space projects
+        pcall(function()
+            local ok, svp = pcall(function() return wp:GetStats():GetScienceVictoryPoints() end)
+            local ok2, needed = pcall(function() return wp:GetStats():GetScienceVictoryPointsTotalNeeded() end)
+            if ok and ok2 and svp and needed and svp >= needed then victoryType = "VICTORY_TECHNOLOGY" end
+        end)
+    end
+    if victoryType == "Unknown" then
+        -- Domination: owns all original capitals
         pcall(function()
             local caps, owned = 0, 0
             for i = 0, 62 do
@@ -216,6 +251,28 @@ if winnerId >= 0 then
                 end
             end
             if caps > 0 and owned >= caps then victoryType = "VICTORY_CONQUEST" end
+        end)
+    end
+    if victoryType == "Unknown" then
+        -- Culture: winner's visiting tourists exceed all others' domestic tourists
+        pcall(function()
+            local ok, tour = pcall(function() return wp:GetStats():GetTourism() end)
+            if ok and tour and tour > 0 then
+                -- If winner has any tourism and we can't classify otherwise, likely culture
+                local dominated = true
+                for i = 0, 62 do
+                    local q = Players[i]
+                    if q and q:IsMajor() and q:IsAlive() and i ~= winnerId then
+                        local okS, stay = pcall(function() return q:GetStats():GetNumStaycationers() end)
+                        local okV, visit = pcall(function() return wp:GetCulture():GetTouristsFrom(i) end)
+                        if okS and okV and stay and visit and visit < stay then
+                            dominated = false
+                            break
+                        end
+                    end
+                end
+                if dominated then victoryType = "VICTORY_CULTURE" end
+            end
         end)
     end
 end
@@ -265,6 +322,8 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     era_golden_threshold = 0
     max_turns = 0
     difficulty = ""
+    unit_breakdown: dict[str, int] | None = None
+    unit_maintenance = 0
     player_id_parsed = int(parts[1])
     for line in lines[1:]:
         if line.startswith("RANK|"):
@@ -311,6 +370,21 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
                 max_turns = int(ep[1])
         elif line.startswith("DIFFICULTY|"):
             difficulty = line.split("|", 1)[1]
+        elif line.startswith("UNITBREAKDOWN|"):
+            bp = line.split("|")
+            if len(bp) >= 3:
+                unit_breakdown = {}
+                for pair in bp[1].split(","):
+                    if ":" in pair:
+                        name, count = pair.rsplit(":", 1)
+                        try:
+                            unit_breakdown[name] = int(count)
+                        except ValueError:
+                            pass
+                try:
+                    unit_maintenance = int(bp[2])
+                except ValueError:
+                    pass
     return GameOverview(
         turn=int(parts[0]),
         player_id=int(parts[1]),
@@ -329,6 +403,10 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         diplomatic_favor=int(parts[14]) if len(parts) > 14 else 0,
         favor_per_turn=int(float(parts[15])) if len(parts) > 15 else 0,
         total_population=int(parts[16]) if len(parts) > 16 else 0,
+        gold_income=float(parts[17]) if len(parts) > 17 else 0.0,
+        total_maintenance=float(parts[18]) if len(parts) > 18 else 0.0,
+        unit_maintenance=unit_maintenance,
+        unit_breakdown=unit_breakdown,
         explored_land=explored_land,
         total_land=total_land,
         rankings=rankings if rankings else None,
