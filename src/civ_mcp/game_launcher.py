@@ -10,7 +10,8 @@ Safety guardrails for automated agents:
 Platform support:
 - macOS: fully supported (process mgmt, OCR, window automation)
   Install with: uv pip install 'civ6-mcp[launcher-macos]'
-- Windows: process mgmt + save discovery (GUI automation not yet implemented)
+- Windows: fully supported (process mgmt, OCR, window automation)
+  Install with: uv pip install 'civ6-mcp[launcher-windows]'
 """
 
 from __future__ import annotations
@@ -26,11 +27,20 @@ from typing import NamedTuple
 
 log = logging.getLogger(__name__)
 
+# Enable per-monitor DPI awareness on Windows so we get true pixel
+# coordinates and window dimensions (not DPI-virtualized values).
+if sys.platform == "win32":
+    try:
+        import ctypes as _ctypes
+        _ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        pass  # Older Windows or already set
+
 
 class WindowInfo(NamedTuple):
-    """Game window metadata from Quartz CGWindowList."""
+    """Game window metadata (Quartz CGWindowList on macOS, win32gui on Windows)."""
 
-    window_id: int
+    window_id: int  # CGWindowNumber on macOS, HWND on Windows
     x: int  # screen points
     y: int  # screen points
     w: int  # screen points
@@ -56,7 +66,12 @@ if sys.platform == "darwin":
     SAVE_DIR = os.path.join(_SAVE_BASE, "auto")  # autosaves
     SINGLE_SAVE_DIR = _SAVE_BASE  # regular saves (including benchmark)
 elif sys.platform == "win32":
-    _PROCESS_NAMES = ("Civ6_Exe_Child.exe", "Civ6_Exe.exe", "CivilizationVI.exe")
+    _PROCESS_NAMES = (
+        "CivilizationVI_DX12.exe",
+        "CivilizationVI.exe",
+        "Civ6_Exe_Child.exe",
+        "Civ6_Exe.exe",
+    )
     _SAVE_BASE = os.path.expanduser(
         "~/Documents/My Games/Sid Meier's Civilization VI/Saves/Single"
     )
@@ -78,10 +93,21 @@ _MAIN_MENU_WAIT_SECONDS = 15
 def _require_gui_deps() -> None:
     """Validate GUI dependencies are available, raising clear error if missing."""
     if sys.platform == "win32":
-        raise NotImplementedError(
-            "Windows GUI automation not yet implemented. "
-            "Process management and save discovery work; OCR/click do not."
-        )
+        try:
+            import win32gui  # noqa: F401
+        except ImportError:
+            raise RuntimeError(
+                "Game launcher requires pywin32. "
+                "Install with: uv pip install pywin32"
+            )
+        try:
+            from winrt.windows.media.ocr import OcrEngine  # noqa: F401
+        except ImportError:
+            raise RuntimeError(
+                "Game launcher requires Windows OCR support. "
+                "Install with: uv pip install 'civ6-mcp[launcher-windows]'"
+            )
+        return
     if sys.platform != "darwin":
         raise NotImplementedError(f"GUI automation not supported on {sys.platform}")
     try:
@@ -225,11 +251,14 @@ def _launch_game_sync() -> str:
 
 
 def _find_game_window() -> WindowInfo | None:
-    """Find the Civ 6 game window via Quartz CGWindowList.
+    """Find the Civ 6 game window.
 
+    Uses Quartz CGWindowList on macOS, win32gui on Windows.
     Returns WindowInfo with window ID, bounds (screen points), and PID.
     Returns None if no matching window is found on screen.
     """
+    if sys.platform == "win32":
+        return _find_game_window_win32()
     _require_gui_deps()
     import Quartz
 
@@ -263,11 +292,39 @@ def _find_game_window() -> WindowInfo | None:
     return None
 
 
-def _capture_window(window_id: int) -> object:
-    """Capture a single window as an in-memory CGImage (no disk I/O).
+def _find_game_window_win32() -> WindowInfo | None:
+    """Find the Civ 6 window via win32gui.EnumWindows."""
+    import win32gui
+    import win32process
 
-    Returns a CGImageRef for direct use with Vision framework.
+    results: list[WindowInfo] = []
+
+    def callback(hwnd: int, _: None) -> bool:
+        if not win32gui.IsWindowVisible(hwnd):
+            return True
+        title = win32gui.GetWindowText(hwnd)
+        if any(p in title for p in _APP_NAME_PATTERNS):
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            results.append(WindowInfo(
+                window_id=hwnd,
+                x=left, y=top,
+                w=right - left, h=bottom - top,
+                pid=pid,
+            ))
+        return True
+
+    win32gui.EnumWindows(callback, None)
+    return results[0] if results else None
+
+
+def _capture_window(window_id: int) -> object:
+    """Capture a single window as an in-memory image.
+
+    Returns a CGImageRef on macOS, PIL Image on Windows.
     """
+    if sys.platform == "win32":
+        return _capture_window_win32(window_id)
     import Quartz
 
     image = Quartz.CGWindowListCreateImage(
@@ -281,6 +338,48 @@ def _capture_window(window_id: int) -> object:
     return image
 
 
+def _capture_window_win32(hwnd: int) -> "PIL.Image.Image":
+    """Capture a window via PrintWindow + BitBlt into a PIL Image."""
+    import ctypes
+
+    import win32gui
+    import win32ui
+    from PIL import Image
+
+    # Get the client area dimensions
+    left, top, right, bottom = win32gui.GetClientRect(hwnd)
+    w = right - left
+    h = bottom - top
+    if w <= 0 or h <= 0:
+        raise RuntimeError(f"Window {hwnd} has no client area ({w}x{h})")
+
+    hwnd_dc = win32gui.GetWindowDC(hwnd)
+    mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+    save_dc = mfc_dc.CreateCompatibleDC()
+    bitmap = win32ui.CreateBitmap()
+    bitmap.CreateCompatibleBitmap(mfc_dc, w, h)
+    save_dc.SelectObject(bitmap)
+
+    # PrintWindow with PW_CLIENTONLY|PW_RENDERFULLCONTENT for DX windows
+    PW_CLIENTONLY = 0x1
+    PW_RENDERFULLCONTENT = 0x2
+    ctypes.windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(),
+                                     PW_CLIENTONLY | PW_RENDERFULLCONTENT)
+
+    bmp_info = bitmap.GetInfo()
+    bmp_bits = bitmap.GetBitmapBits(True)
+    img = Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]),
+                           bmp_bits, "raw", "BGRX", 0, 1)
+
+    # Cleanup GDI resources
+    save_dc.DeleteDC()
+    mfc_dc.DeleteDC()
+    win32gui.ReleaseDC(hwnd, hwnd_dc)
+    win32gui.DeleteObject(bitmap.GetHandle())
+
+    return img
+
+
 def _ocr_vision(
     cg_image: object,
     origin_x: int,
@@ -288,7 +387,7 @@ def _ocr_vision(
     extent_w: int,
     extent_h: int,
 ) -> list[tuple[str, int, int, int, int]]:
-    """Run Vision OCR on a CGImage, mapping results to screen points.
+    """Run Vision OCR on a CGImage, mapping results to screen points (macOS).
 
     Coordinates are mapped using the capture region's known bounds in
     screen points (not retina pixels), making this retina-independent:
@@ -322,8 +421,99 @@ def _ocr_vision(
     return results
 
 
+def _ocr_winrt(
+    pil_image: "PIL.Image.Image",
+    origin_x: int,
+    origin_y: int,
+    extent_w: int,
+    extent_h: int,
+) -> list[tuple[str, int, int, int, int]]:
+    """Run Windows Runtime OCR on a PIL Image, mapping results to screen points.
+
+    Uses Windows.Media.Ocr (built-in to Windows 10+, no external binaries).
+    """
+    import asyncio
+    import io
+
+    from winrt.windows.graphics.imaging import BitmapDecoder
+    from winrt.windows.media.ocr import OcrEngine
+    from winrt.windows.storage.streams import (
+        DataWriter,
+        InMemoryRandomAccessStream,
+    )
+
+    # Convert PIL Image → PNG bytes → WinRT SoftwareBitmap
+    buf = io.BytesIO()
+    pil_image.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    async def _run_ocr():
+        stream = InMemoryRandomAccessStream()
+        writer = DataWriter(stream)
+        writer.write_bytes(png_bytes)
+        await writer.store_async()
+        await writer.flush_async()
+        stream.seek(0)
+
+        decoder = await BitmapDecoder.create_async(stream)
+        bitmap = await decoder.get_software_bitmap_async()
+
+        engine = OcrEngine.try_create_from_user_profile_languages()
+        if engine is None:
+            log.warning("WinRT OCR: no engine available")
+            return []
+
+        ocr_result = await engine.recognize_async(bitmap)
+        return ocr_result
+
+    # Run the async OCR — handle nested event loops
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None:
+        # Already in an async context — run in a new thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            ocr_result = pool.submit(lambda: asyncio.run(_run_ocr())).result(timeout=10)
+    else:
+        ocr_result = asyncio.run(_run_ocr())
+
+    if ocr_result is None:
+        return []
+
+    img_w, img_h = pil_image.size
+    results = []
+    for line in ocr_result.lines:
+        text = line.text
+        # WinRT OCR: bounding box in pixel coordinates
+        words = list(line.words)
+        if not words:
+            continue
+        # Use first word's x and union of all words for the line bounds
+        x0 = min(w.bounding_rect.x for w in words)
+        y0 = min(w.bounding_rect.y for w in words)
+        x1 = max(w.bounding_rect.x + w.bounding_rect.width for w in words)
+        y1 = max(w.bounding_rect.y + w.bounding_rect.height for w in words)
+        # Map pixel coords to screen coords
+        cx = (x0 + x1) / 2 / img_w
+        cy = (y0 + y1) / 2 / img_h
+        bw = (x1 - x0) / img_w
+        bh = (y1 - y0) / img_h
+        sx = origin_x + cx * extent_w
+        sy = origin_y + cy * extent_h
+        sw = bw * extent_w
+        sh = bh * extent_h
+        results.append((text, int(sx), int(sy), int(sw), int(sh)))
+    return results
+
+
 def _ocr_game_window(win: WindowInfo) -> list[tuple[str, int, int, int, int]]:
     """Capture the game window and OCR it. All coords in screen points."""
+    if sys.platform == "win32":
+        pil_image = _capture_window_win32(win.window_id)
+        return _ocr_winrt(pil_image, win.x, win.y, win.w, win.h)
     cg_image = _capture_window(win.window_id)
     return _ocr_vision(cg_image, win.x, win.y, win.w, win.h)
 
@@ -334,6 +524,9 @@ def _ocr_fullscreen() -> list[tuple[str, int, int, int, int]]:
     Used during the Aspyr launcher phase before the game process starts.
     Maps via display dimensions in points (retina-independent).
     """
+    if sys.platform == "win32":
+        return _ocr_fullscreen_win32()
+
     import Quartz
 
     main_display = Quartz.CGMainDisplayID()
@@ -351,6 +544,41 @@ def _ocr_fullscreen() -> list[tuple[str, int, int, int, int]]:
         return []
 
     return _ocr_vision(image, 0, 0, disp_w, disp_h)
+
+
+def _ocr_fullscreen_win32() -> list[tuple[str, int, int, int, int]]:
+    """Full-screen capture + OCR on Windows."""
+    import ctypes
+
+    import win32gui
+    import win32ui
+    from PIL import Image
+
+    # Get virtual screen dimensions (handles multi-monitor)
+    user32 = ctypes.windll.user32
+    w = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+    h = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+
+    desktop_hwnd = win32gui.GetDesktopWindow()
+    desktop_dc = win32gui.GetWindowDC(desktop_hwnd)
+    mfc_dc = win32ui.CreateDCFromHandle(desktop_dc)
+    save_dc = mfc_dc.CreateCompatibleDC()
+    bitmap = win32ui.CreateBitmap()
+    bitmap.CreateCompatibleBitmap(mfc_dc, w, h)
+    save_dc.SelectObject(bitmap)
+    save_dc.BitBlt((0, 0), (w, h), mfc_dc, (0, 0), 0x00CC0020)  # SRCCOPY
+
+    bmp_info = bitmap.GetInfo()
+    bmp_bits = bitmap.GetBitmapBits(True)
+    img = Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]),
+                           bmp_bits, "raw", "BGRX", 0, 1)
+
+    save_dc.DeleteDC()
+    mfc_dc.DeleteDC()
+    win32gui.ReleaseDC(desktop_hwnd, desktop_dc)
+    win32gui.DeleteObject(bitmap.GetHandle())
+
+    return _ocr_winrt(img, 0, 0, w, h)
 
 
 def _find_text(
@@ -383,6 +611,8 @@ def _find_text(
 
 def _click(x: int, y: int) -> None:
     """Click at screen coordinates (points)."""
+    if sys.platform == "win32":
+        return _click_win32(x, y)
     _require_gui_deps()
     import Quartz
 
@@ -396,8 +626,72 @@ def _click(x: int, y: int) -> None:
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
 
 
+def _click_win32(x: int, y: int) -> None:
+    """Click at screen coordinates using SendInput (Windows)."""
+    import ctypes
+
+    # Normalize to absolute coordinates (0-65535 range)
+    user32 = ctypes.windll.user32
+    screen_w = user32.GetSystemMetrics(0)
+    screen_h = user32.GetSystemMetrics(1)
+    abs_x = int(x * 65536 / screen_w)
+    abs_y = int(y * 65536 / screen_h)
+
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.c_long),
+            ("dy", ctypes.c_long),
+            ("mouseData", ctypes.c_ulong),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class INPUT(ctypes.Structure):
+        _fields_ = [("type", ctypes.c_ulong), ("mi", MOUSEINPUT)]
+
+    MOUSEEVENTF_MOVE = 0x0001
+    MOUSEEVENTF_ABSOLUTE = 0x8000
+    MOUSEEVENTF_LEFTDOWN = 0x0002
+    MOUSEEVENTF_LEFTUP = 0x0004
+
+    # Move
+    move = INPUT(type=0, mi=MOUSEINPUT(
+        dx=abs_x, dy=abs_y, mouseData=0,
+        dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+        time=0, dwExtraInfo=None,
+    ))
+    user32.SendInput(1, ctypes.byref(move), ctypes.sizeof(INPUT))
+    time.sleep(0.15)
+
+    # Click down
+    down = INPUT(type=0, mi=MOUSEINPUT(
+        dx=abs_x, dy=abs_y, mouseData=0,
+        dwFlags=MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE,
+        time=0, dwExtraInfo=None,
+    ))
+    user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(INPUT))
+    time.sleep(0.05)
+
+    # Click up
+    up = INPUT(type=0, mi=MOUSEINPUT(
+        dx=abs_x, dy=abs_y, mouseData=0,
+        dwFlags=MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE,
+        time=0, dwExtraInfo=None,
+    ))
+    user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(INPUT))
+
+
 def _is_window_focused() -> bool:
-    """Check if a Civ 6 window is the frontmost application (macOS only)."""
+    """Check if a Civ 6 window is the frontmost application."""
+    if sys.platform == "win32":
+        try:
+            import win32gui
+            hwnd = win32gui.GetForegroundWindow()
+            title = win32gui.GetWindowText(hwnd)
+            return any(p in title for p in _APP_NAME_PATTERNS)
+        except Exception:
+            return False
     if sys.platform != "darwin":
         return False
     try:
@@ -415,12 +709,14 @@ def _is_window_focused() -> bool:
 
 
 def _bring_to_front(pid: int | None = None) -> None:
-    """Bring the game window to front via native AppKit activation.
+    """Bring the game window to front.
 
     Args:
         pid: Process ID from WindowInfo. If None, looks up via
             _find_game_window().
     """
+    if sys.platform == "win32":
+        return _bring_to_front_win32()
     if sys.platform != "darwin":
         raise NotImplementedError(f"Window focus not supported on {sys.platform}")
     try:
@@ -452,6 +748,26 @@ def _bring_to_front(pid: int | None = None) -> None:
         if attempt < 2:
             log.debug("Window focus attempt %d failed, retrying...", attempt + 1)
     log.warning("Could not confirm window focus after 3 attempts")
+
+
+def _bring_to_front_win32() -> None:
+    """Bring the game window to foreground on Windows."""
+    import win32gui
+
+    win = _find_game_window_win32()
+    if win is None:
+        log.debug("Cannot bring to front: no game window found")
+        return
+    try:
+        win32gui.SetForegroundWindow(win.window_id)
+    except Exception:
+        log.debug("SetForegroundWindow failed, trying ShowWindow + SetForegroundWindow")
+        try:
+            SW_RESTORE = 9
+            win32gui.ShowWindow(win.window_id, SW_RESTORE)
+            win32gui.SetForegroundWindow(win.window_id)
+        except Exception:
+            log.warning("Could not bring window to front")
 
 
 def _wait_for_text(

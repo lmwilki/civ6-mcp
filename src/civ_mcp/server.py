@@ -2155,13 +2155,11 @@ async def screenshot(ctx: Context) -> Image:
     map positions that are hard to describe with data alone.
     """
     if sys.platform == "win32":
-        raise NotImplementedError(
-            "Windows screenshot not yet implemented — needs mss and pywin32"
-        )
+        return await asyncio.to_thread(_screenshot_win32)
     if sys.platform != "darwin":
         raise NotImplementedError(f"Screenshot not supported on {sys.platform}")
 
-    # Find the Civ 6 window ID via Swift/CoreGraphics
+    # macOS: Find the Civ 6 window ID via Swift/CoreGraphics
     swift_code = """
 import CoreGraphics
 let options = CGWindowListOption(arrayLiteral: .optionAll)
@@ -2198,6 +2196,19 @@ if let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String:
         return Image(data=Path(tmp_path).read_bytes(), format="png")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+def _screenshot_win32() -> Image:
+    """Capture the Civ 6 window on Windows via PrintWindow."""
+    import io
+
+    win = game_launcher._find_game_window()
+    if win is None:
+        raise ValueError("Could not find Civilization VI window")
+    pil_img = game_launcher._capture_window_win32(win.window_id)
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    return Image(data=buf.getvalue(), format="png")
 
 
 # ---------------------------------------------------------------------------
