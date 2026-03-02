@@ -45,6 +45,7 @@ export interface DiarySummary {
   turnNumbers: number[];
   turnCount: number;
   loading: boolean;
+  error: string | null;
   outcome: GameOutcome | null;
   status: "live" | "completed" | undefined;
   agentModelOverride: string | null;
@@ -73,6 +74,7 @@ export function useDiarySummaryConvex(filename: string | null): DiarySummary {
     turnNumbers: turnSeries?.turns ?? [],
     turnCount: summary?.turnCount ?? 0,
     loading: summary === undefined,
+    error: null,
     outcome,
     status: (summary?.status as "live" | "completed") ?? undefined,
     agentModelOverride: summary?.agentModelOverride ?? null,

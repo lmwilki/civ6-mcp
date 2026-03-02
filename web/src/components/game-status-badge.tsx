@@ -14,22 +14,27 @@ import { CIV6_COLORS } from "@/lib/civ-colors";
 import { CivIcon } from "./civ-icon";
 import { PulsingDot } from "./pulsing-dot";
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<string, string> = {
   live: "#7A9B8A",
   victory: "#3D8B6E",
   defeat: "#C0503A",
   unfinished: "#B0A99F",
-} as const;
+};
+
+/** Returns a color for a simple status string (live, victory, defeat, unfinished). */
+export function statusColor(status: string): string {
+  return STATUS_COLORS[status] ?? STATUS_COLORS.unfinished;
+}
 
 /** Returns the semantic color for a game's current state. */
 export function getGameStatusColor(
   status?: "live" | "completed",
   outcome?: GameOutcome | null,
 ): string {
-  if (status === "live") return STATUS_COLORS.live;
-  if (outcome?.result === "victory") return STATUS_COLORS.victory;
-  if (outcome?.result === "defeat") return STATUS_COLORS.defeat;
-  return STATUS_COLORS.unfinished;
+  if (status === "live") return statusColor("live");
+  if (outcome?.result === "victory") return statusColor("victory");
+  if (outcome?.result === "defeat") return statusColor("defeat");
+  return statusColor("unfinished");
 }
 
 interface VictoryMeta {

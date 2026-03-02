@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   PlayerRow,
   CityRow,
   TurnData,
   DiaryFile,
-  GameOutcome,
   TurnSeries,
   NumericPlayerField,
 } from "./diary-types";
@@ -26,6 +32,40 @@ const SERIES_FIELDS: NumericPlayerField[] = [
   "score", "science", "culture", "gold", "military",
   "faith", "territory", "exploration_pct", "pop", "cities", "tourism",
 ];
+
+// ── Shared diary cache (FS mode) ──────────────────────────────────────────
+// useDiarySummaryFs writes here; useDiaryTurnFs reads via useSyncExternalStore.
+
+const diaryCache = new Map<string, TurnData[]>();
+const diaryCacheListeners = new Set<() => void>();
+
+function setDiaryCache(filename: string, data: TurnData[]) {
+  diaryCache.set(filename, data);
+  for (const cb of diaryCacheListeners) cb();
+}
+
+function subscribeDiaryCache(cb: () => void) {
+  diaryCacheListeners.add(cb);
+  return () => { diaryCacheListeners.delete(cb); };
+}
+
+// ── Shared fetch (writes to cache) ───────────────────────────────────────
+
+async function fetchDiaryData(filename: string): Promise<TurnData[]> {
+  const [playersRes, citiesRes] = await Promise.all([
+    fetch(`/api/diary?file=${encodeURIComponent(filename)}`),
+    fetch(`/api/diary?file=${encodeURIComponent(filename)}&cities=1`),
+  ]);
+  const playersData = await playersRes.json();
+  const citiesData = await citiesRes.json();
+  const players: PlayerRow[] = playersData.entries || [];
+  const cities: CityRow[] = citiesData.entries || [];
+  const grouped = groupTurnData(players, cities);
+  setDiaryCache(filename, grouped);
+  return grouped;
+}
+
+// ── buildTurnSeries ──────────────────────────────────────────────────────
 
 /** Build TurnSeries from full TurnData[] for the FS fallback */
 function buildTurnSeries(turns: TurnData[]): TurnSeries {
@@ -50,9 +90,12 @@ function buildTurnSeries(turns: TurnData[]): TurnSeries {
   }
 
   for (const t of turns) {
-    const allPlayers = [t.agent, ...t.rivals];
+    // Build a Map for O(1) lookup instead of find() per player
+    const byPid = new Map<string, PlayerRow>();
+    for (const p of [t.agent, ...t.rivals]) byPid.set(String(p.pid), p);
+
     for (const [pid, ps] of Object.entries(players)) {
-      const row = allPlayers.find((p) => String(p.pid) === pid);
+      const row = byPid.get(pid);
       for (const m of SERIES_FIELDS) {
         ps.metrics[m].push(row ? (row[m] as number) ?? 0 : 0);
       }
@@ -88,25 +131,20 @@ export const useDiaryList = CONVEX_MODE ? useDiaryListConvex : useDiaryListFs;
 function useDiarySummaryFs(filename: string | null): DiarySummary {
   const [allTurns, setAllTurns] = useState<TurnData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const prevCount = useRef(0);
 
   const load = useCallback(async () => {
     if (!filename) return;
     if (prevCount.current === 0) setLoading(true);
     try {
-      const [playersRes, citiesRes] = await Promise.all([
-        fetch(`/api/diary?file=${encodeURIComponent(filename)}`),
-        fetch(`/api/diary?file=${encodeURIComponent(filename)}&cities=1`),
-      ]);
-      const playersData = await playersRes.json();
-      const citiesData = await citiesRes.json();
-      const players: PlayerRow[] = playersData.entries || [];
-      const cities: CityRow[] = citiesData.entries || [];
-      const grouped = groupTurnData(players, cities);
+      const grouped = await fetchDiaryData(filename);
       prevCount.current = grouped.length;
       setAllTurns(grouped);
-    } catch {
+      setError(null);
+    } catch (e) {
       setAllTurns([]);
+      setError(e instanceof Error ? e.message : "Failed to load diary");
     } finally {
       setLoading(false);
     }
@@ -132,6 +170,7 @@ function useDiarySummaryFs(filename: string | null): DiarySummary {
     turnNumbers: allTurns.map((t) => t.turn),
     turnCount: allTurns.length,
     loading,
+    error,
     outcome: null,
     status: undefined,
     agentModelOverride: null,
@@ -144,44 +183,24 @@ export const useDiarySummary = CONVEX_MODE
 
 // ── Turn detail ─────────────────────────────────────────────────────────────
 
-/** FS fallback: extract single turn from the already-loaded data */
+/** FS mode: read from shared cache populated by useDiarySummaryFs */
 function useDiaryTurnFs(
   filename: string | null,
   turn: number | undefined,
   _agentModelOverride: string | null,
 ): TurnData | null {
-  // In FS mode, the summary hook already fetched all data.
-  // We need a way to access it. Use a shared cache keyed by filename.
-  const [allTurns, setAllTurns] = useState<TurnData[]>([]);
-
-  const load = useCallback(async () => {
-    if (!filename) return;
-    try {
-      const [playersRes, citiesRes] = await Promise.all([
-        fetch(`/api/diary?file=${encodeURIComponent(filename)}`),
-        fetch(`/api/diary?file=${encodeURIComponent(filename)}&cities=1`),
-      ]);
-      const playersData = await playersRes.json();
-      const citiesData = await citiesRes.json();
-      const players: PlayerRow[] = playersData.entries || [];
-      const cities: CityRow[] = citiesData.entries || [];
-      setAllTurns(groupTurnData(players, cities));
-    } catch {
-      setAllTurns([]);
-    }
-  }, [filename]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    const id = setInterval(load, POLL_INTERVAL);
-    return () => clearInterval(id);
-  }, [load]);
+  const getSnapshot = useCallback(
+    () => (filename ? diaryCache.get(filename) ?? null : null),
+    [filename],
+  );
+  const allTurns = useSyncExternalStore(
+    subscribeDiaryCache,
+    getSnapshot,
+    () => null,
+  );
 
   return useMemo(() => {
-    if (allTurns.length === 0 || turn === undefined) return null;
+    if (!allTurns || turn === undefined) return null;
     return allTurns.find((t) => t.turn === turn) ?? null;
   }, [allTurns, turn]);
 }

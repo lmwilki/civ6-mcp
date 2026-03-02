@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync, readdirSync, existsSync, statSync } from "fs";
-import { homedir } from "os";
+import { readFile, readdir, stat } from "fs/promises";
+import { existsSync } from "fs";
 import { join } from "path";
-
-function getDiaryDir(): string {
-  return process.env.CIV6_DIARY_DIR || join(homedir(), ".civ6-mcp");
-}
+import { getDiaryDir } from "../log/shared";
 
 /** List available diary files (excludes _cities companion files) */
-function listDiaries(dir: string) {
+async function listDiaries(dir: string) {
   if (!existsSync(dir)) return [];
-  const files = readdirSync(dir).filter(
+  const allFiles = await readdir(dir);
+  const files = allFiles.filter(
     (f) =>
       f.startsWith("diary_") && f.endsWith(".jsonl") && !f.includes("_cities"),
   );
-  return files
-    .map((f) => {
+  const results = await Promise.all(
+    files.map(async (f) => {
       const match = f.match(/^diary_(.+?)_/);
       const label = match ? match[1].replace(/_/g, " ") : f;
       let count = 0;
@@ -25,10 +23,11 @@ function listDiaries(dir: string) {
       let civ: string | undefined;
       let leader: string | undefined;
       try {
-        const content = readFileSync(join(dir, f), "utf-8");
+        const content = await readFile(join(dir, f), "utf-8");
         const lines = content.split("\n").filter((l) => l.trim());
         count = lines.length;
-        mtime = statSync(join(dir, f)).mtimeMs;
+        const fileStat = await stat(join(dir, f));
+        mtime = fileStat.mtimeMs;
         // Extract agent fields from agent rows
         for (const line of lines) {
           try {
@@ -51,16 +50,18 @@ function listDiaries(dir: string) {
       // Use civ name from data (properly cased) over filename-derived label
       const displayLabel = civ || label;
       return { filename: f, label: displayLabel, leader, count, mtime, hasCities, agentModel, score };
-    })
+    }),
+  );
+  return results
     .sort((a, b) => b.mtime - a.mtime)
     .map(({ mtime, ...rest }) => ({ ...rest, lastUpdated: mtime }));
 }
 
 /** Read entries from a specific JSONL file */
-function readDiary(dir: string, filename: string) {
+async function readDiary(dir: string, filename: string) {
   const path = join(dir, filename);
   if (!existsSync(path)) return [];
-  const content = readFileSync(path, "utf-8");
+  const content = await readFile(path, "utf-8");
   const lines = content.split("\n").filter((l) => l.trim());
   const entries = [];
   for (const line of lines) {
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
   const file = req.nextUrl.searchParams.get("file");
 
   if (!file) {
-    const diaries = listDiaries(dir);
+    const diaries = await listDiaries(dir);
     return NextResponse.json({ diaries });
   }
 
@@ -91,10 +92,10 @@ export async function GET(req: NextRequest) {
   const wantCities = req.nextUrl.searchParams.get("cities") === "1";
   if (wantCities) {
     const citiesFile = file.replace(".jsonl", "_cities.jsonl");
-    const entries = readDiary(dir, citiesFile);
+    const entries = await readDiary(dir, citiesFile);
     return NextResponse.json({ entries });
   }
 
-  const entries = readDiary(dir, file);
+  const entries = await readDiary(dir, file);
   return NextResponse.json({ entries });
 }

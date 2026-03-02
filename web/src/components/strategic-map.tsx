@@ -39,6 +39,14 @@ import { CivIcon, CivSymbol } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 import { SpatialCharts } from "./spatial-charts";
 import type { SpatialTurn } from "@/lib/diary-types";
+import {
+  SQRT3,
+  CS_TYPE_COLORS,
+  hexCenter,
+  hexVerts,
+  screenToHex,
+} from "@/lib/hex-geometry";
+import { computeBorderLoops } from "@/lib/map-borders";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -47,88 +55,89 @@ function triggerDownload(blob: Blob, filename: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
 
-// ── Constants ─────────────────────────────────────────────────────────────
+// ── Export controls sub-component ─────────────────────────────────────────
 
-const SQRT3 = Math.sqrt(3);
-
-const CS_TYPE_COLORS: Record<string, string> = {
-  Scientific: "#4A90D9",
-  Cultural: "#9B59B6",
-  Militaristic: "#CA1415",
-  Religious: "#F9F9F9",
-  Trade: "#F7D801",
-  Industrial: "#FF8112",
-};
-
-// Odd-r offset neighbors: E, SE, SW, W, NW, NE
-const NEIGHBORS_EVEN = [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
-const NEIGHBORS_ODD  = [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]];
-
-// Edge-vertex indices for border drawing (accounting for Y-flip)
-// Screen vertices: 0=top, 1=NE, 2=SE, 3=bottom, 4=SW, 5=NW
-// After Y-flip: game-N→screen-bottom, game-S→screen-top
-const EDGE_VERTICES: [number, number][] = [
-  [1, 2], [0, 1], [5, 0], [4, 5], [3, 4], [2, 3],
-];
-
-// ── Pure geometry helpers ─────────────────────────────────────────────────
-
-/** Hex center in CSS-pixel coords (pointy-top, odd-r offset, Y-flipped) */
-function hexCenter(
-  col: number, row: number, hexSize: number, gridH: number,
-): [number, number] {
-  const flippedRow = gridH - 1 - row;
-  const cx = SQRT3 * hexSize * (col + 0.5 * (row & 1)) + (SQRT3 * hexSize) / 2;
-  const cy = 1.5 * hexSize * flippedRow + hexSize;
-  return [cx, cy];
+interface MapExportControlsProps {
+  exporting: string | null;
+  exportProgress: number;
+  exportMenuOpen: boolean;
+  exportMenuRef: React.RefObject<HTMLDivElement | null>;
+  onToggleMenu: () => void;
+  onExport: (format: "png" | "video" | "gif") => void;
+  onCancel: () => void;
 }
 
-/** Flat array of pointy-top hex vertices (12 numbers: x0,y0,...x5,y5) */
-function hexVerts(cx: number, cy: number, s: number): number[] {
-  const h = (SQRT3 / 2) * s;
-  return [
-    cx,     cy - s,      // 0: top
-    cx + h, cy - s / 2,  // 1: NE
-    cx + h, cy + s / 2,  // 2: SE
-    cx,     cy + s,      // 3: bottom
-    cx - h, cy + s / 2,  // 4: SW
-    cx - h, cy - s / 2,  // 5: NW
-  ];
-}
-
-/** Approximate screen pixel → game hex (col, row) via nearest-center search */
-function screenToHex(
-  px: number, py: number,
-  hexSize: number, gridW: number, gridH: number,
-): [number, number] | null {
-  // Approximate row from cy = 1.5 * hexSize * flippedRow + hexSize
-  const flippedRow = Math.round((py - hexSize) / (1.5 * hexSize));
-  const row = gridH - 1 - flippedRow;
-  // Approximate col from cx
-  const offset = 0.5 * (row & 1);
-  const col = Math.round(px / (SQRT3 * hexSize) - 0.5 - offset);
-
-  // Check this hex and its 6 neighbors — find closest center
-  const deltas = row % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
-  const candidates: [number, number][] = [[col, row]];
-  for (const [dx, dy] of deltas) candidates.push([col + dx, row + dy]);
-
-  let bestDist = Infinity;
-  let best: [number, number] | null = null;
-
-  for (const [c, r] of candidates) {
-    if (c < 0 || c >= gridW || r < 0 || r >= gridH) continue;
-    const [cx, cy] = hexCenter(c, r, hexSize, gridH);
-    const d = (px - cx) ** 2 + (py - cy) ** 2;
-    if (d < bestDist) { bestDist = d; best = [c, r]; }
+function MapExportControls({
+  exporting,
+  exportProgress,
+  exportMenuOpen,
+  exportMenuRef,
+  onToggleMenu,
+  onExport,
+  onCancel,
+}: MapExportControlsProps) {
+  if (exporting) {
+    return (
+      <div className="flex items-center gap-2 rounded border border-marble-300 px-2 py-1">
+        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-marble-200">
+          <div
+            className="h-full rounded-full bg-gold-dark transition-all"
+            style={{ width: `${exportProgress * 100}%` }}
+          />
+        </div>
+        <span className="font-mono text-[10px] tabular-nums text-marble-500">
+          {Math.round(exportProgress * 100)}%
+        </span>
+        <button
+          onClick={onCancel}
+          className="rounded p-0.5 text-marble-400 hover:bg-marble-200 hover:text-marble-700"
+          title="Cancel export"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    );
   }
 
-  if (!best || bestDist > hexSize * hexSize) return null;
-  return best;
+  return (
+    <div className="relative" ref={exportMenuRef}>
+      <button
+        onClick={onToggleMenu}
+        className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
+        title="Export map"
+      >
+        <Download className="h-4 w-4" />
+      </button>
+      {exportMenuOpen && (
+        <div className="absolute bottom-full right-0 mb-1 rounded border border-marble-300 bg-white shadow-md z-50">
+          <button
+            onClick={() => onExport("png")}
+            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
+          >
+            <Camera className="h-3 w-3" /> Screenshot (PNG)
+          </button>
+          <button
+            onClick={() => onExport("video")}
+            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
+          >
+            <Film className="h-3 w-3" /> Export Video
+          </button>
+          <button
+            onClick={() => onExport("gif")}
+            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
+          >
+            <ImageIcon className="h-3 w-3" /> Export GIF
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Outer component (loading states) ──────────────────────────────────────
@@ -369,6 +378,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
   useEffect(() => {
     const app = new Application();
     let destroyed = false;
+    let cleanupRectListeners: (() => void) | null = null;
 
     (async () => {
       // Viewport = container width (or fallback) × fixed height
@@ -487,81 +497,17 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
             }
           }
 
-          // Territory borders — boundary edge graph walk for continuous contours.
-          // Collect directed boundary edges per owner, then walk closed loops.
-          const bh = (SQRT3 / 2) * hexSize;
-          const vOffsets: [number, number][] = [
-            [0, -hexSize],      [bh, -hexSize / 2], [bh, hexSize / 2],
-            [0, hexSize],       [-bh, hexSize / 2],  [-bh, -hexSize / 2],
-          ];
-          const vKey = (vx: number, vy: number) =>
-            `${Math.round(vx * 100)},${Math.round(vy * 100)}`;
-
-          // Per-owner edge map: fullVertexKey → { inset coords of destination, full key of destination }
-          const edgesByOwner = new Map<number, Map<string, { ix: number; iy: number; nk: string }>>();
-
-          for (let y = 0; y < gridH; y++) {
-            for (let x = 0; x < gridW; x++) {
-              const idx = y * gridW + x;
-              const owner = owners[idx];
-              if (owner < 0) continue;
-              const [cx, cy] = hexCenter(x, y, hexSize, gridH);
-              const deltas = y % 2 === 0 ? NEIGHBORS_EVEN : NEIGHBORS_ODD;
-
-              for (let d = 0; d < 6; d++) {
-                const nx = x + deltas[d][0];
-                const ny = y + deltas[d][1];
-                const nOwner =
-                  nx >= 0 && nx < gridW && ny >= 0 && ny < gridH
-                    ? owners[ny * gridW + nx]
-                    : -1;
-                if (nOwner === owner) continue;
-
-                const [vi, vj] = EDGE_VERTICES[d];
-                // Full-size vertex positions (shared exactly between adjacent hexes)
-                const fromX = cx + ox + vOffsets[vi][0];
-                const fromY = cy + vOffsets[vi][1];
-                const toX = cx + ox + vOffsets[vj][0];
-                const toY = cy + vOffsets[vj][1];
-
-                let edges = edgesByOwner.get(owner);
-                if (!edges) { edges = new Map(); edgesByOwner.set(owner, edges); }
-                const fk = vKey(fromX, fromY);
-                if (!edges.has(fk)) {
-                  edges.set(fk, { ix: toX, iy: toY, nk: vKey(toX, toY) });
-                }
-              }
-            }
-          }
-
-          // Walk closed loops per owner and render
+          // Territory borders — contour walk
+          const borderLoops = computeBorderLoops(gridW, gridH, hexSize, ox, owners);
           const bw = Math.max(1, hexSize * 0.22);
-          for (const [owner, edges] of edgesByOwner) {
+          for (const { owner, points } of borderLoops) {
             const colors = playerColors.get(owner);
             if (!colors) continue;
-            const visited = new Set<string>();
-
-            for (const [startKey] of edges) {
-              if (visited.has(startKey)) continue;
-              // Walk the loop
-              const loop: number[] = [];
-              let key = startKey;
-              while (!visited.has(key)) {
-                visited.add(key);
-                const edge = edges.get(key);
-                if (!edge) break;
-                loop.push(edge.ix, edge.iy);
-                key = edge.nk;
-              }
-              if (loop.length < 6) continue; // need at least 3 vertices
-
-              borderGfx.moveTo(loop[0], loop[1]);
-              for (let i = 2; i < loop.length; i += 2) {
-                borderGfx.lineTo(loop[i], loop[i + 1]);
-              }
-              borderGfx.closePath();
+            borderGfx.moveTo(points[0], points[1]);
+            for (let i = 2; i < points.length; i += 2) {
+              borderGfx.lineTo(points[i], points[i + 1]);
             }
-
+            borderGfx.closePath();
             borderGfx.stroke({ width: bw, color: colors.secondary, join: "miter", alignment: 1 });
           }
 
@@ -677,39 +623,76 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
         const cities = getCitiesAtTurn(currentTurnRef.current);
         const city = cities.find((c) => c.x === col && c.y === row);
 
-        let html = `<span class="font-medium">${civName}</span>`;
-        if (player.csType) {
-          html += ` <span style="opacity:0.6">(${player.csType})</span>`;
-        }
+        // Build tooltip content via DOM (no innerHTML)
+        tooltip.textContent = "";
+        const heading = document.createElement("span");
+        heading.className = "font-medium";
+
         if (city) {
           const name = cityNames[`${col},${row}`];
           if (name) {
-            html = `<span class="font-medium">${name}</span>`;
-            html += `<br/><span style="opacity:0.6">${civName} · Pop ${city.pop}</span>`;
+            heading.textContent = name;
+            tooltip.appendChild(heading);
+            const detail = document.createElement("span");
+            detail.style.opacity = "0.6";
+            detail.textContent = `${civName} · Pop ${city.pop}`;
+            tooltip.appendChild(document.createElement("br"));
+            tooltip.appendChild(detail);
           } else {
-            html += `<br/><span style="opacity:0.6">Pop ${city.pop}</span>`;
+            heading.textContent = civName;
+            tooltip.appendChild(heading);
+            if (player.csType) {
+              const cs = document.createElement("span");
+              cs.style.opacity = "0.6";
+              cs.textContent = ` (${player.csType})`;
+              tooltip.appendChild(cs);
+            }
+            const pop = document.createElement("span");
+            pop.style.opacity = "0.6";
+            pop.textContent = `Pop ${city.pop}`;
+            tooltip.appendChild(document.createElement("br"));
+            tooltip.appendChild(pop);
           }
           // Ownership history
           const hist = cityHistory.get(`${col},${row}`);
           if (hist && hist.length > 1) {
-            html += `<br/><span style="opacity:0.5; font-size:10px">`;
-            html += hist.map((h) => {
+            const histSpan = document.createElement("span");
+            histSpan.style.opacity = "0.5";
+            histSpan.style.fontSize = "10px";
+            histSpan.textContent = hist.map((h) => {
               const p = players.find((pp) => pp.pid === h.pid);
               const cn = p ? canonicalCivName(cleanCivName(p.civ)) : `P${h.pid}`;
               return `T${h.turn} ${cn}`;
             }).join(" → ");
-            html += `</span>`;
+            tooltip.appendChild(document.createElement("br"));
+            tooltip.appendChild(histSpan);
+          }
+        } else {
+          heading.textContent = civName;
+          tooltip.appendChild(heading);
+          if (player.csType) {
+            const cs = document.createElement("span");
+            cs.style.opacity = "0.6";
+            cs.textContent = ` (${player.csType})`;
+            tooltip.appendChild(cs);
           }
         }
-
-        tooltip.innerHTML = html;
         tooltip.style.display = "block";
 
-        // Position tooltip using screen coords
-        const rect = app.canvas.getBoundingClientRect();
-        tooltip.style.left = `${rect.left + sx + 12}px`;
-        tooltip.style.top = `${rect.top + sy - 8}px`;
+        // Position tooltip using cached canvas rect (updated on scroll/resize)
+        tooltip.style.left = `${canvasRect.left + sx + 12}px`;
+        tooltip.style.top = `${canvasRect.top + sy - 8}px`;
       });
+
+      // Cache canvas rect, update on scroll/resize
+      let canvasRect = app.canvas.getBoundingClientRect();
+      const updateRect = () => { canvasRect = app.canvas.getBoundingClientRect(); };
+      window.addEventListener("resize", updateRect);
+      window.addEventListener("scroll", updateRect, true);
+      cleanupRectListeners = () => {
+        window.removeEventListener("resize", updateRect);
+        window.removeEventListener("scroll", updateRect, true);
+      };
 
       // ── Wheel zoom (centered on cursor) ────────────────────────────
 
@@ -776,6 +759,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
         el.removeChild(app.canvas);
       }
       app.destroy(true, { children: true });
+      cleanupRectListeners?.();
     };
   }, [
     worldW, worldH, VIEWPORT_H, hexSize, terrain, gridW, gridH,
@@ -916,10 +900,15 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
   }, []);
 
   // Close export menu on outside click
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!exportMenuOpen) return;
-    const close = () => setExportMenuOpen(false);
-    document.addEventListener("click", close, { once: true });
+    const close = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [exportMenuOpen]);
 
@@ -962,6 +951,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
       {/* Pixi canvas container — fixed height viewport */}
       <div
         ref={containerRef}
+        aria-label="Strategic map replay"
         className="overflow-hidden rounded-sm border border-marble-300 bg-[#1a1a2e] cursor-grab active:cursor-grabbing"
         style={{ height: VIEWPORT_H }}
       />
@@ -1018,6 +1008,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
           max={maxTurn}
           value={currentTurn}
           disabled={!!exporting}
+          aria-label="Turn navigation"
           onChange={(e) => {
             setPlaying(false);
             const newTurn = Number(e.target.value);
@@ -1037,58 +1028,15 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
         </button>
 
         {/* Export */}
-        {exporting ? (
-          <div className="flex items-center gap-2 rounded border border-marble-300 px-2 py-1">
-            <div className="h-1.5 w-16 overflow-hidden rounded-full bg-marble-200">
-              <div
-                className="h-full rounded-full bg-gold-dark transition-all"
-                style={{ width: `${exportProgress * 100}%` }}
-              />
-            </div>
-            <span className="font-mono text-[10px] tabular-nums text-marble-500">
-              {Math.round(exportProgress * 100)}%
-            </span>
-            <button
-              onClick={cancelExport}
-              className="rounded p-0.5 text-marble-400 hover:bg-marble-200 hover:text-marble-700"
-              title="Cancel export"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
-          <div className="relative">
-            <button
-              onClick={() => setExportMenuOpen((s) => !s)}
-              className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
-              title="Export map"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-            {exportMenuOpen && (
-              <div className="absolute bottom-full right-0 mb-1 rounded border border-marble-300 bg-white shadow-md z-50">
-                <button
-                  onClick={() => handleExport("png")}
-                  className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
-                >
-                  <Camera className="h-3 w-3" /> Screenshot (PNG)
-                </button>
-                <button
-                  onClick={() => handleExport("video")}
-                  className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
-                >
-                  <Film className="h-3 w-3" /> Export Video
-                </button>
-                <button
-                  onClick={() => handleExport("gif")}
-                  className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
-                >
-                  <ImageIcon className="h-3 w-3" /> Export GIF
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+        <MapExportControls
+          exporting={exporting}
+          exportProgress={exportProgress}
+          exportMenuOpen={exportMenuOpen}
+          exportMenuRef={exportMenuRef}
+          onToggleMenu={() => setExportMenuOpen((s) => !s)}
+          onExport={handleExport}
+          onCancel={cancelExport}
+        />
       </div>
 
       {/* Legend — major civs */}

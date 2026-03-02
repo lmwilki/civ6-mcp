@@ -16,6 +16,7 @@ import {
   GameStatusBadge,
   getGameStatusColor,
   getVictoryTypeMeta,
+  statusColor,
 } from "@/components/game-status-badge";
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -108,6 +109,7 @@ function ToggleChip({
     <button
       className={`${chipBase} ${active ? chipActive : chipDefault}`}
       onClick={onClick}
+      aria-pressed={active}
     >
       {color && (
         <span
@@ -377,16 +379,7 @@ export default function GamesPage() {
                     label={s}
                     active={filters.status.has(s)}
                     onClick={() => toggleFilter("status", s)}
-                    color={
-                      getGameStatusColor(
-                        s === "live" ? "live" : "completed",
-                        s === "victory"
-                          ? { result: "victory", winnerCiv: "", winnerLeader: "", victoryType: "", turn: 0, playerAlive: true }
-                          : s === "defeat"
-                            ? { result: "defeat", winnerCiv: "", winnerLeader: "", victoryType: "", turn: 0, playerAlive: true }
-                            : undefined,
-                      )
-                    }
+                    color={statusColor(s)}
                   />
                 ))}
 

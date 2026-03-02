@@ -11,6 +11,8 @@ type Tab = "diary" | "log" | "map";
 function TabButton({ tab, active, label, setTab }: { tab: Tab; active: Tab; label: string; setTab: (t: Tab) => void }) {
   return (
     <button
+      role="tab"
+      aria-selected={active === tab}
       onClick={() => setTab(tab)}
       className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
         active === tab
@@ -47,7 +49,7 @@ export default function GameDetailPage() {
 
       {/* Tab bar */}
       <div className="shrink-0 border-b border-marble-300 bg-marble-50 px-3 sm:px-6">
-        <div className="mx-auto flex max-w-4xl">
+        <div className="mx-auto flex max-w-4xl" role="tablist">
           <TabButton tab="diary" active={tab} label="Diary" setTab={setTab} />
           <TabButton tab="log" active={tab} label="Turn Log" setTab={setTab} />
           <TabButton tab="map" active={tab} label="Map" setTab={setTab} />

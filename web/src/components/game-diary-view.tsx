@@ -98,26 +98,28 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
   } = useDiarySummary(filename);
 
   // Nav state — index into turnNumbers array
+  type NavAction =
+    | { type: "prev" }
+    | { type: "next"; max: number }
+    | { type: "first" }
+    | { type: "last"; max: number }
+    | { type: "seek"; index: number };
+
   const [nav, dispatch] = useReducer(
-    (
-      state: { userIndex: number; following: boolean },
-      action: { type: string; max?: number; index?: number },
-    ) => {
+    (state: { userIndex: number; following: boolean }, action: NavAction) => {
       switch (action.type) {
         case "prev":
           return { userIndex: Math.max(0, state.userIndex - 1), following: false };
         case "next": {
-          const next = Math.min(action.max!, state.userIndex + 1);
-          return { userIndex: next, following: next >= action.max! };
+          const next = Math.min(action.max, state.userIndex + 1);
+          return { userIndex: next, following: next >= action.max };
         }
         case "first":
           return { userIndex: 0, following: false };
         case "last":
-          return { userIndex: action.max!, following: true };
+          return { userIndex: action.max, following: true };
         case "seek":
-          return { userIndex: action.index!, following: false };
-        default:
-          return state;
+          return { userIndex: action.index, following: false };
       }
     },
     { userIndex: 0, following: true },
@@ -188,6 +190,7 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
               min={0}
               max={maxIdx}
               value={index}
+              aria-label="Turn navigation"
               onChange={(e) =>
                 dispatch({ type: "seek", index: parseInt(e.target.value, 10) })
               }

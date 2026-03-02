@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import type { TurnSeries, NumericPlayerField } from "@/lib/diary-types";
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors";
 import { getCivSymbol } from "@/lib/civ-registry";
@@ -34,10 +34,6 @@ interface MultiCivChartProps {
 export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) {
   const [metric, setMetric] = useState<NumericPlayerField>("score");
   const [rotating, setRotating] = useState(false);
-  const rotatingRef = useRef(rotating);
-  useEffect(() => {
-    rotatingRef.current = rotating;
-  }, [rotating]);
 
   const advanceMetric = useCallback(() => {
     setMetric((prev) => {
@@ -115,6 +111,22 @@ export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) 
       };
     }, [turnSeries, metric]);
 
+  const legendEntries = useMemo(() => {
+    const agentVal = agentValues[currentIndex] ?? 0;
+    const entries = [
+      { key: "agent", name: agentCiv, color: agentColor, value: agentVal as number | null, isAgent: true },
+      ...Array.from(civMap.entries()).map(([pid, { name, color }]) => ({
+        key: pid,
+        name,
+        color,
+        value: turnSeries.players[pid]?.metrics[metric]?.[currentIndex] ?? null,
+        isAgent: false,
+      })),
+    ];
+    entries.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
+    return entries;
+  }, [agentValues, currentIndex, agentCiv, agentColor, civMap, turnSeries, metric]);
+
   if (civMap.size === 0) return null;
 
   const totalPoints = turnSeries.turns.length;
@@ -135,6 +147,7 @@ export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) 
               setMetric(e.target.value as NumericPlayerField);
               setRotating(false);
             }}
+            aria-label="Select metric"
             className="rounded-sm border border-marble-300 bg-marble-100 px-1.5 py-0.5 font-mono text-[10px] text-marble-700"
           >
             {METRIC_OPTIONS.map((opt) => (
@@ -195,59 +208,25 @@ export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) 
       </svg>
       {/* Legend — sorted by selected metric */}
       <div className="mt-1.5 space-y-0.5">
-        {(() => {
-          const agentVal = agentValues[currentIndex] ?? 0;
-          const entries: {
-            key: string;
-            name: string;
-            color: string;
-            value: number | null;
-            isAgent: boolean;
-          }[] = [
-            {
-              key: "agent",
-              name: agentCiv,
-              color: agentColor,
-              value: agentVal,
-              isAgent: true,
-            },
-            ...Array.from(civMap.entries()).map(([pid, { name, color }]) => {
-              const rivalMetrics = turnSeries.players[pid]?.metrics[metric];
-              const value = rivalMetrics?.[currentIndex] ?? null;
-              return {
-                key: pid,
-                name,
-                color,
-                value,
-                isAgent: false,
-              };
-            }),
-          ];
-          entries.sort(
-            (a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity),
-          );
-          return entries.map((e) => {
-            return (
-              <div key={e.key} className="flex items-center gap-1.5">
-                <CivSymbol civ={e.name} className="h-3 w-3" />
-                {!getCivSymbol(e.name) && (
-                  <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: e.color }}
-                  />
-                )}
-                <span
-                  className={`flex-1 text-[10px] ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}
-                >
-                  {e.name}
-                </span>
-                <span className="font-mono text-[10px] tabular-nums text-marble-700">
-                  {e.value ?? "—"}
-                </span>
-              </div>
-            );
-          });
-        })()}
+        {legendEntries.map((e) => (
+          <div key={e.key} className="flex items-center gap-1.5">
+            <CivSymbol civ={e.name} className="h-3 w-3" />
+            {!getCivSymbol(e.name) && (
+              <span
+                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: e.color }}
+              />
+            )}
+            <span
+              className={`flex-1 text-[10px] ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}
+            >
+              {e.name}
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-marble-700">
+              {e.value ?? "—"}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -14,9 +14,9 @@ export function useEloConvex(): EloData {
   const raw = useQuery(api.diary.getEloData);
 
   return useMemo(() => {
-    if (raw === undefined) return { ratings: [], gameCount: 0, loading: true };
+    if (raw === undefined) return { ratings: [], gameCount: 0, loading: true, error: null };
     if (!raw || raw.length === 0)
-      return { ratings: [], gameCount: 0, loading: false };
+      return { ratings: [], gameCount: 0, loading: false, error: null };
 
     const results: GameResult[] = raw.map((g) => {
       const participants: Participant[] = g.players.map((p) => {
@@ -42,6 +42,7 @@ export function useEloConvex(): EloData {
       ratings: computeElo(results),
       gameCount: results.length,
       loading: false,
+      error: null,
     };
   }, [raw]);
 }

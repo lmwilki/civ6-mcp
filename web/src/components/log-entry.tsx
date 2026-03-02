@@ -33,11 +33,6 @@ function formatTime(ts: number): string {
   });
 }
 
-function formatToolName(tool?: string): string {
-  if (!tool) return "unknown";
-  return tool;
-}
-
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max) + "\u2026";
@@ -73,7 +68,7 @@ export function LogEntry({ entry }: LogEntryProps) {
           <span
             className={`shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-xs ${badgeStyles[cat]}`}
           >
-            {formatToolName(entry.tool)}
+            {entry.tool ?? "unknown"}
           </span>
 
           {/* Result summary */}

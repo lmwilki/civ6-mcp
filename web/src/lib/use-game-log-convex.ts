@@ -14,7 +14,7 @@ export function useGameLogsConvex(): GameLogInfo[] {
 
 /** Convex-backed game log entries — real-time subscription. */
 export function useGameLogConvex(
-  _live: boolean,
+  _live: boolean, // Convex subscriptions are inherently live; kept for interface parity
   game: string | null,
   session?: string | null,
 ) {

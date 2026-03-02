@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFileSync, existsSync } from "fs";
+import { readFile } from "fs/promises";
+import { existsSync } from "fs";
 import { getLogFilePath } from "./shared";
 
 export async function GET(req: NextRequest) {
@@ -12,13 +13,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json([]);
   }
 
-  const logPath = getLogFilePath(game);
+  let logPath: string;
+  try {
+    logPath = getLogFilePath(game);
+  } catch {
+    return NextResponse.json({ error: "Invalid game name" }, { status: 400 });
+  }
+
   if (!existsSync(logPath)) {
     return NextResponse.json([]);
   }
 
   try {
-    const content = readFileSync(logPath, "utf-8");
+    const content = await readFile(logPath, "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
 
     const entries = [];
@@ -37,6 +44,6 @@ export async function GET(req: NextRequest) {
       headers: { "X-Total-Lines": String(lines.length) },
     });
   } catch {
-    return NextResponse.json([]);
+    return NextResponse.json({ error: "Failed to read log" }, { status: 500 });
   }
 }

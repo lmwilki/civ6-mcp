@@ -133,6 +133,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
             <select
               value={selectedSession ?? ""}
               onChange={(e) => setSelectedSession(e.target.value || null)}
+              aria-label="Filter by session"
               className="rounded-sm border border-marble-300 bg-marble-100 px-2 py-1 font-mono text-xs text-marble-700"
             >
               <option value="">All sessions</option>
@@ -152,6 +153,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                 <button
                   key={cat}
                   onClick={() => toggleCategory(cat)}
+                  aria-pressed={active}
                   className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] transition-colors ${
                     active ? CATEGORY_STYLES[cat].on : CATEGORY_STYLES[cat].off
                   }`}
@@ -223,6 +225,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                           <button
                             key={tool}
                             onClick={() => toggleTool(tool)}
+                            aria-pressed={!hidden}
                             className={`rounded-sm border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
                               hidden
                                 ? "border-marble-200 bg-marble-50 text-marble-400 line-through"

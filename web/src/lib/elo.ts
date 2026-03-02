@@ -32,6 +32,7 @@ export interface EloData {
   ratings: EloEntry[];
   gameCount: number;
   loading: boolean;
+  error: string | null;
 }
 
 // ─── ELO computation ────────────────────────────────────────────────────────

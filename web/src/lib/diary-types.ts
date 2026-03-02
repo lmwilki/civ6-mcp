@@ -351,11 +351,6 @@ export function unpackCityFrames(flat: number[]): MapCityFrame[] {
   return frames;
 }
 
-/** Unpack packed road frames — same shape as owner frames [turn, count, tileIdx, routeType, ...] */
-export function unpackRoadFrames(flat: number[]): MapFrame[] {
-  return unpackOwnerFrames(flat); // Same binary layout
-}
-
 // === Grouped view (client-side computed) ===
 
 export interface TurnData {

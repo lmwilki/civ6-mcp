@@ -9,6 +9,7 @@ function useEloFs(): EloData {
   const [ratings, setRatings] = useState<EloEntry[]>([]);
   const [gameCount, setGameCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let first = true;
@@ -18,8 +19,11 @@ function useEloFs(): EloData {
         .then((data) => {
           setRatings(data.ratings || []);
           setGameCount(data.gameCount || 0);
+          setError(null);
         })
-        .catch(() => {})
+        .catch((e) => {
+          setError(e instanceof Error ? e.message : "Failed to load ELO data");
+        })
         .finally(() => {
           if (first) {
             setLoading(false);
@@ -32,7 +36,7 @@ function useEloFs(): EloData {
     return () => clearInterval(id);
   }, []);
 
-  return { ratings, gameCount, loading };
+  return { ratings, gameCount, loading, error };
 }
 
 export const useElo = CONVEX_MODE ? useEloConvex : useEloFs;
