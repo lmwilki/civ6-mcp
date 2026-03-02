@@ -2,9 +2,7 @@
 
 An MCP server connecting to a live Civilization VI game via FireTuner. You can read full game state and issue commands. All commands respect game rules.
 
-## Sensorium Awareness
-
-**You only know what you explicitly query.** A human player passively absorbs the score ticker, religion lens, unit health bars — you have none of that. Information you don't ask for simply doesn't enter your world model. The checkpoints and patterns below exist to compensate for this.
+**You only know what you explicitly query.** A human player passively absorbs the score ticker, religion lens, unit health bars — you have none of that. Information you don't ask for simply doesn't enter your world model. The patterns below exist to compensate for this.
 
 `end_turn` now runs **empire warnings** automatically — alerts for loyalty crises, idle trade routes, gold deficits, resource caps, scoreboard position, and military imbalance. These compensate for the most common blind spots, but don't replace periodic deep checks (victory progress, religion spread, diplomacy).
 
@@ -59,11 +57,10 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 ### Around every 10 turns:
 - `get_empire_resources` — unimproved luxuries and nearby strategics
 - Surplus luxuries: duplicates beyond 1 copy provide zero amenity benefit. Trade them via `propose_trade` for GPT, strategic resources, or luxury types you don't own (each new type = +1 amenity to 4 cities). Even 5 GPT per surplus luxury adds up over 30 turns.
-- Gold balance: if gold is accumulating above ~500 with no specific plan, deploying it (builder, tile, building, unit) is usually better than holding it
-- Faith balance: high faith is most valuable when spent — Great Person patronage, faith purchases, religious units
-- City count vs benchmarks (see below) — if expansion is behind, a settler tends to be the highest-leverage production choice
-- Trade route capacity — idle routes are free yields going uncollected
-- Government tier — switching when a new tier unlocks is free the first time
+- Gold/faith balance: if either is accumulating with no plan, spend it — `purchase_item`, `purchase_tile`, `patronize_great_person`
+- City count vs time in game — if expansion is behind, a settler tends to be the highest-leverage production choice
+- `get_trade_routes` — check for idle routes; idle routes are free yields going uncollected
+- Government tier — `change_government` when a new tier unlocks (free the first time)
 - Era score vs thresholds — shown in `get_game_overview`; a Dark Age is recoverable but costly
 - Great People — `get_great_people`; rivals will recruit what you don't
 
@@ -88,25 +85,17 @@ Hills cost 2 movement, forests/jungles cost 2, and they stack (forest-hills = 3+
 
 `get_pathing_estimate(unit_id, target_x, target_y)` estimates how many turns a unit needs to reach a destination, using the game's actual pathfinding. Use it before committing units to long marches.
 
-### Gold
-Gold sitting above 500 with no specific plan is usually better deployed. A builder, a luxury tile, a building that skips 5+ turns of production — these compound. Saving for a specific purchase is fine, but it helps to name the item and the turn.
-
-### Faith
-Faith above 500 is usually better spent: Great Person patronage, Monumentality settlers/builders (Golden Age), Grand Master's Chapel military units (wartime), or Naturalists (late-game tourism). If it's accumulating past 500, consider what it could buy this turn.
+### Spending Gold & Faith
+Gold and faith sitting idle lose value over time. `purchase_item(city_id, item_type, item_name)` buys units/buildings instantly with gold (or faith via `yield_type="YIELD_FAITH"`). `purchase_tile(city_id, x, y)` buys a specific tile. `patronize_great_person` buys a GP outright. If you're saving, name the item and the turn — otherwise, deploy it.
 
 ### Expansion
-Each city multiplies your districts, yields, and Great Person generation. The gap between a 3-city and 5-city empire by the Medieval era is hard to recover from. Rough benchmarks:
-- Late Ancient: 2 cities underway
-- Early Classical: 3 cities
-- Late Classical: 4 cities
-- Medieval: 4-5 cities
-If city count is lagging, a settler is typically the highest-impact production choice — more so than most infrastructure in existing cities. Check loyalty before settling: negative-loyalty sites near rivals need a governor (Victor or Amani) assigned immediately or they'll flip.
+Each city multiplies your districts, yields, and Great Person generation. The gap between a 3-city and 5-city empire by the Medieval era is hard to recover from. If city count is lagging, a settler is typically the highest-impact production choice — more so than most infrastructure in existing cities. Check loyalty before settling: negative-loyalty sites near rivals need a governor assigned immediately via `assign_governor(governor_type, city_id)` or they'll flip.
 
 ### Growth
-Stagnant cities fall behind exponentially. If any city has food surplus ≤ 0, that's worth fixing this turn (Farm, Granary, domestic Trade Route, or citizen reassignment). Turns-to-growth over 15 is a signal the city needs food infrastructure.
+Stagnant cities fall behind exponentially. If any city has food surplus ≤ 0, that's worth fixing this turn (Farm, Granary, domestic Trade Route, or `set_city_focus(city_id, "FOOD")`). Turns-to-growth over 15 is a signal the city needs food infrastructure.
 
 ### Exploration
-You can't settle what you can't see, and you can't counter threats you don't know exist. A scout set to `automate` is one of the best investments in the early game. If a scout is lost or stuck, replacing it early keeps the information flow going. Aim for ≥25% explored by Classical, ≥50% by Medieval.
+You can't settle what you can't see, and you can't counter threats you don't know exist. A scout set to `automate` is one of the best investments in the early game. If a scout is lost or stuck, replacing it early keeps the information flow going.
 
 ### Diplomacy
 Diplomacy generates yield: each alliance +1 favor/turn per alliance level, each suzerainty +1 favor/turn. Government tier also gives favor. This compounds. Friendships don't give favor directly but enable alliances (which do). Delegations (25g) are cheap on first meeting. Friendships open up when a civ is Friendly. Alliances require friendship (30+ turns) and Diplomatic Service civic. Embassies are available once Writing is researched.
@@ -114,10 +103,10 @@ Diplomacy generates yield: each alliance +1 favor/turn per alliance level, each 
 If favor is accumulating above 100 with no World Congress imminent, it's worth thinking about whether it could be better deployed in trade or alliance building.
 
 ### Wartime
-During war, keeping a military unit garrisoned in or near each city is worth the tradeoff against offensive strength. Cities that fall are expensive to recover. If your military strength is significantly below an enemy's and you're not making progress, peace — available after a 10-turn cooldown — is usually better than a war of attrition while the rest of the map moves on.
+During war, keeping a military unit garrisoned in or near each city is worth the tradeoff against offensive strength. Cities with walls can fire at enemies via `city_action(city_id, "attack", target_x, target_y)` (range 2). Cities that fall are expensive to recover — when you capture a city, `city_action` with `keep`, `raze`, or `liberate_founder`/`liberate_previous` resolves the decision. If your military strength is significantly below an enemy's and you're not making progress, `propose_peace(player_id)` — available after a 10-turn cooldown — is usually better than a war of attrition while the rest of the map moves on.
 
 ### Military Readiness
-Check rival military strength in `get_diplomacy` periodically. A neighbor at 2x+ your strength who isn't a friend or ally is a risk worth taking seriously. Minimum useful peacetime: 1 garrison per city plus a mobile unit. Units become progressively weaker relative to rivals if not upgraded when new techs unlock (Slinger→Archer with Archery, Warrior→Swordsman with Iron Working).
+Check rival military strength in `get_diplomacy` periodically. A neighbor at 2x+ your strength who isn't a friend or ally is a risk worth taking seriously. Minimum useful peacetime: 1 garrison per city plus a mobile unit. Units become progressively weaker relative to rivals if not upgraded (Slinger→Archer with Archery, Warrior→Swordsman with Iron Working) — use `upgrade_unit`.
 
 ### Barbarian Camps
 Camps upgrade with the era — an Ancient-era camp spawns Warriors; the same camp in the Medieval era spawns Man-at-Arms. Clearing a camp within a few turns of finding it is almost always easier than fighting the units it produces over many turns.
@@ -125,18 +114,17 @@ Camps upgrade with the era — an Ancient-era camp spawns Warriors; the same cam
 ### Religion
 Religious victory is the easiest win condition to miss because it produces no notifications and unfolds slowly. `get_religion_spread` shows the picture. If a rival religion reaches majority in most civs, the window for a response narrows quickly. Religious units bought from a city carry **that city's majority religion** — buy them from cities where your own religion is majority, not a converted city.
 
+To found a religion: build a Holy Site → earn a Great Prophet → `get_religion_beliefs()` to see available beliefs → `found_religion(name, beliefs)`. The Great Prophet pool fills early (roughly half the major civs).
+
 Trade routes spread the origin city's religion to the destination — worth factoring into routing decisions if conversion pressure is a concern.
 
 ### Victory Path Viability
-Some paths close. It's worth checking periodically:
+Some paths close. It's worth checking periodically via `get_victory_progress`:
 
-- **Science**: 4+ cities with Campuses and Universities generating 80+ science by the Renaissance era. Late game: Spaceport district (1 per city is enough), then 4 space projects in sequence. Research Agreements (from Research Alliances) and Great Scientists accelerate. If significantly behind on techs by the Industrial era, this path is very difficult.
-
-- **Culture**: Tourism ≠ culture. Culture generates domestic tourists (your defense); tourism generates visiting tourists against other civs (your offense). Win when your visiting tourists from each civ exceed their domestic tourists. Key infrastructure: Theater Squares with Museums, Great Works with theming bonuses, Wonders. Key multipliers (per civ): Open Borders +25%, Trade Route +25% — pursue these with every civ. Late-game accelerants: National Parks (Naturalists cost faith), Seaside Resorts, Rock Bands (send to tiles with Wonders for large bursts), Heritage Tourism civic (+100% from Art/Artifacts), Online Communities civic (+50% to all). Zero Theater Squares by the Medieval era puts this path very far behind.
-
-- **Religious**: Requires a founded religion — the Great Prophet pool fills early (roughly half the major civs), so Holy Site infrastructure in the early Ancient era matters. Pipeline: Holy Site → Shrine (enables Missionaries, 3 spread charges each) → Temple (enables Apostles, which fight in theological combat). Theological combat is the primary conversion tool at scale: killing an enemy religious unit applies 250 pressure in a 10-tile radius. Key apostle promotions: Proselytizer (removes 75% foreign pressure on spread). Theocracy government gives +5 theological combat strength and -15% faith purchase cost. Inquisitors defend your cities (+35 RS in own territory). If the Classical era arrives with no religion, this path is closed. If pursuing: buy religious units only from cities where your religion is majority.
-
-- **Diplomatic**: 20 DVP to win. Sources: World Congress resolutions (+2 from DVP-specific resolution, +1 for winning any resolution's outcome), scored competitions (Aid Requests, World Games), wonders (Statue of Liberty +4, Mahabodhi Temple +2, Potala Palace +1). Favor income stacks: government tier (higher = more), each alliance (+1/t per alliance level), each suzerainty (+1/t). Defensive technique: if a DVP-stripping resolution targets you, voting Option B targeting yourself costs only -1 DVP (vs -2 from Option A), and winning that outcome gives +1 back = net 0. Viable at most empire sizes; the main requirement is diplomatic relationships and favor accumulation.
+- **Science**: Campuses → Universities → Spaceport → 4 space projects. Research Alliances and Great Scientists accelerate.
+- **Culture**: Tourism (offense) vs rival domestic tourists (defense). Theater Squares, Great Works, Wonders, Open Borders (+25%), Trade Routes (+25%). Late-game: National Parks, Rock Bands, Seaside Resorts.
+- **Religious**: Requires a founded religion (Great Prophet pool fills early). Missionaries spread; Apostles fight theological combat (killing = 250 pressure in 10-tile radius). Buy religious units only from cities where your religion is majority.
+- **Diplomatic**: 20 DVP. World Congress resolutions, scored competitions, wonders. Favor from government tier, alliances, suzerainties. If a DVP-stripping resolution targets you, vote Option B on yourself (net 0 vs -2).
 
 ## Combat Quick Reference
 
@@ -173,7 +161,7 @@ Some paths close. It's worth checking periodically:
 | `activate` | Use Great Person | Must be on completed matching district |
 | `spread_religion` | Spread religion | Missionaries/Apostles |
 
-Common improvements: `IMPROVEMENT_FARM`, `IMPROVEMENT_MINE`, `IMPROVEMENT_QUARRY`, `IMPROVEMENT_PLANTATION`, `IMPROVEMENT_PASTURE`, `IMPROVEMENT_CAMP`, `IMPROVEMENT_FISHING_BOATS`
+Common improvements: `IMPROVEMENT_FARM`, `IMPROVEMENT_MINE`, `IMPROVEMENT_QUARRY`, `IMPROVEMENT_PLANTATION`, `IMPROVEMENT_PASTURE`, `IMPROVEMENT_CAMP`, `IMPROVEMENT_FISHING_BOATS`, `IMPROVEMENT_LUMBER_MILL`
 
 Feature removal: Forest, jungle, and marsh tiles block most improvements (e.g. Farm). Use `remove_feature` to chop/harvest the feature first, then `improve` to build. Lumber Mill and Camp work on forest/jungle without removal. Check `valid_improvements` in `get_units` output — if FARM isn't listed on a tile you expect it, the tile likely has a blocking feature.
 
@@ -181,18 +169,24 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 
 `get_cities` shows unimproved resource tiles and pillaged improvements/districts per city — use this to prioritize builder work without needing to scan `get_map_area` manually.
 
+| Other unit tools | |
+|--------|--------|
+| `skip_remaining_units` | Skip all units with remaining moves (useful after diplomacy) |
+| `upgrade_unit(unit_id)` | Upgrade to next type (requires tech + resources + gold) |
+
 ## End Turn Blockers
 
 `end_turn` resolves blockers before advancing. If it returns a blocker:
 - **Units**: unmoved units need orders (move / skip / fortify)
 - **Production**: city queue empty — set new production
 - **Research/Civic**: completed — choose next
-- **Governor**: point available — `get_governors` → `appoint_governor`
+- **Governor**: point available — `get_governors` → `appoint_governor` / `assign_governor(governor_type, city_id)` / `promote_governor(governor_type, promotion_type)`
 - **Promotion**: unit has XP — `get_unit_promotions` → `promote_unit`
 - **Policy Slot**: empty — `get_policies` → `set_policies`
-- **Pantheon/Religion**: faith threshold reached — `get_pantheon_beliefs` → `choose_pantheon`
+- **Pantheon/Religion**: faith threshold reached — `get_pantheon_beliefs` → `choose_pantheon`; for founding: `get_religion_beliefs` → `found_religion`
 - **Envoys**: tokens available — `get_city_states` → `send_envoy`
 - **Dedication**: new era — `get_dedications` → `choose_dedication`
+- **City Capture**: conquered or disloyal city — `city_action(city_id, "keep"/"raze"/"liberate_founder"/"liberate_previous")`
 - Move responses show the **target tile**, not arrival position (async pathfinding)
 
 ## Diplomacy
@@ -206,8 +200,12 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 - `form_alliance(player_id, type)` — types: MILITARY/RESEARCH/CULTURAL/ECONOMIC/RELIGIOUS; requires friendship 30t + Diplomatic Service civic
 - `propose_trade(player_id, ...)` — trade gold/GPT/resources/favor/open borders
 - `propose_peace(player_id)` — white peace; 10t war cooldown required
+- `get_trade_options(other_player_id)` — see what a civ has available to trade
+- `get_pending_trades` — check incoming trade offers; `respond_to_trade(player_id, accept)` to accept/reject
 - Check `get_diplomacy` for defensive pacts before declaring war
 - `get_diplomacy` shows leader agendas — historical agendas are always visible; random agendas require Secret diplomatic visibility (spy in their capital or alliance). Use agendas to predict AI behavior and avoid relationship penalties.
+
+**Espionage:** `get_spies` → `spy_action(spy_id, action, ...)`. Actions: `travel` to a city first, then run operations (steal tech, neutralize governors, etc.). Offensive missions only work after the spy arrives.
 
 **City-states:** `get_city_states` → `send_envoy`. Suzerainty = +1 favor/turn. Types: Scientific/Industrial/Trade/Cultural/Religious/Militaristic.
 
@@ -215,22 +213,13 @@ Builders repair tile improvements. Pillaged **district buildings** (Workshop, Ar
 
 ## Production & Research
 
-**Common early tech path:** Pottery → Archery → Mining → Animal Husbandry → Bronze Working
-
-**Common early civics:** Code of Laws → Foreign Trade → Early Empire
-
-**Production priority guidance:**
-1. Settler — if city count is behind benchmarks and a good site is identified
-2. Military unit — if under threat or a city has no garrison
-3. Builder — if unimproved luxury/strategic resources exist
-4. Trader — if route capacity exceeds active routes
-5. District — Campus compounds well early; Commercial Hub provides trade routes and gold
-6. Buildings — Library, Market within completed districts
-7. Infrastructure — Granary, Water Mill, Monument
-
 Wonders — high-production cities can slot these between infrastructure. Use `get_wonder_advisor(city_id, wonder_name)` for placement, then `set_city_production` with target_x/y. Science: Great Library, Oxford University, Kilwa Kisiwani. Culture: Chichen Itza, Forbidden City. General: Ancestral Hall, Pyramids.
 
 **Research:** `get_tech_civics` sorts by turns ascending; items ≤ 2 turns are flagged `!! GRAB THIS` — cheap boosted techs are easy to miss and can unblock entire production chains.
+
+**Purchasing:** `purchase_item(city_id, item_type, item_name)` — buy units or buildings instantly with gold (default) or faith (`yield_type="YIELD_FAITH"`). `get_city_production` shows purchasable items and costs.
+
+**Tiles:** `get_purchasable_tiles(city_id)` → `purchase_tile(city_id, x, y)` — buy border tiles with gold for strategic resources or district placement.
 
 ## District Placement
 
@@ -247,6 +236,7 @@ Use `get_district_advisor(city_id, district_type)` for ranked tiles. Then `set_c
 
 ## Trade Routes
 
+- `get_trade_routes` — see all active routes and idle traders
 - `get_trade_destinations(unit_id)` → available destinations
 - `unit_action(action='trade_route', target_x, target_y)` → start route
 - Domestic routes: food + production to new cities. International: gold.
@@ -255,9 +245,12 @@ Use `get_district_advisor(city_id, district_type)` for ranked tiles. Then `set_c
 
 ## Great People
 
-- `get_great_people` — candidates and recruitment progress
+- `get_great_people` — candidates, recruitment progress, and costs
+- `recruit_great_person(individual_id)` — recruit with accumulated GP points (check `[CAN RECRUIT]`)
+- `patronize_great_person(individual_id)` — buy instantly with gold or faith
+- `reject_great_person(individual_id)` — pass, advance to next candidate in that class
 - Rivals will recruit what you pass on — recruiting quickly tends to be worth it
-- Move GP to its matching completed district; `unit_action(action='activate')`
+- Once recruited, move the GP to its matching completed district; `unit_action(action='activate')`
 - If activation fails, the error message includes the requirements (district type, buildings needed)
 - Don't delete GPs — they show 0 builder charges but that's a different system; they're not consumed until activated
 

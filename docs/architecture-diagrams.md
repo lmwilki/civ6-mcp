@@ -247,6 +247,8 @@ graph LR
     conn --> ig
 ```
 
+*Note: The state indexes shown (8 and 153) are from macOS. On Windows they differ (e.g. 4 and 125). The connection layer discovers the correct indexes during the handshake — you never hardcode them.*
+
 **GameCore (state 8)** is direct access to the simulation. You can read anything — unit positions, city yields, map terrain, tech progress — and you can write some things directly (kill a unit, set a promotion, finish a unit's moves). It's the "god mode" view. But it bypasses the game's rule-checking layer: if you call `UnitManager.FinishMoves()` here, the game just does it without checking whether that action is legal.
 
 **InGame (state 153)** is the UI command layer — it's what the game's own Lua UI code uses when you click buttons. `UnitManager.RequestOperation()` checks whether the unit can actually move there (pathfinding, stacking rules, movement points). `CityManager.RequestOperation()` checks whether the city can actually build that item. `DiplomacyManager` handles the full session protocol for diplomatic actions. Everything goes through the game's validation pipeline, just like a human click would.

@@ -530,11 +530,17 @@ async def load_game_save(conn: GameConnection, save_name: str) -> str:
             f"Check the name and try list_saves() to see available saves."
         )
 
-    # File exists but Lua couldn't find it — use restart_and_load (OCR menu nav)
+    # File exists but Lua couldn't find it — use OCR menu navigation.
+    # If we're at the main menu (no GameCore), navigate directly without
+    # restarting. Only restart_and_load if we're in-game.
     from . import game_launcher
 
-    log.info("Falling back to restart_and_load for '%s'", save_name)
-    return await game_launcher.restart_and_load(save_name)
+    if conn.gamecore_index is None:
+        log.info("At main menu — loading '%s' via OCR menu nav", save_name)
+        return await game_launcher.load_save_from_menu(save_name)
+    else:
+        log.info("In-game — restart_and_load for '%s'", save_name)
+        return await game_launcher.restart_and_load(save_name)
 
 
 async def execute_lua(

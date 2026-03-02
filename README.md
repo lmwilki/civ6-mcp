@@ -28,17 +28,36 @@ Every turn, `end_turn` takes before/after snapshots and reports what happened: u
 
 ## Quick start
 
-### 1. Enable FireTuner in Civ 6
+### 1. Configure Civ 6
 
-Edit `AppOptions.txt` and set `EnableTuner 1`:
+Enable the FireTuner debug interface and configure recommended settings:
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| **Tuner** | Enabled | Required — opens the TCP debug port the MCP server connects to. Disables achievements. |
+| **Auto End Turn** | Disabled | The agent controls when turns end. Auto-end interferes with the blocker resolution flow. |
+| **Windowed mode** | Recommended | Lets you watch the game while the agent plays, and required for the screenshot tool. |
+
+**Windows:** All three settings are available in the in-game Options menu. The Tuner setting appears as "Tuner (disables achievements)" under gameplay options.
+
+**macOS:** The Tuner setting is not exposed in the menu. Edit `AppOptions.txt` directly and set `EnableTuner 1`:
 
 ```
-# macOS
 ~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid Meier's Civilization VI/AppOptions.txt
-
-# Windows
-%USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\AppOptions.txt
 ```
+
+<details>
+<summary><strong>Windows: additional setup</strong></summary>
+
+**Install the Civ 6 SDK** — the tuner server is part of the SDK, not the base game:
+1. In Steam, go to Library → filter by Tools
+2. Find and install "Sid Meier's Civilization VI SDK"
+
+**Important notes:**
+- Close `FireTuner.exe` (the SDK's GUI tool) before running civ6-mcp — the game only allows **one** tuner connection at a time
+- Do **not** run from WSL — the network bridging between WSL2 and Windows is unreliable and the tuner server locks up after failed connections
+- If the connection fails, **restart the game** — the tuner often hangs after a bad handshake and won't recover until the process is recycled
+</details>
 
 Restart Civ 6. The game will listen on TCP port 4318 for connections.
 
@@ -50,15 +69,25 @@ cd civ6-mcp
 uv sync
 ```
 
+For GUI automation features (screenshot, OCR-based menu navigation):
+
+```bash
+# macOS
+uv pip install 'civ6-mcp[launcher-macos]'
+
+# Windows (uses built-in Windows OCR — no external binaries needed)
+uv pip install 'civ6-mcp[launcher-windows]'
+```
+
 ### 3. Test the connection
 
-With Civ 6 running (at least at the main menu):
+With Civ 6 running and a game loaded:
 
 ```bash
 uv run python scripts/test_connection.py
 ```
 
-You should see a successful handshake and list of Lua states.
+You should see a successful handshake and a list of Lua states (GameCore_Tuner, InGame, etc.).
 
 ### 4. Configure your MCP client
 
@@ -78,7 +107,9 @@ claude
 <details>
 <summary><strong>Claude Desktop</strong></summary>
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to your config file:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
