@@ -1040,8 +1040,9 @@ async def set_policies(ctx: Context, assignments: str) -> str:
     Args:
         assignments: Comma-separated slot assignments, e.g.
             "0=POLICY_AGOGE,1=POLICY_URBAN_PLANNING"
-            Slots not listed will be cleared. Use get_policies to see
-            available policies and slot indices.
+            Slots not listed keep their current policy. Use NONE to
+            explicitly clear a slot (e.g. "2=NONE"). Use get_policies to
+            see available policies and slot indices.
 
     Wildcard slots can accept any policy type. Military slots accept
     military policies, economic slots accept economic policies, etc.

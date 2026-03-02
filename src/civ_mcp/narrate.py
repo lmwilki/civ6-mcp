@@ -283,7 +283,10 @@ def narrate_cities(
             pill_names = [d.replace("DISTRICT_", "") for d in c.pillaged_districts]
             pill_bldgs = [b.replace("BUILDING_", "") for b in c.pillaged_buildings]
             all_pillaged = pill_names + pill_bldgs
-            lines.append(f"    !! PILLAGED: {', '.join(all_pillaged)}")
+            lines.append(
+                f"    !! PILLAGED: {', '.join(all_pillaged)}"
+                " (repair via set_city_production)"
+            )
         if c.pillaged_improvements:
             pill_imps = [p.split("@")[0] for p in c.pillaged_improvements]
             lines.append(
@@ -334,15 +337,20 @@ def narrate_combat_estimate(est: lq.CombatEstimate) -> str:
 def narrate_city_production(options: list[lq.ProductionOption]) -> str:
     if not options:
         return "No production options available."
-    units = [o for o in options if o.category == "UNIT"]
-    buildings = [o for o in options if o.category == "BUILDING"]
-    districts = [o for o in options if o.category == "DISTRICT"]
+    units = [o for o in options if o.category == "UNIT" and not o.is_repair]
+    buildings = [o for o in options if o.category == "BUILDING" and not o.is_repair]
+    districts = [o for o in options if o.category == "DISTRICT" and not o.is_repair]
     projects = [o for o in options if o.category == "PROJECT"]
+    repairs = [o for o in options if o.is_repair]
 
     def _fmt(o: lq.ProductionOption) -> str:
         t = f", {o.turns} turns" if o.turns > 0 else ""
         buy = f", buy: {o.gold_cost}g" if o.gold_cost > 0 else ""
-        return f"  {o.item_name} (cost {o.cost}{t}{buy})"
+        tag = " [REPAIR]" if o.is_repair else ""
+        coords = ""
+        if o.is_repair and o.repair_x is not None:
+            coords = f" at ({o.repair_x},{o.repair_y})"
+        return f"  {o.item_name}{tag}{coords} (cost {o.cost}{t}{buy})"
 
     lines = []
     if units:
@@ -360,6 +368,10 @@ def narrate_city_production(options: list[lq.ProductionOption]) -> str:
     if projects:
         lines.append("Projects:")
         for o in projects:
+            lines.append(_fmt(o))
+    if repairs:
+        lines.append("Repairs (pillaged — queue to fix):")
+        for o in repairs:
             lines.append(_fmt(o))
     return "\n".join(lines)
 

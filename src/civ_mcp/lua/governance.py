@@ -85,6 +85,7 @@ def build_set_policies(assignments: dict[int, str]) -> str:
     """Set policy cards in government slots (InGame context).
 
     assignments maps slot_index -> policy_type string.
+    Slots not listed keep their current policy. Use "NONE" to explicitly clear a slot.
     Three-step: pre-checks (before UNLOCK), UNLOCK_POLICIES, then RequestPolicyChanges.
 
     Pre-checks run before UNLOCK_POLICIES because CanSlotPolicy is reliable there.
@@ -92,8 +93,16 @@ def build_set_policies(assignments: dict[int, str]) -> str:
     """
     pre_checks = []  # policy lookup + CanSlotPolicy + type check — BEFORE UNLOCK_POLICIES
     add_entries = []  # addList[slot] = hash — AFTER UNLOCK_POLICIES
+    clear_entries = []  # clearList entries — only slots we're touching
 
     for slot_idx, policy_type in assignments.items():
+        # Always clear the slot we're about to reassign (or explicitly clearing)
+        clear_entries.append(f"table.insert(clearList, {slot_idx})")
+
+        if policy_type.upper() == "NONE":
+            # Explicit clear — add to clearList but skip addList/pre-checks
+            continue
+
         pre_checks.append(
             f'local pe_{slot_idx} = GameInfo.Policies["{policy_type}"]; '
             f"if pe_{slot_idx} == nil then {_bail(f'ERR:POLICY_NOT_FOUND|{policy_type}')} end; "
@@ -120,6 +129,7 @@ def build_set_policies(assignments: dict[int, str]) -> str:
 
     pre_lua = "; ".join(pre_checks)
     add_lua = "; ".join(add_entries)
+    clear_lua = "; ".join(clear_entries)
 
     return f"""
 local me = Game.GetLocalPlayer()
@@ -131,7 +141,7 @@ local slotTypeMap = {{SLOT_ECONOMIC=0, SLOT_MILITARY=1, SLOT_DIPLOMATIC=2, SLOT_
 {pre_lua}
 UI.RequestPlayerOperation(me, PlayerOperations.UNLOCK_POLICIES, {{}})
 local clearList = {{}}
-for s = 0, numSlots - 1 do table.insert(clearList, s) end
+{clear_lua}
 local addList = {{}}
 {add_lua}
 pCulture:RequestPolicyChanges(clearList, addList)

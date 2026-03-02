@@ -278,12 +278,18 @@ end
 print("BUILDINGS:")
 for bldg in GameInfo.Buildings() do
     if bq:CanProduce(bldg.Hash, true) then
-        local t = bq:GetTurnsLeft(bldg.Hash)
-        local gc = -1
-        if not bldg.IsWonder then
-            gc = getGoldCost(bldg.Hash, false)
+        -- CanStartOperation catches pillaged-district prerequisites that CanProduce misses
+        local bldgCheck = {{}}
+        bldgCheck[CityOperationTypes.PARAM_BUILDING_TYPE] = bldg.Hash
+        local canStart = CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, bldgCheck, true)
+        if canStart then
+            local t = bq:GetTurnsLeft(bldg.Hash)
+            local gc = -1
+            if not bldg.IsWonder then
+                gc = getGoldCost(bldg.Hash, false)
+            end
+            print("BUILDING|" .. bldg.BuildingType .. "|" .. bldg.Cost .. "|" .. t .. "|" .. gc)
         end
-        print("BUILDING|" .. bldg.BuildingType .. "|" .. bldg.Cost .. "|" .. t .. "|" .. gc)
     end
 end
 print("DISTRICTS:")
@@ -298,6 +304,36 @@ for proj in GameInfo.Projects() do
     if bq:CanProduce(proj.Hash, true) then
         local t = bq:GetTurnsLeft(proj.Hash)
         print("PROJECT|" .. proj.ProjectType .. "|" .. proj.Cost .. "|" .. t .. "|-1")
+    end
+end
+-- Pillaged districts/buildings that can be repaired via production queue
+print("REPAIRS:")
+local pBuildings = pCity:GetBuildings()
+for _, d in pCity:GetDistricts():Members() do
+    if d:IsPillaged() then
+        local dInfo = GameInfo.Districts[d:GetType()]
+        if dInfo and dInfo.DistrictType ~= "DISTRICT_CITY_CENTER" then
+            local repParams = {{}}
+            repParams[CityOperationTypes.PARAM_DISTRICT_TYPE] = dInfo.Hash
+            repParams[CityOperationTypes.PARAM_X] = d:GetX()
+            repParams[CityOperationTypes.PARAM_Y] = d:GetY()
+            local canRepair = CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, repParams, true)
+            if canRepair then
+                local t = bq:GetTurnsLeft(dInfo.Hash)
+                print("DISTRICT|" .. dInfo.DistrictType .. "|" .. dInfo.Cost .. "|" .. t .. "|-1|REPAIR|" .. d:GetX() .. "," .. d:GetY())
+            end
+        end
+    end
+end
+for bldg in GameInfo.Buildings() do
+    if pBuildings:HasBuilding(bldg.Index) and pBuildings:IsPillaged(bldg.Index) then
+        local repCheck = {{}}
+        repCheck[CityOperationTypes.PARAM_BUILDING_TYPE] = bldg.Hash
+        local canRepair = CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, repCheck, true)
+        if canRepair then
+            local t = bq:GetTurnsLeft(bldg.Hash)
+            print("BUILDING|" .. bldg.BuildingType .. "|" .. bldg.Cost .. "|" .. t .. "|-1|REPAIR")
+        end
     end
 end
 print("{SENTINEL}")
@@ -375,7 +411,19 @@ if canStart then
     local turnsLeft = bq:GetTurnsLeft(item.Hash)
     print("OK:PRODUCING|{item_name}|" .. turnsLeft .. " turns")
 else
-    print("MAYBE:PRODUCING|{item_name}|canStart=false")
+    -- Check for pillaged districts to give actionable error
+    local pillaged = {{}}
+    for _, d in pCity:GetDistricts():Members() do
+        if d:IsPillaged() then
+            local dInfo = GameInfo.Districts[d:GetType()]
+            if dInfo then table.insert(pillaged, dInfo.DistrictType) end
+        end
+    end
+    if #pillaged > 0 then
+        print("MAYBE:PRODUCING|{item_name}|canStart=false|PILLAGED:" .. table.concat(pillaged, ","))
+    else
+        print("MAYBE:PRODUCING|{item_name}|canStart=false")
+    end
 end
 print("{SENTINEL}")
 """
@@ -640,10 +688,19 @@ def parse_city_production_response(lines: list[str]) -> list[ProductionOption]:
     """Parse available production options from build_city_production_query query."""
     options = []
     for line in lines:
-        if line.startswith(("UNITS:", "BUILDINGS:", "DISTRICTS:", "PROJECTS:")):
+        if line.startswith(
+            ("UNITS:", "BUILDINGS:", "DISTRICTS:", "PROJECTS:", "REPAIRS:")
+        ):
             continue
         parts = line.split("|")
         if len(parts) >= 3 and parts[0] in ("UNIT", "BUILDING", "DISTRICT", "PROJECT"):
+            is_repair = len(parts) > 5 and parts[5] == "REPAIR"
+            repair_x = None
+            repair_y = None
+            if is_repair and parts[0] == "DISTRICT" and len(parts) > 6:
+                coords = parts[6].split(",")
+                if len(coords) == 2:
+                    repair_x, repair_y = int(coords[0]), int(coords[1])
             options.append(
                 ProductionOption(
                     category=parts[0],
@@ -651,6 +708,9 @@ def parse_city_production_response(lines: list[str]) -> list[ProductionOption]:
                     cost=int(parts[2]),
                     turns=int(parts[3]) if len(parts) > 3 else 0,
                     gold_cost=int(parts[4]) if len(parts) > 4 else -1,
+                    is_repair=is_repair,
+                    repair_x=repair_x,
+                    repair_y=repair_y,
                 )
             )
     return options

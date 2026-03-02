@@ -542,11 +542,26 @@ class GameState:
                             pass
                         hint += " Use get_district_advisor for details."
                     elif itype == "BUILDING":
-                        bld_info = item_name.replace("BUILDING_", "")
-                        hint = (
-                            f" Hint: {bld_info} may require a completed"
-                            " district or prerequisite building."
-                        )
+                        # Check if Lua reported pillaged districts
+                        pillaged_dists = ""
+                        for ml in lines:
+                            if "PILLAGED:" in ml:
+                                pillaged_dists = ml.split("PILLAGED:", 1)[1]
+                                break
+                        if pillaged_dists:
+                            hint = (
+                                f" Prerequisite district is pillaged:"
+                                f" {pillaged_dists}. Repair it first via"
+                                " set_city_production(city_id, 'DISTRICT',"
+                                " 'DISTRICT_NAME', x, y) — use get_cities"
+                                " to find district coordinates."
+                            )
+                        else:
+                            bld_info = item_name.replace("BUILDING_", "")
+                            hint = (
+                                f" Hint: {bld_info} may require a completed"
+                                " district or prerequisite building."
+                            )
                     return (
                         f"Error: CANNOT_START|{item_name} cannot start.{hint}"
                     )
@@ -775,11 +790,14 @@ class GameState:
             # Post-verify: RequestPolicyChanges can silently no-op (e.g. during era transitions)
             status = await self.get_policies()
             slot_map = {s.slot_index: s.current_policy for s in status.slots}
-            mismatches = [
-                f"slot {idx} (wanted {pol}, got {slot_map.get(idx) or 'EMPTY'})"
-                for idx, pol in assignments.items()
-                if slot_map.get(idx) != pol
-            ]
+            mismatches = []
+            for idx, pol in assignments.items():
+                expected = None if pol.upper() == "NONE" else pol
+                actual = slot_map.get(idx)
+                if actual != expected:
+                    wanted = "EMPTY" if expected is None else pol
+                    got = actual or "EMPTY"
+                    mismatches.append(f"slot {idx} (wanted {wanted}, got {got})")
             if mismatches:
                 result += (
                     f"\nWARN:SILENT_FAILURE — engine rejected: {', '.join(mismatches)}. "

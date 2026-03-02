@@ -282,6 +282,9 @@ class ProductionOption:
     cost: int  # production cost
     turns: int = 0  # estimated turns to produce
     gold_cost: int = -1  # gold purchase cost (-1 = not purchasable)
+    is_repair: bool = False  # True if repairing a pillaged district/building
+    repair_x: int | None = None  # district repair X coordinate
+    repair_y: int | None = None  # district repair Y coordinate
 
 
 @dataclass
