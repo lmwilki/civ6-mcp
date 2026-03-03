@@ -35,8 +35,10 @@ Usage:
     uv run python evals/runner.py --model anthropic/claude-sonnet-4-5-20250929
 """
 
+import os
 import re
 import sys
+import uuid
 from pathlib import Path
 
 # Inspect loads this file directly — ensure the project root is on sys.path
@@ -141,6 +143,10 @@ def _extract_to_store(state: AgentState) -> None:
             if m:
                 s.set("last_score", int(m.group(1)))
 
+        # Detect game-over — emitted by get_game_overview and end_turn
+        if "GAME OVER" in text:
+            s.set("game_over", True)
+
     s.set("_scanned", len(state.messages))
 
 
@@ -149,9 +155,15 @@ def _extract_to_store(state: AgentState) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _keep_playing(state: AgentState) -> str:
-    """Extract structured data to store, then nudge model to keep playing."""
+async def _keep_playing(state: AgentState) -> str | bool:
+    """Extract structured data to store, then nudge model to keep playing.
+
+    Returns False to stop the agent when a game-over condition is detected.
+    """
     _extract_to_store(state)
+    s = store()
+    if s.get("game_over"):
+        return False
     return CONTINUE_PLAYING
 
 
@@ -160,12 +172,18 @@ async def _keep_playing(state: AgentState) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _civ_mcp_server():
-    """Create the civ-mcp MCP server instance (stdio transport)."""
+def _civ_mcp_server(run_id: str | None = None):
+    """Create the civ-mcp MCP server instance (stdio transport).
+
+    When run_id is provided, it's passed as CIV_MCP_RUN_ID so the MCP
+    server uses the same identifier in all output filenames.
+    """
+    env = {"CIV_MCP_RUN_ID": run_id} if run_id else None
     return mcp_server_stdio(
         name="civ6",
         command="uv",
         args=["run", "--directory", PROJECT_ROOT, "civ-mcp"],
+        env=env,
     )
 
 
@@ -231,7 +249,8 @@ def civbench_standard(
         time_limit: Max wall-clock seconds before stopping.
     """
     scenario_list = _normalise_scenarios(scenarios)
-    server = _civ_mcp_server()
+    run_id = uuid.uuid4().hex[:8]
+    server = _civ_mcp_server(run_id=run_id)
 
     return Task(
         dataset=_make_dataset(scenario_list),
@@ -272,7 +291,8 @@ def civbench_open(
         time_limit: Max wall-clock seconds before stopping.
     """
     scenario_list = _normalise_scenarios(scenarios)
-    server = _civ_mcp_server()
+    run_id = uuid.uuid4().hex[:8]
+    server = _civ_mcp_server(run_id=run_id)
 
     return Task(
         dataset=_make_dataset(scenario_list),

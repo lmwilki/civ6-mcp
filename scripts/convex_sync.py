@@ -250,7 +250,10 @@ async def sync_diary(
     )
     civ = agent_row.get("civ", "")
     leader = agent_row.get("leader", "")
-    seed = game_id.rsplit("_", 1)[-1] if "_" in game_id else ""
+    # Read seed from row data's "game" field (= "civ_seed"), not from
+    # the filename-based game_id which now includes the run_id suffix.
+    game_field = agent_row.get("game", "")
+    seed = game_field.rsplit("_", 1)[-1] if "_" in game_field else ""
 
     # Batch and send
     for i in range(0, len(rows_to_upsert), BATCH_SIZE):

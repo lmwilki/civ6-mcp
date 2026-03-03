@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -46,7 +47,7 @@ class GameLogger:
     """
 
     def __init__(self) -> None:
-        self.session_id = uuid.uuid4().hex[:8]
+        self.session_id = os.environ.get("CIV_MCP_RUN_ID") or uuid.uuid4().hex[:8]
         self._lock = asyncio.Lock()
         self._turn: int | None = None
         self._seq: int = 0
