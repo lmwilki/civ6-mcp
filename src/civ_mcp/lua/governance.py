@@ -395,10 +395,21 @@ if not canPromote then {_bail("ERR:CANNOT_PROMOTE|Unit cannot receive this promo
 if exp:HasPromotion(promo.Index) then {_bail(f"ERR:ALREADY_HAS_PROMOTION|{promotion_type}")} end
 exp:SetPromotion(promo.Index)
 if not exp:HasPromotion(promo.Index) then {_bail("ERR:PROMOTION_FAILED|SetPromotion did not apply")} end
-pcall(function() exp:ChangeStoredPromotions(-1) end)
+-- Sync engine state: zero out stored promotions so the engine stops
+-- generating ENDTURN_BLOCKING_UNIT_PROMOTION notifications.
+-- ChangeStoredPromotions(-1) is insufficient when stored > 1 (e.g. unit
+-- earned enough XP for two promotions). Read the current count and zero it.
+local stored = 0
+pcall(function() stored = exp:GetStoredPromotions() end)
+if stored > 0 then
+    pcall(function() exp:ChangeStoredPromotions(-stored) end)
+end
+-- Verify: if stored is still > 0 after zeroing, log it for diagnostics
+local storedAfter = 0
+pcall(function() storedAfter = exp:GetStoredPromotions() end)
 pcall(function() unit:SetDamage(0) end)
 local promoName = Locale.Lookup(promo.Name)
-print("OK:PROMOTED|" .. promoName)
+print("OK:PROMOTED|" .. promoName .. "|stored:" .. stored .. "->" .. storedAfter)
 print("{SENTINEL}")
 """
 

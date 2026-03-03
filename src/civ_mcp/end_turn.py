@@ -641,9 +641,14 @@ async def execute_end_turn(gs: GameState) -> str:
                 # promotion: needed = T1 * (promoCount+1) * (promoCount+2) / 2
                 if blocking_type == "ENDTURN_BLOCKING_UNIT_PROMOTION":
                     try:
+                        # Step 1 (GameCore): Check XP formula AND zero out stored
+                        # promotions on units that don't genuinely need one.
+                        # ChangeStoredPromotions zeroes the engine counter that
+                        # causes the blocker to regenerate after Dismiss().
                         check_lines = await gs.conn.execute_read(
                             f"local me = Game.GetLocalPlayer(); "
                             f"local anyNeed = false; "
+                            f"local cleared = 0; "
                             f"for i, u in Players[me]:GetUnits():Members() do "
                             f"  if u:GetX() ~= -9999 then "
                             f"    local ok, exp = pcall(function() return u:GetExperience() end); "
@@ -660,20 +665,28 @@ async def execute_end_turn(gs: GameState) -> str:
                             f"        local t1 = exp:GetExperienceForNextLevel(); "
                             f"        local xp = exp:GetExperiencePoints(); "
                             f"        local needed = t1 * (promoCount + 1) * (promoCount + 2) / 2; "
-                            f"        if xp >= needed then anyNeed = true end "
+                            f"        if xp >= needed then "
+                            f"          anyNeed = true "
+                            f"        else "
+                            f"          local stored = 0; "
+                            f"          pcall(function() stored = exp:GetStoredPromotions() end); "
+                            f"          if stored > 0 then "
+                            f"            pcall(function() exp:ChangeStoredPromotions(-stored) end); "
+                            f"            cleared = cleared + 1 "
+                            f"          end "
+                            f"        end "
                             f"      end "
                             f"    end "
                             f"  end "
-                            f"  if anyNeed then break end "
                             f"end; "
-                            f'print(anyNeed and "NEEDS_PROMO" or "NO_PROMO_NEEDED"); '
+                            f'print(anyNeed and "NEEDS_PROMO" or ("NO_PROMO_NEEDED|cleared=" .. cleared)); '
                             f'print("{lq.SENTINEL}")'
                         )
-                        needs_promo = any("NEEDS_PROMO" in l for l in check_lines)
+                        needs_promo = any("NEEDS_PROMO" == l.strip() for l in check_lines)
                         log.debug(
                             "Promotion blocker: needs_promo=%s (check=%s)",
                             needs_promo,
-                            [l for l in check_lines if "PROMO" in l],
+                            [l for l in check_lines if "PROMO" in l or "cleared" in l],
                         )
                         if not needs_promo:
                             # Step 2: InGame dismiss — NotificationManager is InGame-only.
