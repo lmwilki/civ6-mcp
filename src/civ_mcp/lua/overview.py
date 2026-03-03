@@ -197,6 +197,7 @@ if winnerId >= 0 then
         for row in GameInfo.Victories() do
             if Game.TestVictory(row.Index) then
                 victoryType = row.VictoryType
+                break
             end
         end
     end)
@@ -256,24 +257,28 @@ if winnerId >= 0 then
     if victoryType == "Unknown" then
         -- Culture: winner's visiting tourists exceed all others' domestic tourists
         pcall(function()
-            local ok, tour = pcall(function() return wp:GetStats():GetTourism() end)
-            if ok and tour and tour > 0 then
-                -- If winner has any tourism and we can't classify otherwise, likely culture
-                local dominated = true
-                for i = 0, 62 do
-                    local q = Players[i]
-                    if q and q:IsMajor() and q:IsAlive() and i ~= winnerId then
-                        local okS, stay = pcall(function() return q:GetStats():GetNumStaycationers() end)
-                        local okV, visit = pcall(function() return wp:GetCulture():GetTouristsFrom(i) end)
-                        if okS and okV and stay and visit and visit < stay then
+            local dominated = true
+            local checked = 0
+            for i = 0, 62 do
+                local q = Players[i]
+                if q and q:IsMajor() and q:IsAlive() and i ~= winnerId then
+                    local okS, stay = pcall(function() return q:GetCulture():GetStaycationers() end)
+                    local okV, visit = pcall(function() return wp:GetCulture():GetTouristsFrom(i) end)
+                    if okS and okV and stay and visit then
+                        checked = checked + 1
+                        if visit < stay then
                             dominated = false
                             break
                         end
                     end
                 end
-                if dominated then victoryType = "VICTORY_CULTURE" end
             end
+            if checked > 0 and dominated then victoryType = "VICTORY_CULTURE" end
         end)
+    end
+    if victoryType == "Unknown" then
+        -- Score: turn limit reached without any other victory condition
+        victoryType = "VICTORY_SCORE"
     end
 end
 local isDefeat = winTeam >= 0 and Players[me]:GetTeam() ~= winTeam
