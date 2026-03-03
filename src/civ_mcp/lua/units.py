@@ -592,6 +592,12 @@ end
 local found = false
 for pid = 0, 63 do
     if pid ~= me and Players[pid] and Players[pid]:IsAlive() then
+        local isMajor = Players[pid]:IsMajor()
+        local isBarbarian = (pid == 63)
+        -- Skip city-state units unless we're at war with them
+        if not isMajor and not isBarbarian and not pDiplo:IsAtWarWith(pid) then
+            -- City-state, not at war — not a threat
+        else
         local ownerName = "Barbarian"
         if pid ~= 63 then
             local cfg = PlayerConfigurations[pid]
@@ -620,8 +626,9 @@ for pid = 0, 63 do
                 end
             end
         end
-    end
-end
+        end -- close city-state skip if/else
+    end -- close if pid alive
+end -- close for pid
 if not found then print("NO_THREATS") end
 print("{SENTINEL}")
 """

@@ -1198,7 +1198,7 @@ async def execute_end_turn(gs: GameState) -> str:
                 lq.TurnEvent(
                     priority=2,
                     category="unit",
-                    message=f"THREAT: {t.unit_type} CS:{t.combat_strength}{rs_str} HP:{t.hp}/{t.max_hp} spotted {t.distance} tiles away at ({t.x},{t.y})",
+                    message=f"THREAT: {t.owner_name} {t.unit_type} CS:{t.combat_strength}{rs_str} HP:{t.hp}/{t.max_hp} spotted {t.distance} tiles away at ({t.x},{t.y})",
                 )
             )
     except Exception:
