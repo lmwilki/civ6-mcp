@@ -248,6 +248,15 @@ async def dismiss_popup(conn: GameConnection) -> str:
         except Exception as e:
             log.debug("Phase 3 probe failed: %s", e)
 
+    # Final phase: dismiss Windows-level crash dialogs (Firaxis Crash
+    # Reporter, Unhandled Exception).  These are Win32 dialogs that appear
+    # on top of the game after EXCEPTION_ACCESS_VIOLATION crashes — the
+    # game keeps running but Lua calls return degraded data until dismissed.
+    from . import game_launcher
+
+    crash_dismissed = await game_launcher.dismiss_crash_dialogs()
+    dismissed.extend(crash_dismissed)
+
     if dismissed:
         msg = f"Dismissed: {', '.join(dismissed)}"
         if pending_diplomacy:
