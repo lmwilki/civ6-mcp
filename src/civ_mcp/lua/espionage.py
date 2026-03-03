@@ -105,7 +105,7 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
             y = int(parts[3])
             rank = int(parts[4])
             xp = int(parts[5])
-            moves = int(parts[6])
+            moves = int(float(parts[6]))
             city_name = parts[7]
             city_owner = int(parts[8])
             ops_str = parts[9].strip()
