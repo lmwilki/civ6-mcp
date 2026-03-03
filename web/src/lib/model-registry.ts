@@ -37,6 +37,7 @@ const PROVIDERS = {
     color: "#4D6BFE",
   },
   xai: { name: "xAI", logo: "/images/providers/xai.svg", color: "#6B7280" },
+  moonshot: { name: "Moonshot", logo: "", color: "#5B21B6" },
 } as const;
 
 function m(id: string, name: string, p: keyof typeof PROVIDERS): ModelMeta {
@@ -87,6 +88,10 @@ export const MODEL_REGISTRY: Record<string, ModelMeta> = {
   // ── DeepSeek ──
   "deepseek-chat": m("deepseek-chat", "DeepSeek V3", "deepseek"),
   "deepseek-reasoner": m("deepseek-reasoner", "DeepSeek R1", "deepseek"),
+  "DeepSeek-V3.2": m("DeepSeek-V3.2", "DeepSeek V3.2", "deepseek"),
+  // ── Moonshot ──
+  "Kimi-K2.5": m("Kimi-K2.5", "Kimi K2.5", "moonshot"),
+  "Kimi-K2-Thinking": m("Kimi-K2-Thinking", "Kimi K2 Thinking", "moonshot"),
   // ── Meta ──
   "llama-4-maverick": m("llama-4-maverick", "Llama 4 Maverick", "meta"),
   "llama-4-scout": m("llama-4-scout", "Llama 4 Scout", "meta"),
@@ -120,6 +125,7 @@ export function getModelMeta(modelId: string): ModelMeta {
     ["o4", "openai"],
     ["grok", "xai"],
     ["deepseek", "deepseek"],
+    ["kimi", "moonshot"],
     ["llama", "meta"],
   ];
   const lower = modelId.toLowerCase();

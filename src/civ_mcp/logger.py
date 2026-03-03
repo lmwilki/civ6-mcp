@@ -73,7 +73,7 @@ class GameLogger:
         self._seed: int | None = None
         self._path: Path | None = None
         self._buffer: list[dict[str, Any]] = []
-        self._agent_model: str | None = None
+        self._agent_model: str | None = os.environ.get("CIV_MCP_AGENT_MODEL") or None
         self._game_over_logged: bool = False
 
     @property

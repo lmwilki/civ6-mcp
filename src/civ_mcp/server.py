@@ -1418,7 +1418,6 @@ async def end_turn(
     tooling: str = "",
     planning: str = "",
     hypothesis: str = "",
-    agent_model: str = "",
 ) -> str:
     """End the current turn.
 
@@ -1432,10 +1431,6 @@ async def end_turn(
         tooling: Tool issues or observations. Write "No issues" if none.
         planning: Concrete actions for the next 5-10 turns.
         hypothesis: Predictions — enemy behavior, resource needs, timelines.
-
-    agent_model: Your model identifier (e.g. "claude-opus-4-6", "gpt-5",
-        "o3"). This is recorded in the game diary and used for ELO rankings
-        across games. Always pass your exact model ID string every turn.
 
     IMPORTANT: Reflections are recorded BEFORE the AI processes its turn.
     Anything that surfaces after end_turn (diplomacy proposals, AI movements,
@@ -1460,8 +1455,10 @@ async def end_turn(
             "tactical, strategic, tooling, planning, hypothesis."
         )
 
-    if agent_model:
-        _get_logger(ctx).set_agent_model(agent_model)
+    # Model ID comes from CIV_MCP_AGENT_MODEL env var (set by eval runner)
+    env_model = os.environ.get("CIV_MCP_AGENT_MODEL", "")
+    if env_model:
+        _get_logger(ctx).set_agent_model(env_model)
 
     # Capture diary state and write BEFORE advancing the turn.
     # This ensures the entry is saved even if the session is interrupted
@@ -1556,7 +1553,7 @@ async def end_turn(
                         row["reflections"] = reflections
                         row["agent_client"] = agent_client
                         row["agent_client_ver"] = agent_client_ver
-                        row["agent_model"] = agent_model
+                        row["agent_model"] = env_model
                         # Eval metadata from logger (only non-empty)
                         _logger = _get_logger(ctx)
                         for _ef in _EVAL_FIELDS:

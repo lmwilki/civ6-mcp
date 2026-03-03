@@ -176,15 +176,18 @@ def _civ_mcp_server(
     run_id: str | None = None,
     scenario: Scenario | None = None,
     eval_track: str = "",
+    model_id: str = "",
 ):
     """Create the civ-mcp MCP server instance (stdio transport).
 
-    Passes run_id, scenario metadata, and eval track as env vars so the
-    MCP server embeds them in diary/log entries for traceability.
+    Passes run_id, scenario metadata, model ID, and eval track as env vars
+    so the MCP server embeds them in diary/log entries for traceability.
     """
     env: dict[str, str] = {}
     if run_id:
         env["CIV_MCP_RUN_ID"] = run_id
+    if model_id:
+        env["CIV_MCP_AGENT_MODEL"] = model_id
     if scenario:
         env["CIV_MCP_SCENARIO"] = scenario.scenario_id
         env["CIV_MCP_DIFFICULTY"] = scenario.difficulty
@@ -262,6 +265,7 @@ def civbench_standard(
     time_limit: int = DEFAULT_TIME_LIMIT,
     resume_save: str | None = None,
     resume_context: str | None = None,
+    model_id: str = "",
 ):
     """Standardised baseline track.
 
@@ -283,7 +287,7 @@ def civbench_standard(
     # runs share one MCP process, so env vars can't vary per sample — the
     # diary/log entries still carry per-turn civ/game info for identification.
     scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
-    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_standard")
+    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_standard", model_id=model_id)
 
     # Resolve file:// references (Inspect -T passes raw strings)
     if resume_context and resume_context.startswith("file://"):
@@ -312,6 +316,7 @@ def civbench_open(
     message_limit: int = DEFAULT_MESSAGE_LIMIT,
     token_limit: int = DEFAULT_TOKEN_LIMIT,
     time_limit: int = DEFAULT_TIME_LIMIT,
+    model_id: str = "",
 ):
     """Open-architecture track.
 
@@ -332,7 +337,7 @@ def civbench_open(
     run_id = uuid.uuid4().hex[:8]
     # See civbench_standard for why scenario_obj is None for multi-scenario runs
     scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
-    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_open")
+    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_open", model_id=model_id)
 
     return Task(
         dataset=_make_dataset(scenario_list),

@@ -48,8 +48,6 @@ Five reflection fields each turn (all required, non-empty):
 - **planning**: Concrete actions for the next 5-10 turns — specific builds, moves, research targets with turn estimates.
 - **hypothesis**: Specific predictions — attack timing, milestone turns, biggest risks.
 
-Plus **agent_model** — always pass your exact model ID (e.g. `"claude-opus-4-6"`, `"gpt-5"`, `"o3"`). This is used for ELO rankings across games. Pass it every `end_turn` call.
-
 ## Strategic Checkpoints
 
 Periodic checks worth doing regularly. The game doesn't surface most of this proactively.

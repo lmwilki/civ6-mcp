@@ -236,6 +236,9 @@ def run_scenario(
     extra_args: list[str] | None = None,
 ) -> int:
     """Run a single scenario and return the exit code."""
+    # Extract clean model name for diary/log attribution
+    # e.g. "openai/azure/gpt-5.2" → "gpt-5.2"
+    clean_model = model.rsplit("/", 1)[-1]
     cmd = [
         "inspect",
         "eval",
@@ -244,11 +247,13 @@ def run_scenario(
         model,
         "-T",
         f"scenarios={scenario}",
+        "-T",
+        f"model_id={clean_model}",
         "--max-samples",
         "1",  # one game at a time
     ]
     # Azure doesn't support the OpenAI Responses API
-    deployment = model.rsplit("/", 1)[-1]
+    deployment = clean_model
     if deployment in _NEEDS_CHAT_COMPLETIONS:
         cmd.extend(["-M", "responses_api=false"])
     if message_limit is not None:
