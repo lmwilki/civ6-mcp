@@ -11,7 +11,7 @@ export default function GameError({
 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6">
-      <h2 className="font-display text-xl font-bold tracking-[0.1em] uppercase text-marble-800">
+      <h2 className="font-display text-xl font-bold tracking-[0.08em] uppercase text-marble-800">
         Failed to load game
       </h2>
       <p className="max-w-md text-center text-sm text-marble-600">

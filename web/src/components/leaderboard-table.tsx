@@ -49,9 +49,9 @@ export function LeaderboardTable({
       defaultOpen
     >
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wider text-marble-500">
+            <tr className="text-xs uppercase tracking-wider text-marble-500">
               <th className="py-1 pr-1 text-right">#</th>
               <th className="py-1 px-1 text-left">Civ</th>
               <th className="py-1 px-1 text-left">Score</th>

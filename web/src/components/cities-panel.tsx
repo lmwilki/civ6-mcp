@@ -20,9 +20,9 @@ export function CitiesPanel({ cities }: CitiesPanelProps) {
       defaultOpen
     >
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wider text-marble-500">
+            <tr className="text-xs uppercase tracking-wider text-marble-500">
               <th className="py-1 px-1 text-left">City</th>
               <th className="py-1 px-1 text-right">Pop</th>
               <th className="py-1 px-1 text-right">Food</th>
@@ -85,7 +85,7 @@ export function CitiesPanel({ cities }: CitiesPanelProps) {
                     {Math.round(c.loyalty)}
                     {c.loyalty_per_turn !== 0 && (
                       <span
-                        className={`ml-0.5 text-[10px] ${c.loyalty_per_turn > 0 ? "text-patina" : "text-terracotta"}`}
+                        className={`ml-0.5 text-xs ${c.loyalty_per_turn > 0 ? "text-patina" : "text-terracotta"}`}
                       >
                         {c.loyalty_per_turn > 0 ? "+" : ""}
                         {c.loyalty_per_turn.toFixed(1)}

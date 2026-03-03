@@ -25,7 +25,7 @@ interface SchemaProperty {
 function AnnotationBadge({ tool }: { tool: ToolData }) {
   if (tool.annotations.readOnlyHint) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
         <Eye className="h-3 w-3" />
         Read-only
       </span>
@@ -33,14 +33,14 @@ function AnnotationBadge({ tool }: { tool: ToolData }) {
   }
   if (tool.annotations.destructiveHint) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-sm bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-400">
+      <span className="inline-flex items-center gap-1 rounded-sm bg-red-500/10 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:text-red-400">
         <AlertTriangle className="h-3 w-3" />
         Destructive
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+    <span className="inline-flex items-center gap-1 rounded-sm bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
       <Zap className="h-3 w-3" />
       Action
     </span>

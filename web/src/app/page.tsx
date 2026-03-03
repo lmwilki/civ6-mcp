@@ -96,7 +96,7 @@ export default function LandingPage() {
 
             {/* Capabilities */}
             <section>
-              <h3 className="mb-4 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+              <h3 className="mb-4 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
                 70+ Tools
               </h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -107,7 +107,7 @@ export default function LandingPage() {
                   >
                     <div className="flex items-center gap-2">
                       <CivIcon icon={cap.icon} color={cap.color} size="sm" />
-                      <h4 className="font-display text-xs font-bold uppercase tracking-[0.1em] text-marble-700">
+                      <h4 className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-700">
                         {cap.title}
                       </h4>
                     </div>
@@ -124,7 +124,7 @@ export default function LandingPage() {
 
             {/* Archive */}
             <section>
-              <h3 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+              <h3 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
                 Game Archive
               </h3>
               <p className="mt-2 text-sm text-marble-600">
@@ -152,7 +152,7 @@ export default function LandingPage() {
               <h3 className="font-display text-3xl font-bold tracking-[0.08em] uppercase text-marble-800">
                 CivBench
               </h3>
-              <p className="mt-1 text-xs text-marble-500">
+              <p className="mt-1 text-sm text-marble-500">
                 ELO rankings for LLM models playing Civilization VI against the
                 built-in AI.
               </p>
@@ -166,7 +166,7 @@ export default function LandingPage() {
 
             {/* Recent Games */}
             <div>
-              <h3 className="mb-3 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+              <h3 className="mb-3 flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
                 <CivIcon
                   icon={ScrollText}
                   color={CIV6_COLORS.goldMetal}

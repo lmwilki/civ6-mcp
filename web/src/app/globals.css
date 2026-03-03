@@ -223,8 +223,8 @@ body::before {
 #nd-sidebar a[href="/docs"] {
   font-family: var(--font-cinzel), serif;
   font-weight: 700;
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--marble-800);
 }
@@ -262,8 +262,8 @@ body::before {
 #nd-subnav a {
   font-family: var(--font-cinzel), serif;
   font-weight: 700;
-  font-size: 0.75rem;
-  letter-spacing: 0.12em;
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--marble-800);
 }

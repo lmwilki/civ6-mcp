@@ -104,7 +104,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
                   <span className="text-xs font-medium text-marble-800">
                     {cleanCivName(agent.current_research)}
                   </span>
-                  <span className="text-[10px] uppercase tracking-wider text-marble-500">
+                  <span className="text-xs uppercase tracking-wider text-marble-500">
                     Researching
                   </span>
                 </div>
@@ -121,7 +121,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
                   <span className="text-xs font-medium text-marble-800">
                     {cleanCivName(agent.current_civic)}
                   </span>
-                  <span className="text-[10px] uppercase tracking-wider text-marble-500">
+                  <span className="text-xs uppercase tracking-wider text-marble-500">
                     Studying
                   </span>
                 </div>
@@ -172,7 +172,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
                   <span>{val}</span>
                   <ScoreDelta current={val} prev={prev} />
                 </span>
-                <span className="text-[10px] uppercase tracking-wider text-marble-500">
+                <span className="text-xs uppercase tracking-wider text-marble-500">
                   {label}
                 </span>
               </div>
@@ -183,7 +183,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         {/* Active policies */}
         {hasPolicies && (
           <div>
-            <h4 className="mb-1 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               <CivIcon
                 icon={ScrollText}
                 color={CIV6_COLORS.culture}
@@ -206,7 +206,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         {/* Governors */}
         {agent.governors && agent.governors.length > 0 && (
           <div>
-            <h4 className="mb-1 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               <CivIcon
                 icon={UserRound}
                 color={CIV6_COLORS.goldMetal}
@@ -245,7 +245,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         {/* Religion / Pantheon */}
         {hasReligion && (
           <div>
-            <h4 className="mb-1 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               <CivIcon icon={Church} color={CIV6_COLORS.faith} size="sm" />
               Religion
             </h4>
@@ -284,7 +284,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         {/* Great Person points */}
         {hasGP && (
           <div>
-            <h4 className="mb-1 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               <CivIcon
                 icon={Sparkles}
                 color={CIV6_COLORS.goldMetal}
@@ -321,7 +321,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
 
         {/* Victory progress */}
         <div>
-          <h4 className="mb-1.5 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+          <h4 className="mb-1.5 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
             <CivIcon icon={Trophy} color={CIV6_COLORS.goldMetal} size="sm" />
             Victory Progress
           </h4>
@@ -340,7 +340,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
                       <span className="text-marble-400">/{max}</span>
                     ) : null}
                   </span>
-                  <span className="text-[9px] uppercase tracking-wider text-marble-500">
+                  <span className="text-xs uppercase tracking-wider text-marble-500">
                     {label}
                   </span>
                 </div>

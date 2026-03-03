@@ -91,7 +91,7 @@ function MapExportControls({
             style={{ width: `${exportProgress * 100}%` }}
           />
         </div>
-        <span className="font-mono text-[10px] tabular-nums text-marble-500">
+        <span className="font-mono text-xs tabular-nums text-marble-500">
           {Math.round(exportProgress * 100)}%
         </span>
         <button
@@ -118,19 +118,19 @@ function MapExportControls({
         <div className="absolute bottom-full right-0 mb-1 rounded border border-marble-300 bg-white shadow-md z-50">
           <button
             onClick={() => onExport("png")}
-            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
+            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs text-marble-700 hover:bg-marble-100"
           >
             <Camera className="h-3 w-3" /> Screenshot (PNG)
           </button>
           <button
             onClick={() => onExport("video")}
-            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
+            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs text-marble-700 hover:bg-marble-100"
           >
             <Film className="h-3 w-3" /> Export Video
           </button>
           <button
             onClick={() => onExport("gif")}
-            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-[11px] text-marble-700 hover:bg-marble-100"
+            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs text-marble-700 hover:bg-marble-100"
           >
             <ImageIcon className="h-3 w-3" /> Export GIF
           </button>
@@ -927,7 +927,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
           {attentionData && (
             <button
               onClick={() => setShowAttention((s) => !s)}
-              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-opacity ${
+              className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-opacity ${
                 showAttention
                   ? "border-purple-400/50 bg-purple-50 text-purple-700"
                   : "border-marble-300 bg-marble-50 text-marble-400"
@@ -959,7 +959,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
       {/* Hover tooltip (fixed positioning — scroll-safe) */}
       <div
         ref={tooltipRef}
-        className="pointer-events-none fixed z-50 hidden rounded bg-marble-900/90 px-2 py-1 text-[10px] leading-snug text-marble-100"
+        className="pointer-events-none fixed z-50 hidden rounded bg-marble-900/90 px-2 py-1 text-xs leading-snug text-marble-100"
         style={{ display: "none" }}
       />
 
@@ -1021,7 +1021,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
         <button
           onClick={() => setSpeed((s) => (s + 1) % speedLabels.length)}
           disabled={!!exporting}
-          className="rounded border border-marble-300 px-2 py-0.5 font-mono text-[10px] tabular-nums text-marble-600 hover:bg-marble-200 disabled:opacity-30 disabled:pointer-events-none"
+          className="rounded border border-marble-300 px-2 py-0.5 font-mono text-xs tabular-nums text-marble-600 hover:bg-marble-200 disabled:opacity-30 disabled:pointer-events-none"
           title="Change speed"
         >
           {speedLabels[speed]}
@@ -1052,11 +1052,11 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
                 className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
               >
                 <CivSymbol civ={civName} className="h-3 w-3" />
-                <span className="text-[10px] font-medium text-marble-600">
+                <span className="text-xs font-medium text-marble-600">
                   {civName}
                 </span>
                 {leader && (
-                  <span className="text-[9px] text-marble-400">{leader}</span>
+                  <span className="text-xs text-marble-400">{leader}</span>
                 )}
               </div>
             );
@@ -1065,7 +1065,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
         {/* Legend — city-states */}
         {players.some((p) => p.csType) && (
           <>
-            <span className="self-center text-[9px] text-marble-400">|</span>
+            <span className="self-center text-xs text-marble-400">|</span>
             {players
               .filter((p) => p.csType)
               .map((p) => {
@@ -1082,7 +1082,7 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
                         border: `1.5px solid ${colors?.secondary ?? "#888"}`,
                       }}
                     />
-                    <span className="text-[10px] font-medium text-marble-400">
+                    <span className="text-xs font-medium text-marble-400">
                       {canonicalCivName(cleanCivName(p.civ))}
                     </span>
                   </div>

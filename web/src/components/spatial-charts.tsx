@@ -74,14 +74,14 @@ function CustomTooltip({ active, payload, label, formatter }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded border border-marble-300 bg-marble-50 px-3 py-2 shadow-sm">
-      <p className="mb-1 font-mono text-[11px] font-semibold text-marble-700">Turn {label}</p>
+      <p className="mb-1 font-mono text-xs font-semibold text-marble-700">Turn {label}</p>
       {payload.map((entry: { name: string; value: number; color: string }) => (
         <div key={entry.name} className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-          <span className="text-[11px] text-marble-600">
+          <span className="text-xs text-marble-600">
             {formatter ? formatter(entry.name) : entry.name}:
           </span>
-          <span className="font-mono text-[11px] tabular-nums text-marble-800">
+          <span className="font-mono text-xs tabular-nums text-marble-800">
             {entry.value.toLocaleString()}
           </span>
         </div>
@@ -107,7 +107,7 @@ function ChartSection({
 }) {
   return (
     <div className="rounded-sm border border-marble-300 bg-marble-50 p-4">
-      <h3 className="mb-1 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+      <h3 className="mb-1 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
         <CivIcon icon={icon} color={color} size="sm" />
         {title}
       </h3>
@@ -172,7 +172,7 @@ export function SpatialStatsBar({ data }: { data: SpatialTurn[] }) {
             <div className="font-mono text-lg font-semibold tabular-nums text-marble-800">
               {s.value}
             </div>
-            <div className="text-[10px] font-medium uppercase tracking-wider text-marble-500">
+            <div className="text-xs font-medium uppercase tracking-wider text-marble-500">
               {s.label}
             </div>
           </div>
@@ -188,10 +188,10 @@ export function SpatialStatsBar({ data }: { data: SpatialTurn[] }) {
               className="inline-block h-2 w-2 rounded-full"
               style={{ backgroundColor: t.color }}
             />
-            <span className="text-[10px] font-medium text-marble-600">
+            <span className="text-xs font-medium text-marble-600">
               {t.label}
             </span>
-            <span className="font-mono text-[10px] tabular-nums text-marble-700">
+            <span className="font-mono text-xs tabular-nums text-marble-700">
               {t.count}
             </span>
           </div>
@@ -330,7 +330,7 @@ function AttentionStackedChart({ data, currentTurn }: { data: SpatialTurn[]; cur
           return (
             <div key={t.key} className="flex items-center gap-1">
               <Icon className="h-3 w-3" style={{ color: t.color }} />
-              <span className="text-[10px] text-marble-600">{t.label}</span>
+              <span className="text-xs text-marble-600">{t.label}</span>
             </div>
           );
         })}

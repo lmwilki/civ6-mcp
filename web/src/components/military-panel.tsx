@@ -29,7 +29,7 @@ export function MilitaryPanel({ agent, prevAgent }: MilitaryPanelProps) {
       }
     >
       {/* Unit counts */}
-      <div className="mb-2 flex gap-4 text-xs">
+      <div className="mb-2 flex gap-4 text-sm">
         <span className="text-marble-600">
           Total:{" "}
           <span className="font-mono tabular-nums text-marble-800">
@@ -62,7 +62,7 @@ export function MilitaryPanel({ agent, prevAgent }: MilitaryPanelProps) {
             .sort(([, a], [, b]) => b - a)
             .map(([type, count]) => (
               <div key={type} className="rounded-sm bg-marble-100 px-2 py-0.5">
-                <span className="font-mono text-xs text-marble-700">
+                <span className="font-mono text-sm text-marble-700">
                   {type.replace(/_/g, " ")}{" "}
                   <span className="text-marble-500">x{count}</span>
                 </span>

@@ -99,7 +99,7 @@ export function LogEntry({ entry }: LogEntryProps) {
             {/* Params */}
             {entry.params && Object.keys(entry.params).length > 0 && (
               <div>
-                <span className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+                <span className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                   Params
                 </span>
                 <pre className="mt-1 overflow-x-auto rounded-sm bg-marble-200/50 p-2 font-mono text-xs text-marble-700">
@@ -111,7 +111,7 @@ export function LogEntry({ entry }: LogEntryProps) {
             {/* Full result */}
             {entry.result && (
               <div>
-                <span className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+                <span className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                   Result
                 </span>
                 <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-sm bg-marble-200/50 p-2 font-mono text-xs text-marble-700">
@@ -123,7 +123,7 @@ export function LogEntry({ entry }: LogEntryProps) {
             {/* Turn events */}
             {entry.events && entry.events.length > 0 && (
               <div>
-                <span className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+                <span className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                   Events
                 </span>
                 <div className="mt-1 flex flex-wrap gap-1">

@@ -78,7 +78,7 @@ export default function AboutPage() {
             Can a language model play a full game of Civilization VI? Not
             tic-tac-toe, not chess &mdash; a 300-turn 4X strategy game with fog
             of war, seven concurrent domains, six victory paths, and an action
-            space that grows to 10<sup className="text-[10px]">166</sup>{" "}
+            space that grows to 10<sup className="text-xs">166</sup>{" "}
             possible moves.
           </p>
           <p className="mt-3 text-base leading-relaxed text-marble-600">
@@ -98,7 +98,7 @@ export default function AboutPage() {
                 <div className="font-display text-xl font-bold tracking-wide text-marble-800">
                   {s.value}
                 </div>
-                <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-marble-500">
+                <div className="mt-0.5 text-xs font-medium uppercase tracking-[0.08em] text-marble-500">
                   {s.label}
                 </div>
               </div>
@@ -110,10 +110,10 @@ export default function AboutPage() {
 
           {/* Architecture */}
           <section>
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
               How It Works
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               The agent never touches the game directly. Every command flows
               through four layers, each translating between the world above and
               below it.
@@ -135,10 +135,10 @@ export default function AboutPage() {
                   </div>
                   {/* Text */}
                   <div className="pb-6">
-                    <h3 className="font-display text-sm font-bold uppercase tracking-[0.06em] text-marble-800">
+                    <h3 className="font-display text-sm font-bold uppercase tracking-wide text-marble-800">
                       {a.step}
                     </h3>
-                    <p className="mt-0.5 text-sm leading-relaxed text-marble-600">
+                    <p className="mt-0.5 text-base leading-relaxed text-marble-600">
                       {a.detail}
                     </p>
                   </div>
@@ -152,10 +152,10 @@ export default function AboutPage() {
 
           {/* Seven domains */}
           <section>
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
               Seven Concurrent Domains
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               Every turn requires reasoning across all of these simultaneously.
               There is no phase structure &mdash; the agent decides what to
               attend to, what to defer, and what to ignore. Ignore the wrong
@@ -168,7 +168,7 @@ export default function AboutPage() {
                   className="flex items-center gap-1.5 rounded-sm border border-marble-300/50 bg-marble-50 px-2.5 py-1.5"
                 >
                   <CivIcon icon={d.icon} color={d.color} size="sm" />
-                  <span className="text-xs font-medium text-marble-700">
+                  <span className="text-sm font-medium text-marble-700">
                     {d.label}
                   </span>
                 </div>
@@ -181,10 +181,10 @@ export default function AboutPage() {
 
           {/* Narration layer */}
           <section>
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
               The Narration Layer
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               A human player absorbs the minimap, score ticker, religion lens,
               unit health bars, and army positions at a glance. An LLM gets
               none of that passively. The narration layer translates Civ
@@ -194,7 +194,7 @@ export default function AboutPage() {
               preserving the decision-relevant information a human extracts from
               the screen.
             </p>
-            <div className="mt-4 rounded-sm border border-marble-300/50 bg-marble-900 p-4 font-mono text-[11px] leading-relaxed text-marble-200">
+            <div className="mt-4 rounded-sm border border-marble-300/50 bg-marble-900 p-4 font-mono text-xs leading-relaxed text-marble-200">
               <div className="text-marble-500">
                 {"//"} get_map_area(x=10, y=22, radius=3)
               </div>
@@ -223,9 +223,9 @@ export default function AboutPage() {
                 <span className="text-marble-500">[fog]</span>
               </div>
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               Each narration function flags urgency (bold threat markers,{" "}
-              <code className="rounded bg-marble-200 px-1 py-0.5 text-[11px] text-marble-700">
+              <code className="rounded bg-marble-200 px-1 py-0.5 text-xs text-marble-700">
                 !!
               </code>{" "}
               warnings), provides context for action (valid attack targets,
@@ -241,11 +241,11 @@ export default function AboutPage() {
           <section>
             <div className="flex items-center gap-2">
               <CivIcon icon={Eye} color={CIV6_COLORS.culture} size="md" />
-              <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+              <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
                 The Sensorium Effect
               </h2>
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               The narration layer can tell the agent everything a human sees
               &mdash; but it can&apos;t replicate{" "}
               <em>how</em> a human sees it. A player glances at the minimap and
@@ -253,7 +253,7 @@ export default function AboutPage() {
               explicitly queries. Information it doesn&apos;t ask for doesn&apos;t
               enter its world model.
             </p>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               This produces a consistent pattern: game systems that need
               proactive monitoring go unmonitored until crisis forces attention.
               A rival converts every city to their religion over 100 turns. A
@@ -263,7 +263,7 @@ export default function AboutPage() {
               &mdash; not because it can&apos;t, but because it doesn&apos;t
               look.
             </p>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               This is an architectural property of any agent that perceives a
               rich environment through text queries. It generalises well beyond
               Civilization, and it&apos;s what makes this environment
@@ -276,10 +276,10 @@ export default function AboutPage() {
 
           {/* Open source + links */}
           <section>
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
               Open Source
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-marble-600">
+            <p className="mt-3 text-base leading-relaxed text-marble-600">
               The environment, all 76 tools, the narration layer, and the agent
               playbook are MIT-licensed. Any model that supports MCP can play.
               Game archives with full turn-by-turn diaries, agent reflections,
@@ -314,7 +314,7 @@ export default function AboutPage() {
 
           {/* Authors */}
           <div className="mt-10 border-t border-marble-300/50 pt-6">
-            <p className="text-xs text-marble-500">
+            <p className="text-sm text-marble-500">
               Built by Liam Wilkinson, Jamie Heagherty, Harry Coppock, and
               Austin Andrews.
             </p>

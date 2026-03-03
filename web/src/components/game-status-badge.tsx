@@ -83,10 +83,10 @@ export function GameStatusBadge({
       <div className="text-right">
         <div className="flex items-center justify-end gap-1.5">
           <PulsingDot />
-          <span className="font-display text-[10px] font-bold uppercase tracking-[0.08em] text-patina">
+          <span className="font-display text-xs font-bold uppercase tracking-[0.08em] text-patina">
             Live
           </span>
-          <span className="font-mono text-[10px] tabular-nums text-marble-500">
+          <span className="font-mono text-xs tabular-nums text-marble-500">
             T{turnCount}
           </span>
         </div>
@@ -102,18 +102,18 @@ export function GameStatusBadge({
       <div className="text-right">
         <div className="flex items-center justify-end gap-1">
           <span
-            className="font-display text-[10px] font-bold uppercase tracking-[0.08em]"
+            className="font-display text-xs font-bold uppercase tracking-[0.08em]"
             style={{ color: isVictory ? STATUS_COLORS.victory : STATUS_COLORS.defeat }}
           >
             {isVictory ? "Victory" : "Defeated"}
           </span>
-          <span className="font-mono text-[10px] tabular-nums text-marble-500">
+          <span className="font-mono text-xs tabular-nums text-marble-500">
             T{outcome.turn}
           </span>
         </div>
         <div className="mt-0.5 flex items-center justify-end gap-1">
           <CivIcon icon={Icon} color={vt.color} size="sm" />
-          <span className="text-[10px]" style={{ color: vt.color }}>{vt.label}</span>
+          <span className="text-xs" style={{ color: vt.color }}>{vt.label}</span>
         </div>
       </div>
     );
@@ -121,7 +121,7 @@ export function GameStatusBadge({
 
   return (
     <div className="text-right">
-      <span className="font-mono text-[10px] tabular-nums text-marble-500">
+      <span className="font-mono text-xs tabular-nums text-marble-500">
         T{turnCount}
       </span>
     </div>

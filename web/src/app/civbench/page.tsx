@@ -29,7 +29,7 @@ function DifficultyBadge({ difficulty }: { difficulty: string }) {
   if (!meta) return null;
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+      className="inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-bold uppercase tracking-[0.08em]"
       style={{
         color: meta.color,
         backgroundColor: `${meta.color}15`,
@@ -66,10 +66,10 @@ function ScenarioCard({
         {/* Header: letter + name + difficulty */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs tabular-nums text-marble-400">
+            <span className="font-mono text-sm tabular-nums text-marble-400">
               {scenario.letter}
             </span>
-            <span className="font-display text-sm font-bold uppercase tracking-[0.1em] text-marble-800">
+            <span className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-800">
               {scenario.name}
             </span>
           </div>
@@ -86,22 +86,22 @@ function ScenarioCard({
           <div className="flex-1 space-y-1.5 pt-0.5">
             <div className="flex items-center gap-1.5">
               <CivSymbol civ={scenario.civilization} className="h-4 w-4" />
-              <span className="text-xs font-medium text-marble-700">
+              <span className="text-sm font-medium text-marble-700">
                 {scenario.civilization}
               </span>
-              <span className="text-xs text-marble-400">
+              <span className="text-sm text-marble-400">
                 ({scenario.leader})
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <CivIcon icon={Map} color="#4A90A4" size="sm" />
-              <span className="text-xs text-marble-600">
+              <span className="text-sm text-marble-600">
                 {scenario.mapType}, {scenario.mapSize}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <CivIcon icon={Eye} color={accentColor} size="sm" />
-              <span className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+              <span className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                 Tests: {scenario.blindSpot}
               </span>
             </div>
@@ -109,26 +109,26 @@ function ScenarioCard({
         </div>
 
         {/* Description */}
-        <p className="text-xs leading-relaxed text-marble-600">
+        <p className="text-sm leading-relaxed text-marble-600">
           {scenario.description}
         </p>
 
         {/* Opponents */}
         <div className="flex items-start gap-1.5">
           <CivIcon icon={Users} color="#A39B8F" size="sm" />
-          <span className="text-[10px] leading-relaxed text-marble-500">
+          <span className="text-xs leading-relaxed text-marble-500">
             vs {scenario.opponents.join(", ")}
           </span>
         </div>
 
         {/* Footer: game count + link */}
         <div className="flex items-center justify-between pt-1 border-t border-marble-300/30">
-          <span className="font-mono text-[10px] tabular-nums text-marble-400">
+          <span className="font-mono text-xs tabular-nums text-marble-400">
             {gameCount} game{gameCount !== 1 ? "s" : ""} played
           </span>
           <Link
             href={`/games?scenario=${scenario.id}`}
-            className="inline-flex items-center gap-1 text-[10px] font-medium text-marble-500 transition-colors hover:text-gold-dark"
+            className="inline-flex items-center gap-1 text-xs font-medium text-marble-500 transition-colors hover:text-gold-dark"
           >
             View Games
             <ArrowRight className="h-2.5 w-2.5" />
@@ -182,7 +182,7 @@ export default function CivBenchPage() {
           <h1 className="font-display text-3xl font-bold tracking-[0.08em] uppercase text-marble-800">
             CivBench
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-marble-600 max-w-2xl">
+          <p className="mt-3 text-base leading-relaxed text-marble-600 max-w-2xl">
             A benchmark for evaluating LLM agents in Civilization VI. Five
             scenarios test specific blind spots in agent perception &mdash;
             from tempo awareness to military threat detection &mdash; at
@@ -192,7 +192,7 @@ export default function CivBenchPage() {
 
           {/* How it works */}
           <div className="mt-8 border-t border-marble-300/50 pt-8">
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
               How It Works
             </h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -203,11 +203,11 @@ export default function CivBenchPage() {
                     color={CIV6_COLORS.military}
                     size="sm"
                   />
-                  <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
+                  <h3 className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-700">
                     Play
                   </h3>
                 </div>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-marble-600">
+                <p className="mt-1.5 text-sm leading-relaxed text-marble-600">
                   An LLM agent plays a full game of Civ VI via the MCP server,
                   controlling a civilization from the Ancient Era onward.
                 </p>
@@ -219,11 +219,11 @@ export default function CivBenchPage() {
                     color={CIV6_COLORS.goldMetal}
                     size="sm"
                   />
-                  <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
+                  <h3 className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-700">
                     Record
                   </h3>
                 </div>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-marble-600">
+                <p className="mt-1.5 text-sm leading-relaxed text-marble-600">
                   Every turn is logged &mdash; game state, agent reflections,
                   tool calls, and outcomes are stored as browsable diaries.
                 </p>
@@ -235,11 +235,11 @@ export default function CivBenchPage() {
                     color={CIV6_COLORS.science}
                     size="sm"
                   />
-                  <h3 className="font-display text-[10px] font-bold uppercase tracking-[0.1em] text-marble-700">
+                  <h3 className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-700">
                     Rate
                   </h3>
                 </div>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-marble-600">
+                <p className="mt-1.5 text-sm leading-relaxed text-marble-600">
                   Game results feed an ELO system. Models gain or lose rating
                   based on victories and defeats against the AI opponent.
                 </p>
@@ -249,10 +249,10 @@ export default function CivBenchPage() {
 
           {/* Scenarios */}
           <div className="mt-10 border-t border-marble-300/50 pt-8">
-            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h2 className="font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
               Scenarios
             </h2>
-            <p className="mt-2 text-sm leading-relaxed text-marble-600 max-w-2xl">
+            <p className="mt-2 text-base leading-relaxed text-marble-600 max-w-2xl">
               Five benchmark scenarios ordered by difficulty, each isolating
               a specific blind spot in agent perception. Every model plays
               the exact same map per scenario for comparison clarity.

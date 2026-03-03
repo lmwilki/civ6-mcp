@@ -31,12 +31,12 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
         {/* Diplo states table */}
         {diplo && Object.keys(diplo).length > 0 && (
           <div>
-            <h4 className="mb-1 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               Relations
             </h4>
-            <table className="w-full text-xs">
+            <table className="w-full text-sm">
               <thead>
-                <tr className="text-[10px] uppercase tracking-wider text-marble-500">
+                <tr className="text-xs uppercase tracking-wider text-marble-500">
                   <th className="py-1 px-1 text-left">Civ</th>
                   <th className="py-1 px-1 text-left">State</th>
                   <th className="py-1 px-1 text-left">Alliance</th>
@@ -81,10 +81,10 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
         {(agent.envoys_available !== undefined ||
           (envoysSent && Object.keys(envoysSent).length > 0)) && (
           <div>
-            <h4 className="mb-1 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               City-States
             </h4>
-            <div className="mb-1.5 flex gap-4 text-xs">
+            <div className="mb-1.5 flex gap-4 text-sm">
               {agent.envoys_available !== undefined && (
                 <span className="text-marble-600">
                   Available:{" "}
@@ -129,10 +129,10 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
         {/* Trade routes */}
         {trade && (
           <div>
-            <h4 className="mb-1 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+            <h4 className="mb-1 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
               Trade Routes
             </h4>
-            <div className="flex gap-4 text-xs">
+            <div className="flex gap-4 text-sm">
               <span className="text-marble-600">
                 Active:{" "}
                 <span className="font-mono tabular-nums text-marble-800">

@@ -58,7 +58,7 @@ function RankBadge({ rank }: { rank: number }) {
     return <CivIcon icon={Medal} color={MEDAL_COLORS[rank - 1]} size="sm" />;
   }
   return (
-    <span className="flex h-5 w-5 items-center justify-center font-mono text-xs tabular-nums text-marble-400">
+    <span className="flex h-5 w-5 items-center justify-center font-mono text-sm tabular-nums text-marble-400">
       {rank}
     </span>
   );
@@ -67,7 +67,7 @@ function RankBadge({ rank }: { rank: number }) {
 function EloBadge({ elo, color }: { elo: number; color?: string }) {
   return (
     <span
-      className={`font-mono text-sm font-semibold tabular-nums ${
+      className={`font-mono text-base font-semibold tabular-nums ${
         elo >= 1500 ? "text-patina" : "text-terracotta"
       }`}
       style={color ? { color } : undefined}
@@ -79,7 +79,7 @@ function EloBadge({ elo, color }: { elo: number; color?: string }) {
 
 function WinLoss({ wins, losses }: { wins: number; losses: number }) {
   return (
-    <span className="font-mono text-sm tabular-nums text-marble-600">
+    <span className="font-mono text-base tabular-nums text-marble-600">
       <span className="text-patina">{wins}</span>
       <span className="text-marble-400">-</span>
       <span className="text-terracotta">{losses}</span>
@@ -96,7 +96,7 @@ function WinRateBar({ pct }: { pct: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="font-mono text-xs tabular-nums text-marble-600">
+      <span className="font-mono text-sm tabular-nums text-marble-600">
         {pct}%
       </span>
     </div>
@@ -118,11 +118,11 @@ export function LeaderboardPreview() {
   return (
     <section>
       <div className="flex items-baseline justify-between">
-        <h3 className="flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+        <h3 className="flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
           <CivIcon icon={Trophy} color={CIV6_COLORS.goldMetal} size="sm" />
           Model ELO Rankings
         </h3>
-        <span className="text-[10px] tabular-nums text-marble-400">
+        <span className="text-xs tabular-nums text-marble-400">
           {gameCount} game{gameCount !== 1 ? "s" : ""}
         </span>
       </div>
@@ -142,15 +142,15 @@ export function LeaderboardPreview() {
               <div className="flex flex-1 items-center gap-2.5 pl-3 pr-2 py-2.5">
                 <ModelAvatar entry={entry} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
+                  <span className="font-display text-sm font-bold tracking-wide uppercase text-marble-800">
                     {formatModelName(entry.name)}
                   </span>
-                  <span className="ml-1.5 text-[10px] text-marble-400">
+                  <span className="ml-1.5 text-xs text-marble-400">
                     {meta.provider}
                   </span>
                 </div>
                 <div className="flex flex-col items-end gap-0.5">
-                  <span className="font-mono text-xs font-semibold tabular-nums text-marble-700">
+                  <span className="font-mono text-sm font-semibold tabular-nums text-marble-700">
                     {entry.elo}
                   </span>
                   <CivIcon icon={Medal} color={MEDAL_COLORS[i]} size="sm" />
@@ -205,7 +205,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
       {/* Rankings Table */}
       <section>
         <div className="flex items-baseline justify-between">
-          <h2 className="flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+          <h2 className="flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
             <CivIcon
               icon={TrendingUp}
               color={CIV6_COLORS.goldMetal}
@@ -213,7 +213,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
             />
             Rankings
           </h2>
-          <span className="text-[10px] tabular-nums text-marble-400">
+          <span className="text-xs tabular-nums text-marble-400">
             {gameCount} game{gameCount !== 1 ? "s" : ""} played
           </span>
         </div>
@@ -221,7 +221,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
         <div className="mt-3 overflow-x-auto rounded-sm border border-marble-300/50">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-marble-300/50 bg-marble-100 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-marble-500">
+              <tr className="border-b border-marble-300/50 bg-marble-100 text-left text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                 <th className="w-10 px-3 py-2.5 text-center">#</th>
                 <th className="px-3 py-2.5">Model</th>
                 <th className="hidden px-3 py-2.5 sm:table-cell">Provider</th>
@@ -256,7 +256,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5">
                         <ModelAvatar entry={entry} />
-                        <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
+                        <span className="font-display text-sm font-bold tracking-wide uppercase text-marble-800">
                           {formatModelName(entry.name)}
                         </span>
                       </div>
@@ -272,7 +272,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                             className="h-3.5 w-3.5"
                           />
                         )}
-                        <span className="text-xs text-marble-500">
+                        <span className="text-sm text-marble-500">
                           {meta.provider}
                         </span>
                       </div>
@@ -297,7 +297,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                         <WinRateBar pct={winPct} />
                       </div>
                     </td>
-                    <td className="hidden px-3 py-2.5 text-right font-mono text-xs tabular-nums text-marble-600 sm:table-cell">
+                    <td className="hidden px-3 py-2.5 text-right font-mono text-sm tabular-nums text-marble-600 sm:table-cell">
                       {entry.games}
                     </td>
                   </tr>
@@ -310,7 +310,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
 
       {/* Model Cards */}
       <section>
-        <h2 className="flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+        <h2 className="flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
           <CivIcon icon={Swords} color={CIV6_COLORS.military} size="sm" />
           Model Profiles
         </h2>
@@ -334,10 +334,10 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                   <div className="flex items-center gap-2.5">
                     <ModelAvatar entry={entry} />
                     <div>
-                      <div className="font-display text-xs font-bold uppercase tracking-wide text-marble-800">
+                      <div className="font-display text-sm font-bold uppercase tracking-wide text-marble-800">
                         {meta.name}
                       </div>
-                      <div className="text-[10px] text-marble-500">
+                      <div className="text-xs text-marble-500">
                         {meta.provider}
                       </div>
                     </div>
@@ -347,7 +347,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                       <div className="font-mono text-lg font-bold tabular-nums">
                         <EloBadge elo={entry.elo} />
                       </div>
-                      <div className="text-[9px] uppercase tracking-wider text-marble-500">
+                      <div className="text-xs uppercase tracking-wider text-marble-500">
                         ELO
                       </div>
                     </div>
@@ -355,7 +355,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                       <div className="font-mono text-sm font-semibold tabular-nums text-marble-700">
                         <WinLoss wins={entry.wins} losses={entry.losses} />
                       </div>
-                      <div className="text-[9px] uppercase tracking-wider text-marble-500">
+                      <div className="text-xs uppercase tracking-wider text-marble-500">
                         W-L
                       </div>
                     </div>
@@ -369,7 +369,7 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
                           style={{ width: `${winPct}%` }}
                         />
                       </div>
-                      <div className="mt-0.5 text-[9px] uppercase tracking-wider text-marble-500">
+                      <div className="mt-0.5 text-xs uppercase tracking-wider text-marble-500">
                         Win
                       </div>
                     </div>

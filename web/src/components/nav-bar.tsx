@@ -18,7 +18,7 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
         <div className="flex items-baseline gap-3 sm:gap-6 lg:pr-12">
           <Link href="/">
             <h1
-              className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
+              className={`font-display text-sm font-bold tracking-[0.08em] uppercase transition-colors hover:text-gold-dark ${
                 active === "home" ? "text-gold-dark" : "text-marble-800"
               }`}
             >
@@ -76,7 +76,7 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
         <div className="hidden lg:flex items-center gap-3 sm:gap-6 pl-12">
           <Link href="/civbench">
             <span
-              className={`font-display text-sm font-bold tracking-[0.15em] uppercase transition-colors hover:text-gold-dark ${
+              className={`font-display text-sm font-bold tracking-[0.08em] uppercase transition-colors hover:text-gold-dark ${
                 active === "leaderboard" ? "text-gold-dark" : "text-marble-800"
               }`}
             >

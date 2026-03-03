@@ -74,7 +74,7 @@ function ScoreDelta({
   if (delta === 0) return null;
   return (
     <span
-      className={`text-[9px] font-medium ${delta > 0 ? "text-patina" : "text-terracotta"}`}
+      className={`text-[10px] font-medium ${delta > 0 ? "text-patina" : "text-terracotta"}`}
     >
       {delta > 0 ? "+" : ""}
       {Math.round(delta * 10) / 10}
@@ -107,7 +107,7 @@ function YieldPill({
           </span>
           <ScoreDelta current={value} prev={prev} suffix={suffix} />
         </span>
-        <span className="text-[10px] uppercase tracking-wider text-marble-600">
+        <span className="text-xs uppercase tracking-wider text-marble-600">
           {label}
         </span>
       </div>
@@ -329,7 +329,7 @@ export function AgentOverview({
               <AnimatedNumber value={a.era_score} decimals={0} />
               <ScoreDelta current={a.era_score} prev={pa?.era_score} />
             </span>
-            <span className="text-[9px] uppercase tracking-wider text-marble-500">
+            <span className="text-xs uppercase tracking-wider text-marble-500">
               Era Score
             </span>
           </div>
@@ -342,7 +342,7 @@ export function AgentOverview({
           />
           <div className="flex flex-col">
             <span className="font-mono text-sm text-marble-800">{a.age}</span>
-            <span className="text-[9px] uppercase tracking-wider text-marble-500">
+            <span className="text-xs uppercase tracking-wider text-marble-500">
               Age
             </span>
           </div>
@@ -354,7 +354,7 @@ export function AgentOverview({
               <span className="font-mono text-sm text-marble-800">
                 {cleanCivName(a.government)}
               </span>
-              <span className="text-[9px] uppercase tracking-wider text-marble-500">
+              <span className="text-xs uppercase tracking-wider text-marble-500">
                 Government
               </span>
             </div>
@@ -365,7 +365,7 @@ export function AgentOverview({
       {/* Strategic resources */}
       {Object.keys(a.stockpiles).length > 0 && (
         <div className="mb-4">
-          <h3 className="mb-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+          <h3 className="mb-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
             Strategic Resources
           </h3>
           <div className="flex flex-wrap gap-1.5">
@@ -395,7 +395,7 @@ export function AgentOverview({
       {/* Luxury resources */}
       {Object.keys(a.luxuries).length > 0 && (
         <div className="mb-4">
-          <h3 className="mb-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+          <h3 className="mb-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
             Luxuries
           </h3>
           <div className="flex flex-wrap gap-1.5">

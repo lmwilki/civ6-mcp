@@ -154,7 +154,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                   key={cat}
                   onClick={() => toggleCategory(cat)}
                   aria-pressed={active}
-                  className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+                  className={`rounded-sm border px-2 py-0.5 font-mono text-xs transition-colors ${
                     active ? CATEGORY_STYLES[cat].on : CATEGORY_STYLES[cat].off
                   }`}
                 >
@@ -167,7 +167,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
           {/* Tool-level filter toggle */}
           <button
             onClick={() => setShowToolFilter((v) => !v)}
-            className={`rounded-sm border px-2 py-0.5 font-mono text-[10px] transition-colors ${
+            className={`rounded-sm border px-2 py-0.5 font-mono text-xs transition-colors ${
               hiddenTools.size > 0
                 ? "border-terracotta/30 bg-terracotta/10 text-terracotta"
                 : "border-marble-300 text-marble-500 hover:bg-marble-100"
@@ -197,13 +197,13 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
         <div className="shrink-0 border-b border-marble-300 bg-marble-50 px-6 py-3">
           <div className="mx-auto max-w-4xl">
             <div className="flex items-center justify-between">
-              <span className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+              <span className="font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                 Filter Tools
               </span>
               {hiddenTools.size > 0 && (
                 <button
                   onClick={() => setHiddenTools(new Set())}
-                  className="font-mono text-[10px] text-terracotta hover:underline"
+                  className="font-mono text-xs text-terracotta hover:underline"
                 >
                   Clear all
                 </button>
@@ -215,7 +215,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                 if (tools.length === 0) return null;
                 return (
                   <div key={cat}>
-                    <span className="font-mono text-[10px] text-marble-500">
+                    <span className="font-mono text-xs text-marble-500">
                       {CATEGORY_LABELS[cat]}
                     </span>
                     <div className="mt-0.5 flex flex-wrap gap-1">
@@ -226,7 +226,7 @@ export function GameLogView({ gameSlug }: GameLogViewProps) {
                             key={tool}
                             onClick={() => toggleTool(tool)}
                             aria-pressed={!hidden}
-                            className={`rounded-sm border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                            className={`rounded-sm border px-1.5 py-0.5 font-mono text-xs transition-colors ${
                               hidden
                                 ? "border-marble-200 bg-marble-50 text-marble-400 line-through"
                                 : "border-marble-300 bg-marble-100 text-marble-700"

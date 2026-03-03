@@ -136,7 +136,7 @@ export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) 
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+        <h3 className="flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
           <CivIcon icon={BarChart3} color={CIV6_COLORS.marine} size="sm" />
           Comparison
         </h3>
@@ -148,7 +148,7 @@ export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) 
               setRotating(false);
             }}
             aria-label="Select metric"
-            className="rounded-sm border border-marble-300 bg-marble-100 px-1.5 py-0.5 font-mono text-[10px] text-marble-700"
+            className="rounded-sm border border-marble-300 bg-marble-100 px-1.5 py-0.5 font-mono text-xs text-marble-700"
           >
             {METRIC_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -218,11 +218,11 @@ export function MultiCivChart({ turnSeries, currentIndex }: MultiCivChartProps) 
               />
             )}
             <span
-              className={`flex-1 text-[10px] ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}
+              className={`flex-1 text-xs ${e.isAgent ? "font-medium text-marble-700" : "text-marble-600"}`}
             >
               {e.name}
             </span>
-            <span className="font-mono text-[10px] tabular-nums text-marble-700">
+            <span className="font-mono text-xs tabular-nums text-marble-700">
               {e.value ?? "—"}
             </span>
           </div>

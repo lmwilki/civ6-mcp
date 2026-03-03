@@ -50,17 +50,17 @@ export function RecentGames() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1">
                     <CivSymbol civ={game.label} />
-                    <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
+                    <span className="font-display text-sm font-bold tracking-wide uppercase text-marble-800">
                       {game.label}
                     </span>
                   </div>
                   {game.leader && (
-                    <p className="text-[10px] text-marble-500 truncate">
+                    <p className="text-xs text-marble-500 truncate">
                       {game.leader}
                     </p>
                   )}
                   {game.agentModel && (
-                    <p className="text-[10px] text-marble-400 truncate">
+                    <p className="text-xs text-marble-400 truncate">
                       {formatModelName(game.agentModel)}
                     </p>
                   )}

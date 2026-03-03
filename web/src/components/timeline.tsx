@@ -28,7 +28,7 @@ export function Timeline({ entries, live }: TimelineProps) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
-          <p className="font-display text-sm tracking-[0.12em] uppercase text-marble-500">
+          <p className="font-display text-sm tracking-[0.08em] uppercase text-marble-500">
             Awaiting dispatches
           </p>
           <p className="mt-2 text-sm text-marble-600">

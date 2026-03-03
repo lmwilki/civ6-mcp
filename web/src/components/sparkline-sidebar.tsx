@@ -34,7 +34,7 @@ export function SparklineSidebar({
 
   return (
     <>
-      <h3 className="mb-3 flex items-center gap-1.5 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+      <h3 className="mb-3 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
         <CivIcon icon={TrendingUp} color={CIV6_COLORS.goldMetal} size="sm" />
         Trends
       </h3>

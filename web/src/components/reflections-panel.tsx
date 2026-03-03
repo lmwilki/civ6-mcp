@@ -83,7 +83,7 @@ export function ReflectionsPanel({ reflections }: ReflectionsPanelProps) {
               className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-marble-100"
             >
               <CivIcon icon={icon} color={color} size="sm" />
-              <span className="flex-1 font-display text-xs font-bold uppercase tracking-[0.1em] text-marble-700">
+              <span className="flex-1 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-700">
                 {label}
               </span>
               {isOpen ? (
@@ -94,7 +94,7 @@ export function ReflectionsPanel({ reflections }: ReflectionsPanelProps) {
             </button>
             {isOpen && (
               <div className="border-t border-marble-300/30 px-3 py-2">
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-marble-700">
+                <p className="whitespace-pre-wrap text-base leading-relaxed text-marble-700">
                   {text}
                 </p>
               </div>

@@ -57,7 +57,7 @@ export function ScoreSparkline({
   return (
     <div className="flex items-center gap-2">
       <div className="flex w-20 shrink-0 items-center justify-end gap-1">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-marble-600">
+        <span className="text-xs font-medium uppercase tracking-wider text-marble-600">
           {label}
         </span>
         <CivIcon icon={icon} color={color} size="sm" />

@@ -175,7 +175,7 @@ function DropdownFilter({
       >
         {label}
         {count > 0 && (
-          <span className="font-mono text-[9px]">({count})</span>
+          <span className="font-mono text-xs">({count})</span>
         )}
         <ChevronDown className="h-2.5 w-2.5" />
       </button>
@@ -188,7 +188,7 @@ function DropdownFilter({
                 placeholder="Search..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-transparent text-[11px] text-marble-700 placeholder-marble-400 outline-none"
+                className="w-full bg-transparent text-xs text-marble-700 placeholder-marble-400 outline-none"
                 autoFocus
               />
             </div>
@@ -197,11 +197,11 @@ function DropdownFilter({
             {filtered.map((opt) => (
               <button
                 key={opt}
-                className="flex w-full items-center gap-2 px-2 py-1 text-left text-[11px] text-marble-700 transition-colors hover:bg-marble-100"
+                className="flex w-full items-center gap-2 px-2 py-1 text-left text-xs text-marble-700 transition-colors hover:bg-marble-100"
                 onClick={() => onToggle(opt)}
               >
                 <span
-                  className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-sm border text-[8px] ${
+                  className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-sm border text-[9px] ${
                     selected.has(opt)
                       ? "border-gold-dark bg-gold-dark/20 text-gold-dark"
                       : "border-marble-400"
@@ -213,7 +213,7 @@ function DropdownFilter({
               </button>
             ))}
             {filtered.length === 0 && (
-              <p className="px-2 py-1.5 text-[10px] text-marble-400">
+              <p className="px-2 py-1.5 text-xs text-marble-400">
                 No matches
               </p>
             )}
@@ -392,16 +392,16 @@ function GamesPageInner() {
     <PageShell active="games">
       <main className="flex-1 px-3 py-6 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-5xl">
-          <h2 className="font-display text-xl font-bold tracking-[0.1em] uppercase text-marble-800">
+          <h2 className="font-display text-3xl font-bold tracking-[0.08em] uppercase text-marble-800">
             Games
           </h2>
-          <p className="mt-1 text-sm text-marble-500">
+          <p className="mt-1 text-base text-marble-500">
             Turn-by-turn diaries, agent reflections, and tool call logs.
           </p>
 
           {games.length === 0 ? (
             <div className="mt-12 flex items-center justify-center">
-              <p className="font-display text-sm tracking-[0.12em] uppercase text-marble-500">
+              <p className="font-display text-sm tracking-[0.08em] uppercase text-marble-500">
                 No games yet
               </p>
             </div>
@@ -534,7 +534,7 @@ function GamesPageInner() {
 
                 {active && (
                   <button
-                    className="inline-flex items-center gap-0.5 text-[10px] font-medium text-marble-500 transition-colors hover:text-marble-700"
+                    className="inline-flex items-center gap-0.5 text-xs font-medium text-marble-500 transition-colors hover:text-marble-700"
                     onClick={clearFilters}
                   >
                     <X className="h-2.5 w-2.5" />
@@ -544,7 +544,7 @@ function GamesPageInner() {
 
                 {/* Sort selector — pushed right */}
                 <div className="ml-auto flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-marble-400">
+                  <span className="text-xs font-bold uppercase tracking-[0.08em] text-marble-400">
                     Sort
                   </span>
                   {SORT_OPTIONS.map((opt) => (
@@ -555,7 +555,7 @@ function GamesPageInner() {
                     >
                       {opt.label}
                       {sortKey === opt.key && (
-                        <span className="text-[8px]">
+                        <span className="text-[9px]">
                           {sortDir === "desc" ? "▼" : "▲"}
                         </span>
                       )}
@@ -567,7 +567,7 @@ function GamesPageInner() {
               {/* Table */}
               {sorted.length === 0 ? (
                 <div className="mt-8 flex flex-col items-center justify-center gap-2">
-                  <p className="font-display text-sm tracking-[0.12em] uppercase text-marble-500">
+                  <p className="font-display text-sm tracking-[0.08em] uppercase text-marble-500">
                     No games match filters
                   </p>
                   <button
@@ -581,7 +581,7 @@ function GamesPageInner() {
                 <div className="mt-3 overflow-x-auto rounded-sm border border-marble-300/50">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-marble-300/50 bg-marble-100 text-left text-[10px] font-bold uppercase tracking-[0.1em] text-marble-500">
+                      <tr className="border-b border-marble-300/50 bg-marble-100 text-left text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
                         <th className="px-3 py-2.5">Game</th>
                         <th className="hidden px-3 py-2.5 sm:table-cell">
                           Model
@@ -647,17 +647,17 @@ function GamesPageInner() {
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <CivSymbol civ={game.label} />
-                                    <span className="font-display text-xs font-bold tracking-wide uppercase text-marble-800">
+                                    <span className="font-display text-sm font-bold tracking-wide uppercase text-marble-800">
                                       {game.label}
                                     </span>
                                   </div>
                                   {game.leader && (
-                                    <p className="mt-0.5 text-[10px] text-marble-500 truncate">
+                                    <p className="mt-0.5 text-xs text-marble-500 truncate">
                                       {game.leader}
                                     </p>
                                   )}
                                   {game.scenarioId && SCENARIOS[game.scenarioId] && (
-                                    <p className="mt-0.5 flex items-center gap-1 text-[10px] text-marble-400">
+                                    <p className="mt-0.5 flex items-center gap-1 text-xs text-marble-400">
                                       <span
                                         className="inline-block h-1.5 w-1.5 rounded-full"
                                         style={{ backgroundColor: DIFFICULTY_META[game.difficulty ?? ""]?.color }}
@@ -687,7 +687,7 @@ function GamesPageInner() {
                                       className="h-3.5 w-3.5"
                                     />
                                   )}
-                                  <span className="text-xs text-marble-600">
+                                  <span className="text-sm text-marble-600">
                                     {formatModelName(game.agentModel!)}
                                   </span>
                                 </div>
@@ -701,7 +701,7 @@ function GamesPageInner() {
                             {/* Score */}
                             <td className="hidden px-3 py-2 text-right md:table-cell">
                               {game.score != null ? (
-                                <span className="font-mono text-xs tabular-nums text-marble-600">
+                                <span className="font-mono text-sm tabular-nums text-marble-600">
                                   {game.score}
                                 </span>
                               ) : (
@@ -714,7 +714,7 @@ function GamesPageInner() {
                             {/* Updated */}
                             <td className="hidden px-3 py-2 text-right md:table-cell">
                               {game.lastUpdated ? (
-                                <span className="text-xs text-marble-500">
+                                <span className="text-sm text-marble-500">
                                   {formatTimeAgo(game.lastUpdated)}
                                 </span>
                               ) : (
@@ -732,7 +732,7 @@ function GamesPageInner() {
                                 turnCount={game.count}
                               />
                               {game.outcome?.winnerLeader && (
-                                <p className="mt-0.5 text-right text-[10px] text-marble-400">
+                                <p className="mt-0.5 text-right text-xs text-marble-400">
                                   {game.outcome.winnerLeader}
                                 </p>
                               )}
