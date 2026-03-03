@@ -1070,13 +1070,39 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     steps.append(f"Selected save {save_name}")
 
     log.info("[5/6] Clicking 'Load Game' button (bottom, not title)...")
-    if not _click_text("Load Game", timeout=10, post_delay=5, prefer_bottom=True):
+    if not _click_text("Load Game", timeout=10, post_delay=2, prefer_bottom=True):
         steps.append("Load Game button not found (may have loaded from double-click)")
     else:
         steps.append("Clicked Load Game button")
 
-    log.info("[6/6] Checking for leader screen...")
-    match = _wait_for_text("CONTINUE", timeout=30)
+    # [6/6] Wait for save to load, then check for leader screen.
+    #
+    # CRITICAL: Do NOT use PrintWindow or SetForegroundWindow during the
+    # save loading phase.  PrintWindow(PW_RENDERFULLCONTENT) forces DX12
+    # to render to an offscreen bitmap, which crashes the game's renderer
+    # when it's in the middle of initializing the game world (tearing down
+    # menu UI, loading assets, building the map).  The thread-attach trick
+    # in _bring_to_front_win32 also destabilizes the game by injecting
+    # window messages into the loading message pump.
+    #
+    # Instead: passively wait for the loading phase to complete (checking
+    # only that the game process is alive), THEN do OCR for CONTINUE.
+
+    log.info("[6/6] Passive wait for save to load (no window capture)...")
+    _LOAD_PASSIVE_WAIT = 20  # seconds — enough for most saves to load
+    for elapsed in range(1, _LOAD_PASSIVE_WAIT + 1):
+        time.sleep(1)
+        if not is_game_running():
+            log.warning("Game process died during save loading (after %ds)", elapsed)
+            return (
+                f"FAILED: Game crashed during save loading after {elapsed}s. "
+                f"Steps: {', '.join(steps)}"
+            )
+        if elapsed % 5 == 0:
+            log.info("  ... %ds/%ds", elapsed, _LOAD_PASSIVE_WAIT)
+
+    log.info("Passive wait complete. Checking for leader screen...")
+    match = _wait_for_text("CONTINUE", timeout=15, interval=5)
     if match:
         text, x, y, w, h = match
         log.info("Found '%s' at (%d,%d) — clicking", text, x, y)
