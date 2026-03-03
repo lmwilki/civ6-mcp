@@ -474,6 +474,30 @@ async def get_global_settle_advisor(ctx: Context) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
+async def get_builder_tasks(ctx: Context) -> str:
+    """Get a prioritized task board for all your builders.
+
+    Scans your territory for tiles needing improvements and matches them
+    with idle builders. Like the builder lens in the UI — shows what to
+    build where and which builder is closest.
+
+    Priority tiers:
+    - URGENT: Pillaged improvements (yield loss), unimproved strategic resources
+    - HIGH: Unimproved luxury/bonus resources
+    - NORMAL: Empty tiles that could benefit from farms/mines/lumber mills
+
+    Call this before issuing builder orders each turn.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        tasks, builders = await gs.get_builder_tasks()
+        return nr.narrate_builder_tasks(tasks, builders)
+
+    return await _logged(ctx, "get_builder_tasks", {}, _run)
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
 async def get_empire_resources(ctx: Context) -> str:
     """Get a summary of all resources in and near your empire.
 

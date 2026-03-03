@@ -246,7 +246,20 @@ for dy = -r, r do
                     local dInfo = GameInfo.Districts[distIdx]
                     if dInfo then distName = dInfo.DistrictType end
                 end
-                print(x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. river .. "|" .. coastal .. "|" .. imp .. "|" .. owner .. "|" .. unitStr .. "|" .. visTag .. "|" .. freshWater .. "|" .. yields .. "|" .. distName .. "|" .. ownerName .. "|" .. myUnitStr)
+                local routeType = -1
+                pcall(function() routeType = plot:GetRouteType() end)
+                local moveCost = 1
+                if terrain ~= "TERRAIN_OCEAN" and terrain ~= "TERRAIN_COAST" then
+                    if plot:IsHills() then moveCost = 2 end
+                    if featureIdx >= 0 then
+                        local fInfo = GameInfo.Features[featureIdx]
+                        if fInfo and fInfo.MovementChange then
+                            moveCost = moveCost + math.max(0, fInfo.MovementChange)
+                        end
+                    end
+                    if routeType >= 0 then moveCost = 1 end
+                end
+                print(x .. "," .. y .. "|" .. terrain .. "|" .. feature .. "|" .. resource .. "|" .. hills .. "|" .. river .. "|" .. coastal .. "|" .. imp .. "|" .. owner .. "|" .. unitStr .. "|" .. visTag .. "|" .. freshWater .. "|" .. yields .. "|" .. distName .. "|" .. ownerName .. "|" .. myUnitStr .. "|" .. routeType .. "|" .. moveCost)
             end
         end
     end
@@ -886,6 +899,18 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
         own_unit_list = None
         if len(parts) > 15 and parts[15] != "none":
             own_unit_list = [p for p in parts[15].split(";") if p]
+        route_type = -1
+        if len(parts) > 16:
+            try:
+                route_type = int(parts[16])
+            except ValueError:
+                pass
+        movement_cost = 1
+        if len(parts) > 17:
+            try:
+                movement_cost = int(parts[17])
+            except ValueError:
+                pass
         tiles.append(
             TileInfo(
                 x=int(x_str),
@@ -909,6 +934,8 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
                 else parts[13],
                 owner_name=owner_name,
                 own_units=own_unit_list,
+                route_type=route_type,
+                movement_cost=movement_cost,
             )
         )
     return tiles

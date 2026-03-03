@@ -110,6 +110,12 @@ class GameState:
         lines = await self.conn.execute_write(lq.build_units_query())
         return lq.parse_units_response(lines)
 
+    async def get_builder_tasks(
+        self,
+    ) -> tuple[list[lq.BuilderTask], list[lq.BuilderInfo]]:
+        lines = await self.conn.execute_write(lq.build_builder_tasks_query())
+        return lq.parse_builder_tasks(lines)
+
     async def get_spies(self) -> list[lq.SpyInfo]:
         lines = await self.conn.execute_write(lq.build_get_spies_query())
         return lq.parse_spies_response(lines)

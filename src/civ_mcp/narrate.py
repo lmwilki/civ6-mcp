@@ -195,6 +195,73 @@ def narrate_units(
     return "\n".join(lines)
 
 
+def narrate_builder_tasks(
+    tasks: list[lq.BuilderTask], builders: list[lq.BuilderInfo]
+) -> str:
+    if not builders:
+        return "No builders with charges available."
+    idle = [b for b in builders if b.moves > 0]
+    lines = [f"=== BUILDER TASKS ({len(tasks)} tasks, {len(idle)} idle builders) ==="]
+    if not tasks:
+        lines.append("")
+        lines.append("No tiles need improvement in your territory.")
+        lines.append("")
+        _append_builder_list(lines, builders)
+        return "\n".join(lines)
+
+    # Group by priority
+    by_priority: dict[str, list[lq.BuilderTask]] = {"urgent": [], "high": [], "normal": []}
+    for t in tasks:
+        by_priority.setdefault(t.priority, []).append(t)
+
+    for pri, label in [("urgent", "URGENT"), ("high", "HIGH"), ("normal", "NORMAL")]:
+        group = by_priority.get(pri, [])
+        if not group:
+            continue
+        lines.append("")
+        lines.append(f"{label}:")
+        # Sort by distance so nearest tasks come first
+        for t in sorted(group, key=lambda t: t.distance):
+            if t.resource_class == "pillaged":
+                action = f"repair {t.resource}"
+            else:
+                imp_label = t.improvement.replace("IMPROVEMENT_", "")
+                suffix = ""
+                if t.resource_class == "luxury":
+                    suffix = "+"
+                elif t.resource_class == "strategic":
+                    suffix = "*"
+                res_prefix = f"{t.resource}{suffix} — " if t.resource else ""
+                action = f"{res_prefix}build {imp_label}"
+
+            builder_str = ""
+            if t.nearest_builder_id >= 0:
+                builder_str = f" — nearest builder id:{t.nearest_builder_id}, {t.distance} tile{'s' if t.distance != 1 else ''}"
+            lines.append(
+                f"  ({t.x},{t.y}): {action} [city: {t.city_name}]{builder_str}"
+            )
+
+    lines.append("")
+    _append_builder_list(lines, builders)
+    return "\n".join(lines)
+
+
+def _append_builder_list(lines: list[str], builders: list[lq.BuilderInfo]) -> None:
+    idle = [b for b in builders if b.moves > 0]
+    busy = [b for b in builders if b.moves <= 0]
+    lines.append(f"IDLE BUILDERS ({len(idle)}):")
+    for b in idle:
+        lines.append(
+            f"  id:{b.unit_id} at ({b.x},{b.y}) — {b.charges} charges, {b.moves:.0f} moves"
+        )
+    if busy:
+        lines.append(f"BUSY BUILDERS ({len(busy)}):")
+        for b in busy:
+            lines.append(
+                f"  id:{b.unit_id} at ({b.x},{b.y}) — {b.charges} charges (no moves)"
+            )
+
+
 def narrate_cities(
     cities: list[lq.CityInfo], distances: list[str] | None = None
 ) -> str:
@@ -405,6 +472,9 @@ def narrate_map(tiles: list[lq.TileInfo]) -> str:
             if t.is_pillaged:
                 imp_label += " PILLAGED"
             parts.append(f"({imp_label})")
+        if t.route_type >= 0:
+            route_name = "Railroad" if t.route_type == 2 else "Road"
+            parts.append(f"({route_name})")
         if t.district:
             parts.append(f"[{t.district.replace('DISTRICT_', '')}]")
         if t.yields:
@@ -437,8 +507,11 @@ def narrate_map(tiles: list[lq.TileInfo]) -> str:
         own_str = ""
         if t.own_units:
             own_str = f" [my: {', '.join(t.own_units)}]"
+        mv_str = ""
+        if t.movement_cost > 1:
+            mv_str = f" [mv:{t.movement_cost}]"
         lines.append(
-            f"  ({t.x},{t.y}): {' '.join(parts)}{owner}{vis_tag}{own_str}{unit_str}"
+            f"  ({t.x},{t.y}): {' '.join(parts)}{owner}{vis_tag}{mv_str}{own_str}{unit_str}"
         )
     return "\n".join(lines)
 

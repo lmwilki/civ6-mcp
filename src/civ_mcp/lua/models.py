@@ -312,6 +312,8 @@ class TileInfo:
     owner_name: str | None = (
         None  # resolved name, e.g. "Vatican City" (with :CS suffix for city-states)
     )
+    route_type: int = -1  # -1=none, 0=ancient road, 1=medieval road, 2=railroad
+    movement_cost: int = 1  # base movement cost for land units
 
 
 @dataclass
@@ -1150,3 +1152,26 @@ class ReligionSummary:
 class ReligionStatus:
     cities: list[CityReligionInfo]
     summary: list[ReligionSummary]
+
+
+@dataclass
+class BuilderTask:
+    priority: str  # "urgent", "high", "normal"
+    x: int
+    y: int
+    improvement: str  # e.g. "IMPROVEMENT_MINE"
+    resource: str  # e.g. "IRON", "" for non-resource tiles
+    resource_class: str  # "strategic", "luxury", "bonus", "pillaged", ""
+    city_name: str
+    nearest_builder_id: int = -1
+    distance: int = 999
+
+
+@dataclass
+class BuilderInfo:
+    unit_id: int  # composite ID
+    unit_index: int
+    x: int
+    y: int
+    charges: int
+    moves: float

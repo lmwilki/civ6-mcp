@@ -9,7 +9,14 @@ from civ_mcp.lua._helpers import (
     _lua_get_unit,
     _lua_get_unit_gamecore,
 )
-from civ_mcp.lua.models import CombatEstimate, PathingEstimate, ThreatInfo, UnitInfo
+from civ_mcp.lua.models import (
+    BuilderInfo,
+    BuilderTask,
+    CombatEstimate,
+    PathingEstimate,
+    ThreatInfo,
+    UnitInfo,
+)
 
 
 def build_units_query() -> str:
@@ -1335,3 +1342,219 @@ def parse_post_move_visibility(
         }
         results.append((x, y, meta))
     return results
+
+
+def build_builder_tasks_query() -> str:
+    """InGame context: scans all owned tiles for improvement tasks and all idle builders.
+
+    Outputs TASK| lines for tiles needing work and BUILDER| lines for builder units.
+    Uses hardcoded resource mapping and terrain heuristics for improvement recommendations.
+    Does NOT use CanStartOperation with remote tiles (corrupts engine state → crash).
+    """
+    return f"""
+local me = Game.GetLocalPlayer()
+local pCities = Players[me]:GetCities()
+
+-- Gather all builders with charges
+local builders = {{}}
+for _, u in Players[me]:GetUnits():Members() do
+    local entry = GameInfo.Units[u:GetType()]
+    if entry and entry.UnitType == "UNIT_BUILDER" and u:GetBuildCharges() > 0 then
+        local bx, by = u:GetX(), u:GetY()
+        if bx ~= -9999 then
+            table.insert(builders, {{id=u:GetID(), idx=u:GetID() % 65536, x=bx, y=by, charges=u:GetBuildCharges(), moves=u:GetMovesRemaining()}})
+        end
+    end
+end
+
+-- Hardcoded resource -> improvement mapping (avoids GameInfo.Improvement_ValidResources()
+-- iterator which can crash the game engine with EXCEPTION_ACCESS_VIOLATION)
+local resImpMap = {{
+    -- Strategic
+    RESOURCE_HORSES="IMPROVEMENT_PASTURE", RESOURCE_IRON="IMPROVEMENT_MINE",
+    RESOURCE_NITER="IMPROVEMENT_MINE", RESOURCE_COAL="IMPROVEMENT_MINE",
+    RESOURCE_ALUMINUM="IMPROVEMENT_MINE", RESOURCE_URANIUM="IMPROVEMENT_MINE",
+    RESOURCE_OIL="IMPROVEMENT_OIL_WELL",
+    -- Luxury (mined/quarried)
+    RESOURCE_DIAMONDS="IMPROVEMENT_MINE", RESOURCE_JADE="IMPROVEMENT_MINE",
+    RESOURCE_MERCURY="IMPROVEMENT_MINE", RESOURCE_SALT="IMPROVEMENT_MINE",
+    RESOURCE_SILVER="IMPROVEMENT_MINE", RESOURCE_AMBER="IMPROVEMENT_MINE",
+    RESOURCE_GYPSUM="IMPROVEMENT_QUARRY", RESOURCE_MARBLE="IMPROVEMENT_QUARRY",
+    -- Luxury (plantation)
+    RESOURCE_CITRUS="IMPROVEMENT_PLANTATION", RESOURCE_COCOA="IMPROVEMENT_PLANTATION",
+    RESOURCE_COFFEE="IMPROVEMENT_PLANTATION", RESOURCE_COTTON="IMPROVEMENT_PLANTATION",
+    RESOURCE_DYES="IMPROVEMENT_PLANTATION", RESOURCE_INCENSE="IMPROVEMENT_PLANTATION",
+    RESOURCE_OLIVES="IMPROVEMENT_PLANTATION", RESOURCE_SILK="IMPROVEMENT_PLANTATION",
+    RESOURCE_SPICES="IMPROVEMENT_PLANTATION", RESOURCE_SUGAR="IMPROVEMENT_PLANTATION",
+    RESOURCE_TEA="IMPROVEMENT_PLANTATION", RESOURCE_TOBACCO="IMPROVEMENT_PLANTATION",
+    RESOURCE_WINE="IMPROVEMENT_PLANTATION",
+    -- Luxury (camp)
+    RESOURCE_FURS="IMPROVEMENT_CAMP", RESOURCE_IVORY="IMPROVEMENT_CAMP",
+    RESOURCE_TRUFFLES="IMPROVEMENT_CAMP", RESOURCE_HONEY="IMPROVEMENT_CAMP",
+    -- Bonus
+    RESOURCE_BANANAS="IMPROVEMENT_PLANTATION", RESOURCE_CATTLE="IMPROVEMENT_PASTURE",
+    RESOURCE_SHEEP="IMPROVEMENT_PASTURE", RESOURCE_DEER="IMPROVEMENT_CAMP",
+    RESOURCE_COPPER="IMPROVEMENT_MINE", RESOURCE_STONE="IMPROVEMENT_QUARRY",
+    RESOURCE_MAIZE="IMPROVEMENT_FARM", RESOURCE_RICE="IMPROVEMENT_FARM",
+    RESOURCE_WHEAT="IMPROVEMENT_FARM",
+    -- Water (builders can't reach, but listed for completeness)
+    RESOURCE_FISH="IMPROVEMENT_FISHING_BOATS", RESOURCE_CRABS="IMPROVEMENT_FISHING_BOATS",
+    RESOURCE_PEARLS="IMPROVEMENT_FISHING_BOATS", RESOURCE_TURTLES="IMPROVEMENT_FISHING_BOATS",
+    RESOURCE_WHALES="IMPROVEMENT_FISHING_BOATS",
+}}
+
+-- Scan city territory for tasks
+local seen = {{}}
+local normalCount = 0
+local maxNormal = 20
+for _, city in pCities:Members() do
+    local cx, cy = city:GetX(), city:GetY()
+    local cityName = Locale.Lookup(city:GetName())
+    for dy = -3, 3 do for dx = -3, 3 do
+        local px, py = cx + dx, cy + dy
+        local key = px .. "," .. py
+        if not seen[key] then
+            seen[key] = true
+            local plot = Map.GetPlot(px, py)
+            if plot and plot:GetOwner() == me and not plot:IsWater() then
+                local distIdx = plot:GetDistrictType()
+                local impIdx = plot:GetImprovementType()
+                local resIdx = plot:GetResourceType()
+
+                -- Skip tiles with districts
+                if distIdx < 0 then
+                    -- Check for pillaged improvements
+                    if impIdx >= 0 then
+                        local okP, pil = pcall(function() return plot:IsImprovementPillaged() end)
+                        if okP and pil then
+                            local impInfo = GameInfo.Improvements[impIdx]
+                            local impName = impInfo and impInfo.ImprovementType or "UNKNOWN"
+                            -- Find nearest builder
+                            local nearId, nearDist = -1, 999
+                            for _, b in ipairs(builders) do
+                                local d = Map.GetPlotDistance(b.x, b.y, px, py)
+                                if d < nearDist then nearDist = d; nearId = b.id end
+                            end
+                            print("TASK|urgent|" .. px .. "," .. py .. "|REPAIR|" .. impName:gsub("IMPROVEMENT_", "") .. "|pillaged|" .. cityName .. "|" .. nearId .. "|" .. nearDist)
+                        end
+                    -- Check for unimproved resource tiles
+                    elseif resIdx >= 0 and impIdx < 0 then
+                        local resInfo = GameInfo.Resources[resIdx]
+                        if resInfo then
+                            local resClass = resInfo.ResourceClassType or ""
+                            local resName = resInfo.ResourceType:gsub("RESOURCE_", "")
+                            local priority = "normal"
+                            if resClass == "RESOURCECLASS_STRATEGIC" then priority = "urgent"
+                            elseif resClass == "RESOURCECLASS_LUXURY" then priority = "high"
+                            elseif resClass == "RESOURCECLASS_BONUS" then priority = "high"
+                            end
+                            -- Find valid improvement via resource lookup table
+                            local validImp = resImpMap[resInfo.ResourceType] or "UNKNOWN"
+                            -- Find nearest builder
+                            local nearId, nearDist = -1, 999
+                            for _, b in ipairs(builders) do
+                                local d = Map.GetPlotDistance(b.x, b.y, px, py)
+                                if d < nearDist then nearDist = d; nearId = b.id end
+                            end
+                            local classShort = "bonus"
+                            if resClass == "RESOURCECLASS_STRATEGIC" then classShort = "strategic"
+                            elseif resClass == "RESOURCECLASS_LUXURY" then classShort = "luxury"
+                            end
+                            print("TASK|" .. priority .. "|" .. px .. "," .. py .. "|" .. validImp .. "|" .. resName .. "|" .. classShort .. "|" .. cityName .. "|" .. nearId .. "|" .. nearDist)
+                        end
+                    -- Check for empty tiles that could use standard improvements (capped)
+                    -- Uses terrain heuristics instead of CanStartOperation (which corrupts
+                    -- engine state when called with remote tile coordinates, causing
+                    -- EXCEPTION_ACCESS_VIOLATION during end_turn)
+                    elseif impIdx < 0 and resIdx < 0 and normalCount < maxNormal then
+                        local featureIdx = plot:GetFeatureType()
+                        local terrIdx = plot:GetTerrainType()
+                        local terrInfo = terrIdx >= 0 and GameInfo.Terrains[terrIdx] or nil
+                        local terrName = terrInfo and terrInfo.TerrainType or ""
+                        local bestImp = nil
+                        if plot:IsHills() then
+                            bestImp = "IMPROVEMENT_MINE"
+                        elseif featureIdx >= 0 then
+                            local fInfo = GameInfo.Features[featureIdx]
+                            local fName = fInfo and fInfo.FeatureType or ""
+                            if fName == "FEATURE_FOREST" then
+                                bestImp = "IMPROVEMENT_LUMBER_MILL"
+                            end
+                            -- Jungle/marsh need removal first, skip
+                        elseif terrName == "TERRAIN_DESERT" or terrName == "TERRAIN_SNOW" or terrName == "TERRAIN_TUNDRA" then
+                            -- Low-yield terrain, skip
+                        else
+                            bestImp = "IMPROVEMENT_FARM"
+                        end
+                        if bestImp then
+                            local nearId, nearDist = -1, 999
+                            for _, b in ipairs(builders) do
+                                local d = Map.GetPlotDistance(b.x, b.y, px, py)
+                                if d < nearDist then nearDist = d; nearId = b.id end
+                            end
+                            print("TASK|normal|" .. px .. "," .. py .. "|" .. bestImp .. "||none|" .. cityName .. "|" .. nearId .. "|" .. nearDist)
+                            normalCount = normalCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end end
+end
+
+-- Print builder info
+for _, b in ipairs(builders) do
+    print("BUILDER|" .. b.id .. "|" .. b.idx .. "|" .. b.x .. "," .. b.y .. "|" .. b.charges .. "|" .. string.format("%.1f", b.moves))
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_builder_tasks(lines: list[str]) -> tuple[list[BuilderTask], list[BuilderInfo]]:
+    """Parse TASK| and BUILDER| lines from build_builder_tasks_query."""
+    tasks: list[BuilderTask] = []
+    builders: list[BuilderInfo] = []
+
+    for line in lines:
+        try:
+            if line.startswith("TASK|"):
+                parts = line.split("|")
+                if len(parts) < 9:
+                    continue
+                xy = parts[2].split(",")
+                if len(xy) != 2:
+                    continue
+                tasks.append(
+                    BuilderTask(
+                        priority=parts[1],
+                        x=int(xy[0]),
+                        y=int(xy[1]),
+                        improvement=parts[3],
+                        resource=parts[4],
+                        resource_class=parts[5],
+                        city_name=parts[6],
+                        nearest_builder_id=int(parts[7]),
+                        distance=int(parts[8]),
+                    )
+                )
+            elif line.startswith("BUILDER|"):
+                parts = line.split("|")
+                if len(parts) < 6:
+                    continue
+                xy = parts[3].split(",")
+                if len(xy) != 2:
+                    continue
+                builders.append(
+                    BuilderInfo(
+                        unit_id=int(parts[1]),
+                        unit_index=int(parts[2]),
+                        x=int(xy[0]),
+                        y=int(xy[1]),
+                        charges=int(parts[4]),
+                        moves=float(parts[5]),
+                    )
+                )
+        except (ValueError, IndexError):
+            continue
+
+    return tasks, builders
