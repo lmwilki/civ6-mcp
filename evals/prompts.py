@@ -124,7 +124,7 @@ def build_scenario_prompt(
         f"## Scenario: {scenario.name}\n\n"
         f"**Civilisation:** {scenario.civilization}\n"
         f"**Difficulty:** {scenario.difficulty}\n"
-        f"**Map:** {scenario.map_type}\n"
+        f"**Map:** {scenario.map_type}, {scenario.map_size}\n"
         f"**Game Speed:** {scenario.game_speed}\n"
         f"**Turn Budget:** {scenario.turn_limit} turns\n\n"
         f"### Objective\n\n"

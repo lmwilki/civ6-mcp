@@ -480,7 +480,8 @@ if "{itype}" == "UNIT" then
             if u:GetOwner() == me then
                 local uDef = GameInfo.Units[u:GetType()]
                 if uDef and uDef.FormationClass == targetClass then
-                    {_bail_lua(f'"ERR:STACKING_CONFLICT|Cannot purchase {item_name} — " .. uDef.UnitType .. " already on city tile. Move it first."')}
+                    local uid = u:GetID() + u:GetOwner() * 65536
+                    {_bail_lua(f'"ERR:STACKING_CONFLICT|Cannot purchase {item_name} — " .. uDef.UnitType .. " (unit_id=" .. uid .. ") is on the city tile. Move it with unit_action(unit_id=" .. uid .. ", action=\'move\', target_x, target_y) first, then retry the purchase."')}
                 end
             end
         end

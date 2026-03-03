@@ -15,7 +15,16 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from civ_mcp.version import GIT_SHA, VERSION
+
 LOG_DIR = Path.home() / ".civ6-mcp"
+
+# Eval metadata fields — read from env vars, written to JSONL entries.
+# Shared with server.py diary writer to keep field lists in sync.
+_EVAL_FIELDS = (
+    "mcp_version", "mcp_git_sha", "scenario_id", "difficulty",
+    "map_type", "map_size", "game_speed", "eval_track",
+)
 
 # Tool classification — matches web client getToolCategory()
 _QUERY_TOOLS = frozenset({"screenshot"})
@@ -48,6 +57,14 @@ class GameLogger:
 
     def __init__(self) -> None:
         self.session_id = os.environ.get("CIV_MCP_RUN_ID") or uuid.uuid4().hex[:8]
+        self.mcp_version = VERSION
+        self.mcp_git_sha = GIT_SHA
+        self.scenario_id = os.environ.get("CIV_MCP_SCENARIO", "")
+        self.difficulty = os.environ.get("CIV_MCP_DIFFICULTY", "")
+        self.map_type = os.environ.get("CIV_MCP_MAP_TYPE", "")
+        self.map_size = os.environ.get("CIV_MCP_MAP_SIZE", "")
+        self.game_speed = os.environ.get("CIV_MCP_GAME_SPEED", "")
+        self.eval_track = os.environ.get("CIV_MCP_EVAL_TRACK", "")
         self._lock = asyncio.Lock()
         self._turn: int | None = None
         self._seq: int = 0
@@ -137,6 +154,11 @@ class GameLogger:
             "success": success,
             "agent_model": self._agent_model,
         }
+        # Only include non-empty eval metadata to avoid JSONL bloat
+        for key in _EVAL_FIELDS:
+            val = getattr(self, key)
+            if val:
+                entry[key] = val
         if events is not None:
             entry["events"] = events
         return entry

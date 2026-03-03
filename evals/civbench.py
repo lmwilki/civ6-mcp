@@ -60,7 +60,7 @@ from evals.prompts import (
     STANDARD_SYSTEM_PROMPT,
     build_scenario_prompt,
 )
-from evals.scenarios import SCENARIOS
+from evals.scenarios import SCENARIOS, Scenario
 from evals.scorer import civbench_scorer
 
 # Project root — used to locate the MCP server entry point
@@ -172,18 +172,32 @@ async def _keep_playing(state: AgentState) -> str | bool:
 # ---------------------------------------------------------------------------
 
 
-def _civ_mcp_server(run_id: str | None = None):
+def _civ_mcp_server(
+    run_id: str | None = None,
+    scenario: Scenario | None = None,
+    eval_track: str = "",
+):
     """Create the civ-mcp MCP server instance (stdio transport).
 
-    When run_id is provided, it's passed as CIV_MCP_RUN_ID so the MCP
-    server uses the same identifier in all output filenames.
+    Passes run_id, scenario metadata, and eval track as env vars so the
+    MCP server embeds them in diary/log entries for traceability.
     """
-    env = {"CIV_MCP_RUN_ID": run_id} if run_id else None
+    env: dict[str, str] = {}
+    if run_id:
+        env["CIV_MCP_RUN_ID"] = run_id
+    if scenario:
+        env["CIV_MCP_SCENARIO"] = scenario.scenario_id
+        env["CIV_MCP_DIFFICULTY"] = scenario.difficulty
+        env["CIV_MCP_MAP_TYPE"] = scenario.map_type
+        env["CIV_MCP_MAP_SIZE"] = scenario.map_size
+        env["CIV_MCP_GAME_SPEED"] = scenario.game_speed
+    if eval_track:
+        env["CIV_MCP_EVAL_TRACK"] = eval_track
     return mcp_server_stdio(
         name="civ6",
         command="uv",
         args=["run", "--directory", PROJECT_ROOT, "civ-mcp"],
-        env=env,
+        env=env or None,
     )
 
 
@@ -220,6 +234,8 @@ def _make_dataset(
                     "turn_limit": s.turn_limit,
                     "difficulty": s.difficulty,
                     "map_type": s.map_type,
+                    "map_size": s.map_size,
+                    "game_speed": s.game_speed,
                     "civilization": s.civilization,
                     "opponents": list(s.opponents),
                     "blind_spot": s.blind_spot,
@@ -263,7 +279,11 @@ def civbench_standard(
     """
     scenario_list = _normalise_scenarios(scenarios)
     run_id = uuid.uuid4().hex[:8]
-    server = _civ_mcp_server(run_id=run_id)
+    # Pass scenario metadata when running a single scenario. Multi-scenario
+    # runs share one MCP process, so env vars can't vary per sample — the
+    # diary/log entries still carry per-turn civ/game info for identification.
+    scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
+    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_standard")
 
     # Resolve file:// references (Inspect -T passes raw strings)
     if resume_context and resume_context.startswith("file://"):
@@ -310,7 +330,9 @@ def civbench_open(
     """
     scenario_list = _normalise_scenarios(scenarios)
     run_id = uuid.uuid4().hex[:8]
-    server = _civ_mcp_server(run_id=run_id)
+    # See civbench_standard for why scenario_obj is None for multi-scenario runs
+    scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
+    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_open")
 
     return Task(
         dataset=_make_dataset(scenario_list),

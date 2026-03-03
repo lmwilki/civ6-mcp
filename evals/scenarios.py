@@ -24,7 +24,8 @@ class Scenario:
     save_file: str  # single save for comparison clarity
     turn_limit: int  # Quick speed turn budget
     difficulty: str  # Warlord/Prince/King/Emperor/Immortal
-    map_type: str  # e.g. "Pangaea, Standard"
+    map_type: str  # e.g. "Pangaea", "Six-Armed Snowflake"
+    map_size: str  # e.g. "Standard", "Small", "Tiny"
     civilization: str  # e.g. "Babylon (Hammurabi)"
     game_speed: str = "Quick"  # Online/Quick/Standard/Epic/Marathon
     opponents: tuple[str, ...] = ()
@@ -57,7 +58,8 @@ ground_control = _register(
         save_file="GROUND_CONTROL_SA.Civ6Save",
         turn_limit=330,
         difficulty="Warlord",
-        map_type="Pangaea, Standard",
+        map_type="Pangaea",
+        map_size="Standard",
         civilization="Babylon (Hammurabi)",
         opponents=(
             "Korea (Seondeok)",
@@ -94,7 +96,8 @@ empty_canvas = _register(
         save_file="EMPTY_CANVAS_SB.Civ6Save",
         turn_limit=330,
         difficulty="Prince",
-        map_type="Pangaea, Small",
+        map_type="Pangaea",
+        map_size="Small",
         civilization="Kongo (Mvemba a Nzinga)",
         opponents=(
             "Greece (Pericles)",
@@ -129,7 +132,8 @@ deus_vult = _register(
         save_file="DEUS_VULT_SC.Civ6Save",
         turn_limit=330,
         difficulty="King",
-        map_type="Pangaea, Small",
+        map_type="Pangaea",
+        map_size="Small",
         civilization="Germany (Frederick Barbarossa)",
         opponents=(
             "Russia (Peter)",
@@ -165,7 +169,8 @@ snowflake = _register(
         save_file="SNOWFLAKE_SD.Civ6Save",
         turn_limit=330,
         difficulty="Emperor",
-        map_type="Six-Armed Snowflake, Small",
+        map_type="Six-Armed Snowflake",
+        map_size="Small",
         civilization="Korea (Seondeok)",
         opponents=(
             "Macedon (Alexander)",
@@ -200,7 +205,8 @@ cry_havoc = _register(
         save_file="CRY_HAVOC_SE.Civ6Save",
         turn_limit=330,
         difficulty="Immortal",
-        map_type="Pangaea, Tiny",
+        map_type="Pangaea",
+        map_size="Tiny",
         civilization="Sumeria (Gilgamesh)",
         opponents=(
             "Korea (Seondeok)",

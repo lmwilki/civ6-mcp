@@ -35,7 +35,7 @@ from civ_mcp.diary import (
     write_diary_entry as _write_diary_entry,
 )
 from civ_mcp.game_state import GameState
-from civ_mcp.logger import GameLogger
+from civ_mcp.logger import GameLogger, _EVAL_FIELDS
 from civ_mcp.map_capture import MapCapture
 from civ_mcp.spatial import SpatialTracker
 from civ_mcp.spectator import CameraController, PopupWatcher
@@ -1533,6 +1533,12 @@ async def end_turn(
                         row["agent_client"] = agent_client
                         row["agent_client_ver"] = agent_client_ver
                         row["agent_model"] = agent_model
+                        # Eval metadata from logger (only non-empty)
+                        _logger = _get_logger(ctx)
+                        for _ef in _EVAL_FIELDS:
+                            _ev = getattr(_logger, _ef, "")
+                            if _ev:
+                                row[_ef] = _ev
                     _write_diary_entry(path, row)
                 # Write one row per city
                 for cr in _diary_snapshot.cities:

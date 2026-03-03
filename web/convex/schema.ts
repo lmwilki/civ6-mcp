@@ -49,6 +49,15 @@ export default defineSchema({
         sessions: v.array(v.string()),
       }),
     ),
+    // Eval metadata (set at ingest time from diary/log entries)
+    mcpVersion: v.optional(v.string()),
+    mcpGitSha: v.optional(v.string()),
+    scenarioId: v.optional(v.string()),
+    difficulty: v.optional(v.string()),
+    mapType: v.optional(v.string()),
+    mapSize: v.optional(v.string()),
+    gameSpeed: v.optional(v.string()),
+    evalTrack: v.optional(v.string()),
     outcome: v.optional(
       v.object({
         result: v.union(v.literal("victory"), v.literal("defeat")),
@@ -138,6 +147,15 @@ export default defineSchema({
     agent_client: v.optional(v.string()),
     agent_client_ver: v.optional(v.string()),
     agent_model: v.optional(v.string()),
+    // Eval metadata
+    mcp_version: v.optional(v.string()),
+    mcp_git_sha: v.optional(v.string()),
+    scenario_id: v.optional(v.string()),
+    difficulty: v.optional(v.string()),
+    map_type: v.optional(v.string()),
+    map_size: v.optional(v.string()),
+    game_speed: v.optional(v.string()),
+    eval_track: v.optional(v.string()),
   })
     .index("by_game_turn", ["gameId", "turn"])
     .index("by_game_turn_pid", ["gameId", "turn", "pid"]),
@@ -188,6 +206,15 @@ export default defineSchema({
     success: v.boolean(),
     events: v.optional(v.any()),
     agent_model: v.optional(v.union(v.string(), v.null())),
+    // Eval metadata
+    mcp_version: v.optional(v.string()),
+    mcp_git_sha: v.optional(v.string()),
+    scenario_id: v.optional(v.string()),
+    difficulty: v.optional(v.string()),
+    map_type: v.optional(v.string()),
+    map_size: v.optional(v.string()),
+    game_speed: v.optional(v.string()),
+    eval_track: v.optional(v.string()),
   })
     .index("by_game_line", ["gameId", "line"])
     .index("by_game_session", ["gameId", "session"]),

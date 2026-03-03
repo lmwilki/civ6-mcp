@@ -1,6 +1,23 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+// Eval metadata: JSONL snake_case → Convex camelCase field mapping
+const EVAL_FIELD_MAP = [
+  ["mcp_version", "mcpVersion"], ["mcp_git_sha", "mcpGitSha"],
+  ["scenario_id", "scenarioId"], ["difficulty", "difficulty"],
+  ["map_type", "mapType"], ["map_size", "mapSize"],
+  ["game_speed", "gameSpeed"], ["eval_track", "evalTrack"],
+] as const;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractEvalMeta(source: any): Record<string, string> {
+  const meta: Record<string, string> = {};
+  for (const [src, dst] of EVAL_FIELD_MAP) {
+    if (source[src]) meta[dst] = source[src];
+  }
+  return meta;
+}
+
 // Metrics to precompute for sparkline charts
 const SERIES_METRICS = [
   "score", "science", "culture", "gold", "military",
@@ -126,6 +143,9 @@ export const ingestPlayerRows = mutation({
       (r: { turn: number }) => r.turn === maxTurn,
     );
 
+    // Extract eval metadata from agent row (set by MCP server from env vars)
+    const evalMeta = agentRow ? extractEvalMeta(agentRow) : {};
+
     if (game) {
       const patch: Record<string, unknown> = {
         lastTurn: Math.max(game.lastTurn, maxTurn),
@@ -133,6 +153,7 @@ export const ingestPlayerRows = mutation({
         turnCount: Math.max(game.turnCount, maxTurn),
         // Don't resurrect completed games — lookback re-syncs can re-send old rows
         ...(game.status !== "completed" ? { status: "live" as const } : {}),
+        ...evalMeta,
       };
       // Backfill leader/civ if game was created by log ingestion with empty values
       if (!game.leader && leader) patch.leader = leader;
@@ -168,6 +189,7 @@ export const ingestPlayerRows = mutation({
         turnCount: maxTurn,
         hasCities: false,
         hasLogs: false,
+        ...evalMeta,
         ...(agentRow?.agent_model ? { agentModel: agentRow.agent_model } : {}),
         ...(typeof agentRow?.score === "number" ? { agentScore: agentRow.score } : {}),
         ...(latestRows.length >= 2
@@ -236,6 +258,9 @@ export const ingestLogEntries = mutation({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let gameOverOutcome: any = null;
 
+    // Extract eval metadata from first entry
+    const logEvalMeta = entries.length > 0 ? extractEvalMeta(entries[0]) : {};
+
     for (const entry of entries) {
       // Detect game_over entries before stripping for logEntries insert
       if (entry.type === "game_over" && entry.outcome) {
@@ -277,6 +302,7 @@ export const ingestLogEntries = mutation({
       const patch: Record<string, any> = {
         hasLogs: true,
         lastUpdated: Date.now(),
+        ...logEvalMeta,
       };
 
       // Merge logSummary with existing
@@ -334,6 +360,7 @@ export const ingestLogEntries = mutation({
         turnCount: outcomeTurn,
         hasCities: false,
         hasLogs: true,
+        ...logEvalMeta,
         logSummary: {
           count: batchMaxLine,
           firstTs: Math.min(...batchTs),
