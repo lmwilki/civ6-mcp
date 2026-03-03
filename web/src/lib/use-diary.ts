@@ -174,6 +174,12 @@ function useDiarySummaryFs(filename: string | null): DiarySummary {
     outcome: null,
     status: undefined,
     agentModelOverride: null,
+    scenarioId: null,
+    difficulty: null,
+    mapType: null,
+    mapSize: null,
+    gameSpeed: null,
+    evalTrack: null,
   };
 }
 

@@ -1,13 +1,179 @@
 "use client";
 
+import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { PageShell } from "@/components/page-shell";
 import { FullLeaderboard } from "@/components/model-leaderboard";
-import { CivIcon } from "@/components/civ-icon";
-import { CIV6_COLORS } from "@/lib/civ-colors";
-import { Swords, ScrollText, BarChart3 } from "lucide-react";
+import { CivIcon, CivSymbol } from "@/components/civ-icon";
+import { LeaderPortrait } from "@/components/leader-portrait";
+import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors";
+import { SCENARIO_LIST, DIFFICULTY_META, type ScenarioDef } from "@/lib/scenarios";
+import { useElo, type EloFilter } from "@/lib/use-elo";
+import { useDiaryList } from "@/lib/use-diary";
+import {
+  Swords,
+  ScrollText,
+  BarChart3,
+  Map,
+  Eye,
+  Users,
+  ArrowRight,
+} from "lucide-react";
+
+import { chipBase, chipDefault, chipActive } from "@/lib/chip-styles";
+
+// ── Scenario Card ───────────────────────────────────────────────────────────
+
+function DifficultyBadge({ difficulty }: { difficulty: string }) {
+  const meta = DIFFICULTY_META[difficulty];
+  if (!meta) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em]"
+      style={{
+        color: meta.color,
+        backgroundColor: `${meta.color}15`,
+        border: `1px solid ${meta.color}30`,
+      }}
+    >
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: meta.color }}
+      />
+      {difficulty}
+    </span>
+  );
+}
+
+function ScenarioCard({
+  scenario,
+  gameCount,
+}: {
+  scenario: ScenarioDef;
+  gameCount: number;
+}) {
+  const diffMeta = DIFFICULTY_META[scenario.difficulty];
+  const accentColor = diffMeta?.color ?? "#7A7269";
+  const civColors = getCivColors(scenario.civilization);
+
+  return (
+    <div className="flex items-stretch gap-0 rounded-sm border border-marble-300/50 bg-marble-50">
+      <div
+        className="w-1.5 shrink-0 rounded-l-sm"
+        style={{ backgroundColor: accentColor }}
+      />
+      <div className="flex-1 px-4 py-3.5 space-y-3">
+        {/* Header: letter + name + difficulty */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs tabular-nums text-marble-400">
+              {scenario.letter}
+            </span>
+            <span className="font-display text-sm font-bold uppercase tracking-[0.1em] text-marble-800">
+              {scenario.name}
+            </span>
+          </div>
+          <DifficultyBadge difficulty={scenario.difficulty} />
+        </div>
+
+        {/* Civ identity: portrait + details */}
+        <div className="flex items-start gap-3">
+          <LeaderPortrait
+            leader={scenario.leader}
+            fallbackColor={civColors.primary}
+            size="lg"
+          />
+          <div className="flex-1 space-y-1.5 pt-0.5">
+            <div className="flex items-center gap-1.5">
+              <CivSymbol civ={scenario.civilization} className="h-4 w-4" />
+              <span className="text-xs font-medium text-marble-700">
+                {scenario.civilization}
+              </span>
+              <span className="text-xs text-marble-400">
+                ({scenario.leader})
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <CivIcon icon={Map} color="#4A90A4" size="sm" />
+              <span className="text-xs text-marble-600">
+                {scenario.mapType}, {scenario.mapSize}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <CivIcon icon={Eye} color={accentColor} size="sm" />
+              <span className="font-display text-[10px] font-bold uppercase tracking-[0.12em] text-marble-500">
+                Tests: {scenario.blindSpot}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Description */}
+        <p className="text-xs leading-relaxed text-marble-600">
+          {scenario.description}
+        </p>
+
+        {/* Opponents */}
+        <div className="flex items-start gap-1.5">
+          <CivIcon icon={Users} color="#A39B8F" size="sm" />
+          <span className="text-[10px] leading-relaxed text-marble-500">
+            vs {scenario.opponents.join(", ")}
+          </span>
+        </div>
+
+        {/* Footer: game count + link */}
+        <div className="flex items-center justify-between pt-1 border-t border-marble-300/30">
+          <span className="font-mono text-[10px] tabular-nums text-marble-400">
+            {gameCount} game{gameCount !== 1 ? "s" : ""} played
+          </span>
+          <Link
+            href={`/games?scenario=${scenario.id}`}
+            className="inline-flex items-center gap-1 text-[10px] font-medium text-marble-500 transition-colors hover:text-gold-dark"
+          >
+            View Games
+            <ArrowRight className="h-2.5 w-2.5" />
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function CivBenchPage() {
+  const [scenarioFilter, setScenarioFilter] = useState<string | undefined>();
+  const [trackFilter, setTrackFilter] = useState<string | undefined>();
+
+  // Get per-scenario game counts from the diary list
+  const games = useDiaryList();
+  const scenarioGameCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of SCENARIO_LIST) counts[s.id] = 0;
+    for (const g of games) {
+      if (g.scenarioId && counts[g.scenarioId] !== undefined) {
+        counts[g.scenarioId]++;
+      }
+    }
+    return counts;
+  }, [games]);
+
+  const eloFilter = useMemo<EloFilter | undefined>(() => {
+    if (!scenarioFilter && !trackFilter) return undefined;
+    return {
+      scenarioId: scenarioFilter,
+      evalTrack: trackFilter,
+    };
+  }, [scenarioFilter, trackFilter]);
+
+  const toggleScenario = useCallback((id: string) => {
+    setScenarioFilter((prev) => (prev === id ? undefined : id));
+  }, []);
+
+  const toggleTrack = useCallback((track: string) => {
+    setTrackFilter((prev) => (prev === track ? undefined : track));
+  }, []);
+
   return (
     <PageShell active="leaderboard">
       <main className="flex-1">
@@ -17,12 +183,11 @@ export default function CivBenchPage() {
             CivBench
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-marble-600 max-w-2xl">
-            A benchmark for evaluating LLM agents in Civilization VI. Each game
-            pits a model against Civ VI&apos;s built-in AI on a standard map
-            &mdash; the agent must read game state, manage an empire, conduct
-            diplomacy, and pursue victory using the same tools a human player
-            would. ELO ratings reflect competitive performance across completed
-            games.
+            A benchmark for evaluating LLM agents in Civilization VI. Five
+            scenarios test specific blind spots in agent perception &mdash;
+            from tempo awareness to military threat detection &mdash; at
+            escalating difficulty levels. ELO ratings reflect competitive
+            performance across completed games.
           </p>
 
           {/* How it works */}
@@ -82,6 +247,27 @@ export default function CivBenchPage() {
             </div>
           </div>
 
+          {/* Scenarios */}
+          <div className="mt-10 border-t border-marble-300/50 pt-8">
+            <h2 className="font-display text-xs font-bold uppercase tracking-[0.12em] text-marble-500">
+              Scenarios
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-marble-600 max-w-2xl">
+              Five benchmark scenarios ordered by difficulty, each isolating
+              a specific blind spot in agent perception. Every model plays
+              the exact same map per scenario for comparison clarity.
+            </p>
+            <div className="mt-5 space-y-3">
+              {SCENARIO_LIST.map((scenario) => (
+                <ScenarioCard
+                  key={scenario.id}
+                  scenario={scenario}
+                  gameCount={scenarioGameCounts[scenario.id] ?? 0}
+                />
+              ))}
+            </div>
+          </div>
+
           {/* Quick links */}
           <div className="mt-6 flex gap-3">
             <Link
@@ -99,7 +285,53 @@ export default function CivBenchPage() {
 
           {/* Leaderboard */}
           <div className="mt-10 border-t border-marble-300/50 pt-8">
-            <FullLeaderboard />
+            {/* Filter bar */}
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              {/* Scenario chips */}
+              <button
+                className={`${chipBase} ${!scenarioFilter ? chipActive : chipDefault}`}
+                onClick={() => setScenarioFilter(undefined)}
+              >
+                All
+              </button>
+              {SCENARIO_LIST.map((s) => (
+                <button
+                  key={s.id}
+                  className={`${chipBase} ${scenarioFilter === s.id ? chipActive : chipDefault}`}
+                  onClick={() => toggleScenario(s.id)}
+                >
+                  <span
+                    className="inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: DIFFICULTY_META[s.difficulty]?.color }}
+                  />
+                  {s.name}
+                </button>
+              ))}
+
+              <span className="mx-1 h-4 w-px bg-marble-300/50" />
+
+              {/* Track chips */}
+              <button
+                className={`${chipBase} ${!trackFilter ? chipActive : chipDefault}`}
+                onClick={() => setTrackFilter(undefined)}
+              >
+                All Tracks
+              </button>
+              <button
+                className={`${chipBase} ${trackFilter === "civbench_standard" ? chipActive : chipDefault}`}
+                onClick={() => toggleTrack("civbench_standard")}
+              >
+                Standard
+              </button>
+              <button
+                className={`${chipBase} ${trackFilter === "civbench_open" ? chipActive : chipDefault}`}
+                onClick={() => toggleTrack("civbench_open")}
+              >
+                Open
+              </button>
+            </div>
+
+            <FullLeaderboard filter={eloFilter} />
           </div>
         </div>
       </main>

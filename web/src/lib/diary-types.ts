@@ -382,6 +382,12 @@ export interface DiaryFile {
   agentModel?: string;
   lastUpdated?: number;
   score?: number;
+  // Eval metadata (present for CivBench games)
+  scenarioId?: string;
+  difficulty?: string;
+  mapType?: string;
+  mapSize?: string;
+  evalTrack?: string;
 }
 
 // === Shared helpers ===

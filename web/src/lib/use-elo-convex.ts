@@ -9,8 +9,9 @@ import {
   type GameResult,
   type Participant,
 } from "./elo";
+import type { EloFilter } from "./use-elo";
 
-export function useEloConvex(): EloData {
+export function useEloConvex(filter?: EloFilter): EloData {
   const raw = useQuery(api.diary.getEloData);
 
   return useMemo(() => {
@@ -18,7 +19,16 @@ export function useEloConvex(): EloData {
     if (!raw || raw.length === 0)
       return { ratings: [], gameCount: 0, loading: false, error: null };
 
-    const results: GameResult[] = raw.map((g) => {
+    // Apply optional filters before ELO computation
+    let games = raw;
+    if (filter?.scenarioId) {
+      games = games.filter((g) => g.scenarioId === filter.scenarioId);
+    }
+    if (filter?.evalTrack) {
+      games = games.filter((g) => g.evalTrack === filter.evalTrack);
+    }
+
+    const results: GameResult[] = games.map((g) => {
       const participants: Participant[] = g.players.map((p) => {
         const isAgent = p.is_agent;
         const id =
@@ -44,5 +54,5 @@ export function useEloConvex(): EloData {
       loading: false,
       error: null,
     };
-  }, [raw]);
+  }, [raw, filter?.scenarioId, filter?.evalTrack]);
 }

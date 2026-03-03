@@ -24,6 +24,11 @@ export const listGames = query({
       outcome: g.outcome ?? null,
       agentModel: g.agentModelOverride ?? g.agentModel ?? null,
       score: g.agentScore ?? null,
+      scenarioId: g.scenarioId ?? null,
+      difficulty: g.difficulty ?? null,
+      mapType: g.mapType ?? null,
+      mapSize: g.mapSize ?? null,
+      evalTrack: g.evalTrack ?? null,
     }));
   },
 });
@@ -62,6 +67,9 @@ export const getEloData = query({
         const override = g.agentModelOverride ?? null;
         return {
           gameId: g.gameId,
+          scenarioId: g.scenarioId ?? null,
+          difficulty: g.difficulty ?? null,
+          evalTrack: g.evalTrack ?? null,
           winnerCiv: g.outcome!.winnerCiv,
           players: g.eloPlayers!.map((p) => ({
             pid: p.pid,
@@ -93,6 +101,12 @@ export const getGameSummary = query({
       turnSeries: game.turnSeries ?? null,
       hasSpatial: game.hasSpatial ?? false,
       hasMap: game.hasMap ?? false,
+      scenarioId: game.scenarioId ?? null,
+      difficulty: game.difficulty ?? null,
+      mapType: game.mapType ?? null,
+      mapSize: game.mapSize ?? null,
+      gameSpeed: game.gameSpeed ?? null,
+      evalTrack: game.evalTrack ?? null,
     };
   },
 });

@@ -28,6 +28,11 @@ export function useDiaryListConvex(): DiaryFile[] {
     agentModel: g.agentModel ?? undefined,
     lastUpdated: g.lastUpdated,
     score: g.score ?? undefined,
+    scenarioId: g.scenarioId ?? undefined,
+    difficulty: g.difficulty ?? undefined,
+    mapType: g.mapType ?? undefined,
+    mapSize: g.mapSize ?? undefined,
+    evalTrack: g.evalTrack ?? undefined,
   }));
 }
 
@@ -49,6 +54,13 @@ export interface DiarySummary {
   outcome: GameOutcome | null;
   status: "live" | "completed" | undefined;
   agentModelOverride: string | null;
+  // Eval metadata
+  scenarioId: string | null;
+  difficulty: string | null;
+  mapType: string | null;
+  mapSize: string | null;
+  gameSpeed: string | null;
+  evalTrack: string | null;
 }
 
 /** Game summary subscription — 1 doc read. Returns sparkline series + metadata. */
@@ -78,6 +90,12 @@ export function useDiarySummaryConvex(filename: string | null): DiarySummary {
     outcome,
     status: (summary?.status as "live" | "completed") ?? undefined,
     agentModelOverride: summary?.agentModelOverride ?? null,
+    scenarioId: summary?.scenarioId ?? null,
+    difficulty: summary?.difficulty ?? null,
+    mapType: summary?.mapType ?? null,
+    mapSize: summary?.mapSize ?? null,
+    gameSpeed: summary?.gameSpeed ?? null,
+    evalTrack: summary?.evalTrack ?? null,
   };
 }
 

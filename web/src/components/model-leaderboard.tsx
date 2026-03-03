@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useElo } from "@/lib/use-elo";
+import { useElo, type EloFilter } from "@/lib/use-elo";
 import { getModelMeta, formatModelName } from "@/lib/model-registry";
 import { CivIcon } from "@/components/civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
@@ -174,8 +174,8 @@ export function LeaderboardPreview() {
 
 // ─── Full Leaderboard (dedicated page) ──────────────────────────────────────
 
-export function FullLeaderboard() {
-  const { ratings, gameCount, loading } = useElo();
+export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
+  const { ratings, gameCount, loading } = useElo(filter);
 
   if (loading) {
     return (

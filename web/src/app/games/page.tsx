@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, X } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { useDiaryList } from "@/lib/use-diary";
@@ -18,6 +19,7 @@ import {
   getVictoryTypeMeta,
   statusColor,
 } from "@/components/game-status-badge";
+import { SCENARIOS, DIFFICULTY_META } from "@/lib/scenarios";
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -60,6 +62,8 @@ interface Filters {
   providers: Set<string>;
   models: Set<string>;
   victoryTypes: Set<string>;
+  scenarios: Set<string>;
+  difficulties: Set<string>;
 }
 
 type SortKey = "updated" | "score" | "turns";
@@ -79,20 +83,20 @@ const EMPTY_FILTERS: Filters = {
   providers: new Set(),
   models: new Set(),
   victoryTypes: new Set(),
+  scenarios: new Set(),
+  difficulties: new Set(),
 };
 
 function hasActiveFilters(f: Filters): boolean {
-  return f.status.size + f.civs.size + f.providers.size + f.models.size + f.victoryTypes.size > 0;
+  return (
+    f.status.size + f.civs.size + f.providers.size + f.models.size +
+    f.victoryTypes.size + f.scenarios.size + f.difficulties.size > 0
+  );
 }
 
-// ── Filter chip components ───────────────────────────────────
+import { chipBase, chipDefault, chipActive } from "@/lib/chip-styles";
 
-const chipBase =
-  "inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] transition-colors cursor-pointer select-none";
-const chipDefault =
-  "border-marble-300/50 bg-marble-50 text-marble-600 hover:border-marble-400 hover:bg-marble-100";
-const chipActive =
-  "border-gold-dark/50 bg-gold-dark/10 text-gold-dark";
+// ── Filter chip components ───────────────────────────────────
 
 function ToggleChip({
   label,
@@ -258,9 +262,26 @@ function SortTh({
 // ── Main page ────────────────────────────────────────────────
 
 export default function GamesPage() {
+  return (
+    <Suspense>
+      <GamesPageInner />
+    </Suspense>
+  );
+}
+
+function GamesPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const games = useDiaryList();
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+
+  // Initialize scenario filter from URL param (?scenario=ground_control)
+  const [filters, setFilters] = useState<Filters>(() => {
+    const scenarioParam = searchParams.get("scenario");
+    if (scenarioParam && SCENARIOS[scenarioParam]) {
+      return { ...EMPTY_FILTERS, scenarios: new Set([scenarioParam]) };
+    }
+    return EMPTY_FILTERS;
+  });
   const [sortKey, setSortKey] = useState<SortKey>("updated");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -304,7 +325,19 @@ export default function GamesPage() {
         games.map(deriveVictoryLabel).filter((v): v is string => v !== null),
       ),
     ].sort();
-    return { civs, providers, models, victoryTypes };
+    const scenarios = [
+      ...new Set(
+        games.map((g) => g.scenarioId).filter((s): s is string => !!s),
+      ),
+    ].sort();
+    const difficulties = [
+      ...new Set(
+        games.map((g) => g.difficulty).filter((d): d is string => !!d),
+      ),
+    ].sort(
+      (a, b) => (DIFFICULTY_META[a]?.order ?? 99) - (DIFFICULTY_META[b]?.order ?? 99),
+    );
+    return { civs, providers, models, victoryTypes, scenarios, difficulties };
   }, [games]);
 
   // Filter
@@ -321,6 +354,10 @@ export default function GamesPage() {
         const vt = deriveVictoryLabel(game);
         if (!vt || !filters.victoryTypes.has(vt)) return false;
       }
+      if (filters.scenarios.size > 0 && (!game.scenarioId || !filters.scenarios.has(game.scenarioId)))
+        return false;
+      if (filters.difficulties.size > 0 && (!game.difficulty || !filters.difficulties.has(game.difficulty)))
+        return false;
       return true;
     });
   }, [games, filters]);
@@ -457,6 +494,44 @@ export default function GamesPage() {
                   />
                 )}
 
+                {/* Scenario dropdown */}
+                {filterOptions.scenarios.length > 0 && (
+                  <DropdownFilter
+                    label="Scenario"
+                    options={filterOptions.scenarios}
+                    selected={filters.scenarios}
+                    onToggle={(v) => toggleFilter("scenarios", v)}
+                    renderOption={(id) => (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="inline-block h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: DIFFICULTY_META[SCENARIOS[id]?.difficulty]?.color }}
+                        />
+                        {SCENARIOS[id]?.name ?? id}
+                      </span>
+                    )}
+                  />
+                )}
+
+                {/* Difficulty dropdown */}
+                {filterOptions.difficulties.length > 0 && (
+                  <DropdownFilter
+                    label="Difficulty"
+                    options={filterOptions.difficulties}
+                    selected={filters.difficulties}
+                    onToggle={(v) => toggleFilter("difficulties", v)}
+                    renderOption={(d) => (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="inline-block h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: DIFFICULTY_META[d]?.color }}
+                        />
+                        {d}
+                      </span>
+                    )}
+                  />
+                )}
+
                 {active && (
                   <button
                     className="inline-flex items-center gap-0.5 text-[10px] font-medium text-marble-500 transition-colors hover:text-marble-700"
@@ -579,6 +654,20 @@ export default function GamesPage() {
                                   {game.leader && (
                                     <p className="mt-0.5 text-[10px] text-marble-500 truncate">
                                       {game.leader}
+                                    </p>
+                                  )}
+                                  {game.scenarioId && SCENARIOS[game.scenarioId] && (
+                                    <p className="mt-0.5 flex items-center gap-1 text-[10px] text-marble-400">
+                                      <span
+                                        className="inline-block h-1.5 w-1.5 rounded-full"
+                                        style={{ backgroundColor: DIFFICULTY_META[game.difficulty ?? ""]?.color }}
+                                      />
+                                      {SCENARIOS[game.scenarioId].name}
+                                      {game.difficulty && (
+                                        <span className="text-marble-400">
+                                          &middot; {game.difficulty}
+                                        </span>
+                                      )}
                                     </p>
                                   )}
                                 </div>

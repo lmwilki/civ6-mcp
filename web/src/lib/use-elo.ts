@@ -5,7 +5,12 @@ import type { EloEntry, EloData } from "./elo";
 import { CONVEX_MODE } from "@/components/convex-provider";
 import { useEloConvex } from "./use-elo-convex";
 
-function useEloFs(): EloData {
+export interface EloFilter {
+  scenarioId?: string;
+  evalTrack?: string;
+}
+
+function useEloFs(_filter?: EloFilter): EloData {
   const [ratings, setRatings] = useState<EloEntry[]>([]);
   const [gameCount, setGameCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -36,7 +41,10 @@ function useEloFs(): EloData {
     return () => clearInterval(id);
   }, []);
 
+  // FS mode has no scenario metadata — filter is ignored
   return { ratings, gameCount, loading, error };
 }
 
-export const useElo = CONVEX_MODE ? useEloConvex : useEloFs;
+export const useElo: (filter?: EloFilter) => EloData = CONVEX_MODE
+  ? useEloConvex
+  : useEloFs;

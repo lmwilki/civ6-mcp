@@ -22,7 +22,10 @@ import {
   BarChart3,
   Skull,
   Trophy,
+  Eye,
+  Map,
 } from "lucide-react";
+import { SCENARIOS, DIFFICULTY_META } from "@/lib/scenarios";
 
 interface GameDiaryViewProps {
   filename: string;
@@ -95,7 +98,13 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
     loading,
     outcome,
     agentModelOverride,
+    scenarioId,
+    difficulty,
+    mapType,
+    mapSize,
   } = useDiarySummary(filename);
+
+  const scenarioDef = scenarioId ? SCENARIOS[scenarioId] : null;
 
   // Nav state — index into turnNumbers array
   type NavAction =
@@ -253,6 +262,52 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
               {outcome && isLastTurn && (
                 <div className="mx-auto mb-4 w-full max-w-2xl">
                   <OutcomeBanner outcome={outcome} />
+                </div>
+              )}
+              {scenarioDef && index === 0 && (
+                <div className="mx-auto mb-4 w-full max-w-2xl">
+                  <div
+                    className="flex items-stretch gap-0 rounded-sm border border-marble-300/50 bg-marble-50"
+                  >
+                    <div
+                      className="w-1.5 shrink-0 rounded-l-sm"
+                      style={{ backgroundColor: DIFFICULTY_META[scenarioDef.difficulty]?.color }}
+                    />
+                    <div className="flex-1 px-3 py-2.5 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+                          style={{
+                            color: DIFFICULTY_META[scenarioDef.difficulty]?.color,
+                            backgroundColor: `${DIFFICULTY_META[scenarioDef.difficulty]?.color}15`,
+                          }}
+                        >
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: DIFFICULTY_META[scenarioDef.difficulty]?.color }}
+                          />
+                          {difficulty ?? scenarioDef.difficulty}
+                        </span>
+                        <span className="font-display text-xs font-bold uppercase tracking-[0.1em] text-marble-800">
+                          {scenarioDef.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] text-marble-500">
+                        <span className="flex items-center gap-1">
+                          <CivSymbol civ={scenarioDef.civilization} className="h-3 w-3" />
+                          {scenarioDef.civilization} ({scenarioDef.leader})
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Map className="h-2.5 w-2.5" />
+                          {mapType ?? scenarioDef.mapType}, {mapSize ?? scenarioDef.mapSize}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-marble-500">
+                        <Eye className="h-2.5 w-2.5" />
+                        Tests: {scenarioDef.blindSpot}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
               <AgentOverview
