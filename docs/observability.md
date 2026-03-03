@@ -230,7 +230,6 @@ All three systems share the same architecture:
 1. `get_game_overview` — primary entry point each turn
 2. `end_turn` diary capture — keeps turn in sync if overview was skipped
 3. `end_turn` result parsing — advances to the new turn number after `"Turn X -> Y"`
-4. `concede_game` — ensures final entries have the correct turn
 
 **JSONL format.** One JSON object per line, compact separators (`(",":")`), no array wrapper. Files can be tailed, grepped, or streamed without parsing the entire file.
 
