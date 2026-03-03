@@ -103,10 +103,24 @@ Think step by step each turn. Observe the full game state before acting.
 # ---------------------------------------------------------------------------
 
 
-def build_scenario_prompt(scenario: Scenario) -> str:
-    """Build the user message for a scenario, including save loading instructions."""
-    save_name = scenario.save_file.replace(".Civ6Save", "")
-    return (
+def build_scenario_prompt(
+    scenario: Scenario,
+    resume_save: str | None = None,
+    resume_context: str | None = None,
+) -> str:
+    """Build the user message for a scenario, including save loading instructions.
+
+    Args:
+        scenario: The scenario definition.
+        resume_save: If set, load this save instead of the scenario start save
+                     (e.g. "MCP_AutoSave_0221" to resume from turn 221).
+        resume_context: If set, markdown block with diary summary / game history
+                        to include so the agent has context from previous play.
+    """
+    start_save = scenario.save_file.replace(".Civ6Save", "")
+    load_save = resume_save or start_save
+
+    parts = [
         f"## Scenario: {scenario.name}\n\n"
         f"**Civilisation:** {scenario.civilization}\n"
         f"**Difficulty:** {scenario.difficulty}\n"
@@ -114,16 +128,25 @@ def build_scenario_prompt(scenario: Scenario) -> str:
         f"**Game Speed:** {scenario.game_speed}\n"
         f"**Turn Budget:** {scenario.turn_limit} turns\n\n"
         f"### Objective\n\n"
-        f"{scenario.objective}\n\n"
+        f"{scenario.objective}\n\n",
+    ]
+
+    if resume_context:
+        parts.append(f"### Game History\n\n{resume_context}\n\n")
+
+    parts.append(
         f"### Getting Started\n\n"
-        f"**Step 1:** Call `load_game_save(\"{save_name}\")` to load the "
-        f"scenario save. This works from the main menu or in-game.\n"
+        f"**Step 1:** Call `load_game_save(\"{load_save}\")` to load the "
+        f"{'autosave and continue the game' if resume_save else 'scenario save'}. "
+        f"This works from the main menu or in-game.\n"
         f"**Step 2:** Wait ~10 seconds for the save to load, then call "
         f"`get_game_overview` to orient yourself and begin playing.\n\n"
         f"### Save Management\n\n"
         f"The game auto-saves every turn as `MCP_AutoSave_NNNN`. If you need "
         f"to recover from a crash or bad state, call `list_saves` to find the "
         f"most recent MCP autosave, then `load_game_save(\"MCP_AutoSave_NNNN\")` "
-        f"to reload it. Do NOT load `{save_name}` to recover — that is the "
+        f"to reload it. Do NOT load `{start_save}` to recover — that is the "
         f"Turn 1 starting save and will erase all progress."
     )
+
+    return "".join(parts)

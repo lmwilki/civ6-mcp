@@ -36,5 +36,6 @@ docs/paper/
 
 # CivBench eval artifacts
 evals/saves/*.Civ6Save  # benchmark saves are tracked
+evals/.resume_context.md
 eval-logs/
 .vercel

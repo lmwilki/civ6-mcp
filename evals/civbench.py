@@ -187,7 +187,11 @@ def _civ_mcp_server(run_id: str | None = None):
     )
 
 
-def _make_dataset(scenario_ids: list[str] | None = None) -> list[Sample]:
+def _make_dataset(
+    scenario_ids: list[str] | None = None,
+    resume_save: str | None = None,
+    resume_context: str | None = None,
+) -> list[Sample]:
     """Convert scenarios into Inspect Sample objects.
 
     One Sample per scenario — single save file for comparison clarity.
@@ -203,7 +207,11 @@ def _make_dataset(scenario_ids: list[str] | None = None) -> list[Sample]:
         samples.append(
             Sample(
                 id=s.scenario_id,
-                input=build_scenario_prompt(s),
+                input=build_scenario_prompt(
+                    s,
+                    resume_save=resume_save,
+                    resume_context=resume_context,
+                ),
                 target=str(s.turn_limit),
                 metadata={
                     "scenario_id": s.scenario_id,
@@ -216,6 +224,7 @@ def _make_dataset(scenario_ids: list[str] | None = None) -> list[Sample]:
                     "opponents": list(s.opponents),
                     "blind_spot": s.blind_spot,
                     "description": s.description,
+                    "resume_save": resume_save,
                 },
             )
         )
@@ -235,6 +244,8 @@ def civbench_standard(
     message_limit: int = DEFAULT_MESSAGE_LIMIT,
     token_limit: int = DEFAULT_TOKEN_LIMIT,
     time_limit: int = DEFAULT_TIME_LIMIT,
+    resume_save: str | None = None,
+    resume_context: str | None = None,
 ):
     """Standardised baseline track.
 
@@ -247,13 +258,20 @@ def civbench_standard(
         message_limit: Max agent messages before stopping.
         token_limit: Max tokens before stopping.
         time_limit: Max wall-clock seconds before stopping.
+        resume_save: Resume from this save instead of the scenario start save.
+        resume_context: Diary summary / game history for context when resuming.
     """
     scenario_list = _normalise_scenarios(scenarios)
     run_id = uuid.uuid4().hex[:8]
     server = _civ_mcp_server(run_id=run_id)
 
+    # Resolve file:// references (Inspect -T passes raw strings)
+    if resume_context and resume_context.startswith("file://"):
+        ctx_path = Path(resume_context.removeprefix("file://"))
+        resume_context = ctx_path.read_text(encoding="utf-8") if ctx_path.exists() else None
+
     return Task(
-        dataset=_make_dataset(scenario_list),
+        dataset=_make_dataset(scenario_list, resume_save, resume_context),
         solver=react(
             prompt=AgentPrompt(instructions=STANDARD_SYSTEM_PROMPT),
             tools=[server],

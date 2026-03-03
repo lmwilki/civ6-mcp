@@ -34,6 +34,7 @@ Prerequisites:
 """
 
 import argparse
+import json
 import os
 import socket
 import subprocess
@@ -146,11 +147,92 @@ ALL_SCENARIOS = [
 ]
 
 
+def _build_diary_summary(diary_glob: str = "diary_*.jsonl") -> str | None:
+    """Build a compact game history summary from the most recent diary file.
+
+    Reads the agent's diary JSONL (pid=0, is_agent=True entries only) and
+    produces a markdown summary with milestones, current state, and recent
+    strategic thinking.
+    """
+    diary_dir = Path.home() / ".civ6-mcp"
+    if not diary_dir.exists():
+        return None
+    files = sorted(diary_dir.glob(diary_glob), key=lambda p: p.stat().st_mtime)
+    if not files:
+        return None
+    diary_path = files[-1]  # most recent
+
+    entries = []
+    for line in diary_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            e = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if e.get("is_agent"):
+            entries.append(e)
+    if not entries:
+        return None
+
+    # Deduplicate by turn (keep last entry per turn)
+    by_turn: dict[int, dict] = {}
+    for e in entries:
+        by_turn[e.get("turn", 0)] = e
+    turns = sorted(by_turn.keys())
+    last = by_turn[turns[-1]]
+
+    # Milestones
+    milestones = []
+    prev_cities, prev_era = 0, ""
+    for t in turns:
+        e = by_turn[t]
+        c = e.get("cities", 0)
+        era = e.get("era", "")
+        if c > prev_cities:
+            milestones.append(f"- T{t}: Founded city #{c}")
+            prev_cities = c
+        if era != prev_era:
+            milestones.append(f"- T{t}: Entered {era.replace('ERA_', '')}")
+            prev_era = era
+
+    # Current state
+    state_lines = [
+        f"**Turn {turns[-1]}** | Score: {last.get('score')} | "
+        f"Cities: {last.get('cities')} | Pop: {last.get('pop')}",
+        f"Science: {last.get('science')}/t | Culture: {last.get('culture')}/t | "
+        f"Gold: {last.get('gold_per_turn')}/t ({last.get('gold')}g)",
+        f"Techs: {last.get('techs_completed')} | Civics: {last.get('civics_completed')} | "
+        f"Military: {last.get('military')}",
+        f"Era: {last.get('era')} | Government: {last.get('government')}",
+        f"Science VP: {last.get('sci_vp', 0)} | Diplo VP: {last.get('diplo_vp', 0)}",
+        f"Units: {last.get('unit_composition', {})}",
+    ]
+
+    # Last 5 turns of strategic thinking
+    recent = []
+    for t in turns[-5:]:
+        r = by_turn[t].get("reflections", {})
+        if r.get("strategic"):
+            recent.append(f"**T{t}:** {r['strategic'][:300]}")
+
+    parts = ["#### Milestones\n"]
+    parts.extend(milestones)
+    parts.append("\n#### Current State\n")
+    parts.extend(state_lines)
+    if recent:
+        parts.append("\n#### Recent Strategy\n")
+        parts.extend(recent)
+
+    return "\n".join(parts)
+
+
 def run_scenario(
     model: str,
     scenario: str,
     track: str = "civbench_standard",
     message_limit: int | None = None,
+    resume_save: str | None = None,
     extra_args: list[str] | None = None,
 ) -> int:
     """Run a single scenario and return the exit code."""
@@ -171,6 +253,14 @@ def run_scenario(
         cmd.extend(["-M", "responses_api=false"])
     if message_limit is not None:
         cmd.extend(["--message-limit", str(message_limit)])
+    if resume_save:
+        cmd.extend(["-T", f"resume_save={resume_save}"])
+        diary_summary = _build_diary_summary()
+        if diary_summary:
+            # Write to temp file to avoid shell escaping issues
+            ctx_file = EVALS_DIR / ".resume_context.md"
+            ctx_file.write_text(diary_summary, encoding="utf-8")
+            cmd.extend(["-T", f"resume_context=file://{ctx_file}"])
     if extra_args:
         cmd.extend(extra_args)
 
@@ -219,6 +309,11 @@ def main():
         help="Override message limit (useful for test runs)",
     )
     parser.add_argument(
+        "--resume-save",
+        default=None,
+        help="Resume from an autosave (e.g. MCP_AutoSave_0221)",
+    )
+    parser.add_argument(
         "--list-models",
         action="store_true",
         help="Print available models and exit",
@@ -252,6 +347,10 @@ def main():
         else ALL_SCENARIOS
     )
 
+    if args.resume_save and len(scenarios) > 1:
+        parser.error("--resume-save requires exactly one scenario (use --scenarios)")
+        return
+
     # Pre-flight: ensure game is running before first scenario
     ensure_game_ready()
 
@@ -269,6 +368,7 @@ def main():
                 scenario=scenario,
                 track=args.track,
                 message_limit=args.message_limit,
+                resume_save=args.resume_save,
                 extra_args=extra if extra else None,
             )
             results.append((model, scenario, rc))
