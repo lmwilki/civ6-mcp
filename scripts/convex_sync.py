@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Watchdog that tails civ-mcp JSONL files and syncs to Convex.
+"""Sync civ-mcp JSONL files to Convex — watch mode or batch upload.
 
-Standalone process — the MCP server has zero knowledge of this.
-Watches ~/.civ6-mcp/ for diary, city, and log JSONL files and pushes
-new/changed rows to Convex via the HTTP mutation API.
+Two modes:
+  --watch (default)  Stream changes in real-time as a game plays.
+  --upload DIR       One-shot batch upload of all files in DIR, then exit.
 
 Usage:
-    python scripts/convex_sync.py          # sync to dev (reads web/.env.dev)
-    python scripts/convex_sync.py --prod   # sync to prod (reads web/.env.prod)
+    python scripts/convex_sync.py                          # watch (dev)
+    python scripts/convex_sync.py --prod                   # watch (prod)
+    python scripts/convex_sync.py --upload ./results/      # batch upload (dev)
+    python scripts/convex_sync.py --upload ./results/ --prod
 
 Env files are loaded from web/ relative to this script. Environment variables
 CONVEX_URL and CONVEX_DEPLOY_KEY override file values if set.
 
 Optional:
-    CIV6_DIARY_DIR=~/.civ6-mcp   (default)
+    CIV6_DIARY_DIR=~/.civ6-mcp   (default, for watch mode)
 """
 
 from __future__ import annotations
@@ -158,6 +160,28 @@ def extract_game_id(name: str) -> str:
 def hash_lines(lines: list[str]) -> str:
     """Content hash for a set of lines."""
     return hashlib.md5("".join(lines).encode()).hexdigest()
+
+
+def discover_games(directory: Path) -> dict[str, dict[str, Path]]:
+    """Scan directory for JSONL/JSON game files, grouped by game_id.
+
+    Returns {game_id: {file_type: path, ...}, ...}
+    """
+    games: dict[str, dict[str, Path]] = {}
+    for f in sorted(directory.iterdir()):
+        if f.is_dir():
+            continue
+        name = f.name
+        ftype = classify_file(name)
+        if ftype is None:
+            # Also pick up mapstatic JSON files (consumed by sync_map_data)
+            if name.startswith("mapstatic_") and name.endswith(".json"):
+                ftype = "mapstatic"
+            else:
+                continue
+        game_id = extract_game_id(name)
+        games.setdefault(game_id, {})[ftype] = f
+    return games
 
 
 # ---------------------------------------------------------------------------
@@ -695,41 +719,57 @@ async def check_idle_games(state: dict, client: ConvexClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main loop
+# Batch upload
 # ---------------------------------------------------------------------------
 
 
-async def main() -> None:
-    parser = argparse.ArgumentParser(description="Sync civ-mcp JSONL files to Convex")
-    parser.add_argument(
-        "--prod",
-        action="store_true",
-        help="Target production deployment (reads web/.env.prod instead of web/.env.dev)",
+async def batch_upload(directory: Path, client: ConvexClient) -> None:
+    """One-shot upload of all JSONL files in directory, then exit."""
+    games = discover_games(directory)
+    if not games:
+        log.error("No game files found in %s", directory)
+        return
+
+    log.info("Found %d game(s) in %s:", len(games), directory)
+    for gid, files in sorted(games.items()):
+        types = ", ".join(sorted(files.keys()))
+        log.info("  %s: %s", gid, types)
+
+    # Stateless — never reads/writes .sync_state.json
+    state: dict[str, Any] = {"files": {}, "game_last_seen": {}}
+    total_start = time.time()
+    games_uploaded = 0
+
+    for gid, files in sorted(games.items()):
+        game_start = time.time()
+        log.info("--- %s ---", gid)
+
+        # Process diary first (creates the games row in Convex)
+        for ftype in ("diary", "cities", "log", "spatial", "mapturns"):
+            if ftype in files:
+                await sync_file(files[ftype], state, client)
+
+        await client.mutation("ingest:markGameCompleted", {"gameId": gid})
+
+        elapsed = time.time() - game_start
+        log.info("  %s done (%.1fs)", gid, elapsed)
+        games_uploaded += 1
+
+    total_elapsed = time.time() - total_start
+    log.info(
+        "=== Batch upload complete: %d game(s) in %.1fs ===",
+        games_uploaded, total_elapsed,
     )
-    args = parser.parse_args()
 
-    convex_url, deploy_key = _resolve_config(prod=args.prod)
-    env_label = "PROD" if args.prod else "DEV"
 
-    if not convex_url:
-        log.error(
-            "CONVEX_URL not set — check web/.env.prod"
-            if args.prod
-            else "CONVEX_URL not set — check web/.env.dev"
-        )
-        sys.exit(1)
-    if not deploy_key:
-        log.error(
-            "CONVEX_DEPLOY_KEY not set — check web/.env.prod"
-            if args.prod
-            else "CONVEX_DEPLOY_KEY not set — check web/.env.dev"
-        )
-        sys.exit(1)
+# ---------------------------------------------------------------------------
+# Watch loop
+# ---------------------------------------------------------------------------
 
-    log.info("[%s] Watching %s → %s", env_label, DIARY_DIR, convex_url)
 
+async def watch_loop(diary_dir: Path, client: ConvexClient) -> None:
+    """Watch directory and stream changes to Convex in real-time."""
     state = load_state()
-    client = ConvexClient(convex_url, deploy_key)
 
     # Graceful shutdown
     shutdown = asyncio.Event()
@@ -744,7 +784,7 @@ async def main() -> None:
     try:
         # Initial sync: process all existing files
         for pattern in ("diary_*.jsonl", "log_*.jsonl", "spatial_*.jsonl", "mapturns_*.jsonl"):
-            for filepath in sorted(glob(str(DIARY_DIR / pattern))):
+            for filepath in sorted(glob(str(diary_dir / pattern))):
                 await sync_file(Path(filepath), state, client)
         save_state(state)
         log.info("Initial sync complete")
@@ -752,7 +792,7 @@ async def main() -> None:
         # Watch for changes
         idle_check_time = time.time()
         async for changes in watchfiles.awatch(
-            DIARY_DIR,
+            diary_dir,
             watch_filter=lambda _, p: p.endswith(".jsonl"),
             stop_event=shutdown,
         ):
@@ -768,8 +808,60 @@ async def main() -> None:
 
     finally:
         save_state(state)
-        await client.close()
         log.info("State saved, exiting")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+async def main() -> None:
+    parser = argparse.ArgumentParser(description="Sync civ-mcp JSONL files to Convex")
+    parser.add_argument(
+        "--prod",
+        action="store_true",
+        help="Target production deployment (reads web/.env.prod instead of web/.env.dev)",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--watch",
+        action="store_true",
+        default=True,
+        help="Watch directory and stream changes in real-time (default)",
+    )
+    mode.add_argument(
+        "--upload",
+        type=str,
+        metavar="DIR",
+        help="One-shot batch upload of all files in DIR, then exit",
+    )
+    args = parser.parse_args()
+
+    convex_url, deploy_key = _resolve_config(prod=args.prod)
+    env_label = "PROD" if args.prod else "DEV"
+
+    if not convex_url:
+        log.error("CONVEX_URL not set — check web/.env.%s", "prod" if args.prod else "dev")
+        sys.exit(1)
+    if not deploy_key:
+        log.error("CONVEX_DEPLOY_KEY not set — check web/.env.%s", "prod" if args.prod else "dev")
+        sys.exit(1)
+
+    client = ConvexClient(convex_url, deploy_key)
+    try:
+        if args.upload:
+            upload_dir = Path(args.upload).expanduser().resolve()
+            if not upload_dir.is_dir():
+                log.error("Directory not found: %s", upload_dir)
+                sys.exit(1)
+            log.info("[%s] Batch upload %s → %s", env_label, upload_dir, convex_url)
+            await batch_upload(upload_dir, client)
+        else:
+            log.info("[%s] Watching %s → %s", env_label, DIARY_DIR, convex_url)
+            await watch_loop(DIARY_DIR, client)
+    finally:
+        await client.close()
 
 
 if __name__ == "__main__":
