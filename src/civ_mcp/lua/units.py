@@ -247,6 +247,7 @@ params[UnitOperationTypes.PARAM_Y] = {target_y}
 -- Determine attack type
 local unitInfo = GameInfo.Units[unit:GetType()]
 local isRanged = UnitManager.CanStartOperation(unit, UnitOperationTypes.RANGE_ATTACK, nil, true)
+local isAir = (not isRanged) and UnitManager.CanStartOperation(unit, UnitOperationTypes.AIR_ATTACK, nil, params)
 if isRanged then
     local rng = unitInfo and unitInfo.Range or 1
     if dist > rng then
@@ -262,6 +263,15 @@ if isRanged then
     end
     UnitManager.RequestOperation(unit, UnitOperationTypes.RANGE_ATTACK, params)
     print("OK:RANGE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|pre_hp:" .. enemyHP .. "/" .. enemyMaxHP .. "|your HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
+elseif isAir then
+    -- Air units (jet bombers, jet fighters, bombers, fighters): use AIR_ATTACK operation.
+    -- Combat resolves asynchronously in the UI so post-combat HP reads may be stale.
+    local rng = unitInfo and unitInfo.Range or 1
+    if dist > rng then
+        {_bail_lua('"ERR:OUT_OF_RANGE|Target at distance " .. dist .. " but air range is " .. rng .. ". Rebase closer first."')}
+    end
+    UnitManager.RequestOperation(unit, UnitOperationTypes.AIR_ATTACK, params)
+    print("OK:AIR_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|pre_hp:" .. enemyHP .. "/" .. enemyMaxHP .. "|bomber HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
 else
     -- Melee: let CanStartOperation be the authority on adjacency/validity.
     -- Map.GetPlotDistance can misreport distance on offset hex grids, so we

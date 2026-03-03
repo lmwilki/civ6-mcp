@@ -298,9 +298,10 @@ class GameState:
         # Brief delay: RequestOperation is async — combat resolves on the next
         # C++ frame, so same-frame reads return stale pre-combat HP values.
         is_melee = result.startswith("MELEE_ATTACK")
-        if result.startswith("RANGE_ATTACK") or is_melee:
-            # Melee needs more time: unit must path then attack resolves
-            await asyncio.sleep(0.4 if is_melee else 0.15)
+        is_air = result.startswith("AIR_ATTACK")
+        if result.startswith("RANGE_ATTACK") or is_melee or is_air:
+            # Melee/air needs more time: unit must path/fly then attack resolves
+            await asyncio.sleep(0.4 if (is_melee or is_air) else 0.15)
             try:
                 followup = await self.conn.execute_read(
                     lq.build_attack_followup_query(target_x, target_y)
