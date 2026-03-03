@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useDiaryList } from "@/lib/use-diary";
 import { slugFromFilename, sortGamesLiveFirst } from "@/lib/diary-types";
@@ -8,9 +9,43 @@ import { CivSymbol } from "./civ-icon";
 import { LeaderPortrait } from "@/components/leader-portrait";
 import { GameStatusBadge, getGameStatusColor } from "@/components/game-status-badge";
 import { formatModelName } from "@/lib/model-registry";
+import { SkeletonBlock, SkeletonLine } from "./skeleton";
 
 export function RecentGames() {
   const games = useDiaryList();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (games.length > 0) {
+      setReady(true);
+    } else {
+      const t = setTimeout(() => setReady(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [games.length]);
+
+  if (games.length === 0 && !ready) {
+    return (
+      <div className="space-y-1.5">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="flex items-stretch gap-0 rounded-sm border border-marble-300/50 bg-marble-50"
+          >
+            <div className="w-1.5 shrink-0 rounded-l-sm bg-marble-200" />
+            <div className="flex flex-1 items-center gap-2 px-2.5 py-2.5">
+              <SkeletonBlock className="h-8 w-8 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <SkeletonLine className="w-24" />
+                <SkeletonLine className="w-16" />
+              </div>
+              <SkeletonLine className="w-14" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (games.length === 0) {
     return (

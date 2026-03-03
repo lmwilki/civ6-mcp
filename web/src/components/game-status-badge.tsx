@@ -3,6 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Trophy,
+  Skull,
   FlaskConical,
   Swords,
   Church,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 import type { GameOutcome } from "@/lib/diary-types";
 import { CIV6_COLORS } from "@/lib/civ-colors";
-import { CivIcon } from "./civ-icon";
+import { CivIcon, CivSymbol } from "./civ-icon";
 import { PulsingDot } from "./pulsing-dot";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -124,6 +125,62 @@ export function GameStatusBadge({
       <span className="font-mono text-xs tabular-nums text-marble-500">
         T{turnCount}
       </span>
+    </div>
+  );
+}
+
+// ── Outcome banner (used in diary view) ──────────────────────────────────────
+
+export function OutcomeBanner({ outcome }: { outcome: GameOutcome }) {
+  const isVictory = outcome.result === "victory";
+  const vt = getVictoryTypeMeta(outcome.victoryType);
+  const VtIcon = vt.icon;
+  const bgColor = isVictory
+    ? "rgba(61,139,110,0.08)"
+    : "rgba(192,80,58,0.08)";
+  const borderColor = isVictory
+    ? "rgba(61,139,110,0.25)"
+    : "rgba(192,80,58,0.25)";
+  const headColor = isVictory
+    ? STATUS_COLORS.victory
+    : STATUS_COLORS.defeat;
+
+  return (
+    <div
+      className="mx-auto w-full max-w-2xl rounded-sm border px-4 py-3"
+      style={{ backgroundColor: bgColor, borderColor }}
+    >
+      <div className="flex items-center gap-3">
+        <CivIcon
+          icon={isVictory ? Trophy : Skull}
+          color={headColor}
+          size="md"
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className="font-display text-base font-bold uppercase tracking-[0.08em]"
+              style={{ color: headColor }}
+            >
+              {isVictory ? "Victory" : "Defeated"}
+            </span>
+            <span className="font-mono text-xs tabular-nums text-marble-500">
+              Turn {outcome.turn}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <CivIcon icon={VtIcon} color={vt.color} size="sm" />
+            <span className="text-xs" style={{ color: vt.color }}>
+              {vt.label} Victory
+            </span>
+            <span className="text-xs text-marble-500">—</span>
+            <CivSymbol civ={outcome.winnerCiv} className="h-3.5 w-3.5" />
+            <span className="text-xs text-marble-700">
+              {outcome.winnerCiv} ({outcome.winnerLeader})
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

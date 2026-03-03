@@ -7,6 +7,7 @@ import { CollapsiblePanel } from "./collapsible-panel";
 import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 import { Swords, Shield } from "lucide-react";
+import { StatValue } from "./stat-value";
 
 interface MilitaryPanelProps {
   agent: PlayerRow;
@@ -30,30 +31,12 @@ export function MilitaryPanel({ agent, prevAgent }: MilitaryPanelProps) {
     >
       {/* Unit counts */}
       <div className="mb-2 flex gap-4 text-sm">
-        <span className="text-marble-600">
-          Total:{" "}
-          <span className="font-mono tabular-nums text-marble-800">
-            <AnimatedNumber value={agent.units_total} decimals={0} />
-          </span>
-        </span>
-        <span className="text-marble-600">
-          Combat:{" "}
-          <span className="font-mono tabular-nums text-marble-800">
-            {agent.units_military}
-          </span>
-        </span>
-        <span className="text-marble-600">
-          Civilian:{" "}
-          <span className="font-mono tabular-nums text-marble-800">
-            {agent.units_civilian}
-          </span>
-        </span>
-        <span className="text-marble-600">
-          Support:{" "}
-          <span className="font-mono tabular-nums text-marble-800">
-            {agent.units_support}
-          </span>
-        </span>
+        <StatValue label="Total">
+          <AnimatedNumber value={agent.units_total} decimals={0} />
+        </StatValue>
+        <StatValue label="Combat">{agent.units_military}</StatValue>
+        <StatValue label="Civilian">{agent.units_civilian}</StatValue>
+        <StatValue label="Support">{agent.units_support}</StatValue>
       </div>
       {/* Unit composition pills */}
       {Object.keys(comp).length > 0 && (

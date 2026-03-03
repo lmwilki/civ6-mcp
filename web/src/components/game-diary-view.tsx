@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useState } from "react";
 import { AgentOverview } from "@/components/agent-overview";
 import { LeaderboardTable } from "@/components/leaderboard-table";
 import { CitiesPanel } from "@/components/cities-panel";
@@ -10,9 +10,9 @@ import { ProgressPanel } from "@/components/progress-panel";
 import { ReflectionsPanel } from "@/components/reflections-panel";
 import { SparklineSidebar } from "@/components/sparkline-sidebar";
 import { useDiarySummary, useDiaryTurn } from "@/lib/use-diary";
-import type { GameOutcome } from "@/lib/diary-types";
-import { getVictoryTypeMeta } from "@/components/game-status-badge";
-import { CivIcon, CivSymbol } from "@/components/civ-icon";
+import { OutcomeBanner, statusColor } from "@/components/game-status-badge";
+import { CivSymbol } from "@/components/civ-icon";
+import { useTurnNavigation } from "@/lib/use-turn-navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,72 +20,14 @@ import {
   ChevronsRight,
   X,
   BarChart3,
-  Skull,
-  Trophy,
   Eye,
   Map,
 } from "lucide-react";
 import { SCENARIOS, DIFFICULTY_META } from "@/lib/scenarios";
+import { SkeletonBlock, SkeletonLine } from "./skeleton";
 
 interface GameDiaryViewProps {
   filename: string;
-}
-
-const STATUS_COLORS = {
-  victory: "#3D8B6E",
-  defeat: "#C0503A",
-} as const;
-
-function OutcomeBanner({ outcome }: { outcome: GameOutcome }) {
-  const isVictory = outcome.result === "victory";
-  const vt = getVictoryTypeMeta(outcome.victoryType);
-  const VtIcon = vt.icon;
-  const bgColor = isVictory
-    ? "rgba(61,139,110,0.08)"
-    : "rgba(192,80,58,0.08)";
-  const borderColor = isVictory
-    ? "rgba(61,139,110,0.25)"
-    : "rgba(192,80,58,0.25)";
-  const headColor = isVictory ? STATUS_COLORS.victory : STATUS_COLORS.defeat;
-
-  return (
-    <div
-      className="mx-auto w-full max-w-2xl rounded-sm border px-4 py-3"
-      style={{ backgroundColor: bgColor, borderColor }}
-    >
-      <div className="flex items-center gap-3">
-        <CivIcon
-          icon={isVictory ? Trophy : Skull}
-          color={headColor}
-          size="md"
-        />
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              className="font-display text-base font-bold uppercase tracking-[0.08em]"
-              style={{ color: headColor }}
-            >
-              {isVictory ? "Victory" : "Defeated"}
-            </span>
-            <span className="font-mono text-xs tabular-nums text-marble-500">
-              Turn {outcome.turn}
-            </span>
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5">
-            <CivIcon icon={VtIcon} color={vt.color} size="sm" />
-            <span className="text-xs" style={{ color: vt.color }}>
-              {vt.label} Victory
-            </span>
-            <span className="text-xs text-marble-500">—</span>
-            <CivSymbol civ={outcome.winnerCiv} className="h-3.5 w-3.5" />
-            <span className="text-xs text-marble-700">
-              {outcome.winnerCiv} ({outcome.winnerLeader})
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export function GameDiaryView({ filename }: GameDiaryViewProps) {
@@ -106,38 +48,9 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
 
   const scenarioDef = scenarioId ? SCENARIOS[scenarioId] : null;
 
-  // Nav state — index into turnNumbers array
-  type NavAction =
-    | { type: "prev" }
-    | { type: "next"; max: number }
-    | { type: "first" }
-    | { type: "last"; max: number }
-    | { type: "seek"; index: number };
-
-  const [nav, dispatch] = useReducer(
-    (state: { userIndex: number; following: boolean }, action: NavAction) => {
-      switch (action.type) {
-        case "prev":
-          return { userIndex: Math.max(0, state.userIndex - 1), following: false };
-        case "next": {
-          const next = Math.min(action.max, state.userIndex + 1);
-          return { userIndex: next, following: next >= action.max };
-        }
-        case "first":
-          return { userIndex: 0, following: false };
-        case "last":
-          return { userIndex: action.max, following: true };
-        case "seek":
-          return { userIndex: action.index, following: false };
-      }
-    },
-    { userIndex: 0, following: true },
-  );
-
   const maxIdx = Math.max(0, turnNumbers.length - 1);
-  const index = nav.following
-    ? maxIdx
-    : Math.min(nav.userIndex, maxIdx);
+  const { index, goPrev, goNext, goFirst, goLast, seek } =
+    useTurnNavigation(maxIdx);
 
   // Turn detail subscriptions — ~12 docs each
   const selectedTurn = turnNumbers[index];
@@ -145,38 +58,6 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
 
   const currentTurn = useDiaryTurn(filename, selectedTurn, agentModelOverride);
   const prevTurn = useDiaryTurn(filename, prevTurnNum, agentModelOverride);
-
-  // Nav callbacks
-  const goPrev = useCallback(() => dispatch({ type: "prev" }), []);
-  const goNext = useCallback(
-    () => dispatch({ type: "next", max: maxIdx }),
-    [maxIdx],
-  );
-  const goFirst = useCallback(() => dispatch({ type: "first" }), []);
-  const goLast = useCallback(
-    () => dispatch({ type: "last", max: maxIdx }),
-    [maxIdx],
-  );
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        e.preventDefault();
-        goPrev();
-      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-        e.preventDefault();
-        goNext();
-      } else if (e.key === "Home") {
-        e.preventDefault();
-        goFirst();
-      } else if (e.key === "End") {
-        e.preventDefault();
-        goLast();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [goPrev, goNext, goFirst, goLast]);
 
   const hasTurns = turnNumbers.length > 1;
   const isLastTurn = index === maxIdx;
@@ -200,9 +81,7 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
               max={maxIdx}
               value={index}
               aria-label="Turn navigation"
-              onChange={(e) =>
-                dispatch({ type: "seek", index: parseInt(e.target.value, 10) })
-              }
+              onChange={(e) => seek(parseInt(e.target.value, 10))}
               className="mx-2 w-24 accent-gold sm:w-48"
             />
           )}
@@ -223,7 +102,7 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
             <span
               className="ml-1.5 rounded-sm px-1.5 py-0.5 font-display text-xs font-bold uppercase tracking-[0.08em]"
               style={{
-                color: outcome.result === "victory" ? STATUS_COLORS.victory : STATUS_COLORS.defeat,
+                color: statusColor(outcome.result === "victory" ? "victory" : "defeat"),
                 backgroundColor: outcome.result === "victory" ? "rgba(61,139,110,0.1)" : "rgba(192,80,58,0.1)",
               }}
             >
@@ -237,10 +116,39 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
       <div className="flex min-h-0 flex-1">
         <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
           {loading && (
-            <div className="flex h-full items-center justify-center">
-              <p className="font-display text-sm tracking-[0.08em] uppercase text-marble-500">
-                Loading diary...
-              </p>
+            <div className="mx-auto max-w-2xl space-y-4">
+              {/* Agent overview skeleton */}
+              <div className="rounded-sm border border-marble-300/50 bg-marble-50 p-4">
+                <div className="flex items-center gap-3">
+                  <SkeletonBlock className="h-10 w-10 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <SkeletonLine className="w-40" />
+                    <SkeletonLine className="w-24" />
+                  </div>
+                  <SkeletonLine className="w-16" />
+                </div>
+                <div className="mt-4 grid grid-cols-4 gap-3">
+                  {[0, 1, 2, 3].map((i) => (
+                    <SkeletonBlock key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              </div>
+              {/* Leaderboard skeleton */}
+              <div className="rounded-sm border border-marble-300/50 bg-marble-50 p-4">
+                <SkeletonLine className="mb-3 w-28" />
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 py-2">
+                    <SkeletonBlock className="h-5 w-5 rounded-full" />
+                    <SkeletonLine className="w-28" />
+                    <div className="flex-1" />
+                    <SkeletonLine className="w-12" />
+                  </div>
+                ))}
+              </div>
+              {/* Panel skeletons */}
+              {[0, 1].map((i) => (
+                <SkeletonBlock key={i} className="h-24 w-full" />
+              ))}
             </div>
           )}
 

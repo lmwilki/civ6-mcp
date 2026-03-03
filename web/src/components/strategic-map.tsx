@@ -19,23 +19,17 @@ import {
   FEATURE_OVERLAY_ALPHA,
   CITY_MARKER,
 } from "@/lib/terrain-colors";
-import { getCivColors, getDefaultLeader, canonicalCivName } from "@/lib/civ-registry";
+import { getCivColors, canonicalCivName } from "@/lib/civ-registry";
 import {
-  Play,
-  Pause,
-  SkipBack,
-  SkipForward,
   Map as MapIcon,
   Eye,
   EyeOff,
-  Download,
-  Camera,
-  Film,
-  ImageIcon,
-  X,
 } from "lucide-react";
 import { exportPng, exportVideo, exportGif } from "@/lib/map-export";
-import { CivIcon, CivSymbol } from "./civ-icon";
+import { CivIcon } from "./civ-icon";
+import { triggerDownload } from "./map-export-controls";
+import { MapControls } from "./map-controls";
+import { MapLegend } from "./map-legend";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 import { SpatialCharts } from "./spatial-charts";
 import type { SpatialTurn } from "@/lib/diary-types";
@@ -47,98 +41,6 @@ import {
   screenToHex,
 } from "@/lib/hex-geometry";
 import { computeBorderLoops } from "@/lib/map-borders";
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-// ── Export controls sub-component ─────────────────────────────────────────
-
-interface MapExportControlsProps {
-  exporting: string | null;
-  exportProgress: number;
-  exportMenuOpen: boolean;
-  exportMenuRef: React.RefObject<HTMLDivElement | null>;
-  onToggleMenu: () => void;
-  onExport: (format: "png" | "video" | "gif") => void;
-  onCancel: () => void;
-}
-
-function MapExportControls({
-  exporting,
-  exportProgress,
-  exportMenuOpen,
-  exportMenuRef,
-  onToggleMenu,
-  onExport,
-  onCancel,
-}: MapExportControlsProps) {
-  if (exporting) {
-    return (
-      <div className="flex items-center gap-2 rounded border border-marble-300 px-2 py-1">
-        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-marble-200">
-          <div
-            className="h-full rounded-full bg-gold-dark transition-all"
-            style={{ width: `${exportProgress * 100}%` }}
-          />
-        </div>
-        <span className="font-mono text-xs tabular-nums text-marble-500">
-          {Math.round(exportProgress * 100)}%
-        </span>
-        <button
-          onClick={onCancel}
-          className="rounded p-0.5 text-marble-400 hover:bg-marble-200 hover:text-marble-700"
-          title="Cancel export"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative" ref={exportMenuRef}>
-      <button
-        onClick={onToggleMenu}
-        className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700"
-        title="Export map"
-      >
-        <Download className="h-4 w-4" />
-      </button>
-      {exportMenuOpen && (
-        <div className="absolute bottom-full right-0 mb-1 rounded border border-marble-300 bg-white shadow-md z-50">
-          <button
-            onClick={() => onExport("png")}
-            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs text-marble-700 hover:bg-marble-100"
-          >
-            <Camera className="h-3 w-3" /> Screenshot (PNG)
-          </button>
-          <button
-            onClick={() => onExport("video")}
-            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs text-marble-700 hover:bg-marble-100"
-          >
-            <Film className="h-3 w-3" /> Export Video
-          </button>
-          <button
-            onClick={() => onExport("gif")}
-            className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-xs text-marble-700 hover:bg-marble-100"
-          >
-            <ImageIcon className="h-3 w-3" /> Export GIF
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Outer component (loading states) ──────────────────────────────────────
 
@@ -914,8 +816,6 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
 
   // ── UI ────────────────────────────────────────────────────────────────
 
-  const speedLabels = ["1x", "2x", "5x", "10x"];
-
   return (
     <div className="mx-auto max-w-4xl space-y-4 px-3 py-6 sm:px-6">
       {/* Header */}
@@ -964,133 +864,38 @@ function MapRenderer({ gameId, mapData, spatialMap, spatialTurns }: {
       />
 
       {/* Replay controls */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => { setPlaying(false); setCurrentTurn(initialTurn); followingLatestRef.current = false; }}
-          disabled={!!exporting}
-          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30 disabled:pointer-events-none"
-          title="Reset to start"
-        >
-          <SkipBack className="h-4 w-4" />
-        </button>
+      <MapControls
+        playing={playing}
+        exporting={exporting}
+        exportProgress={exportProgress}
+        exportMenuOpen={exportMenuOpen}
+        exportMenuRef={exportMenuRef}
+        currentTurn={currentTurn}
+        initialTurn={initialTurn}
+        maxTurn={maxTurn}
+        speed={speed}
+        onPlay={() => {
+          if (currentTurn >= maxTurn) {
+            setCurrentTurn(initialTurn);
+            followingLatestRef.current = false;
+          }
+          setPlaying(!playing);
+        }}
+        onReset={() => { setPlaying(false); setCurrentTurn(initialTurn); followingLatestRef.current = false; }}
+        onJumpEnd={() => { setPlaying(false); setCurrentTurn(maxTurn); followingLatestRef.current = true; }}
+        onSeek={(turn) => {
+          setPlaying(false);
+          setCurrentTurn(turn);
+          followingLatestRef.current = turn === maxTurn;
+        }}
+        onSpeedChange={() => setSpeed((s) => (s + 1) % 4)}
+        onToggleExportMenu={() => setExportMenuOpen((s) => !s)}
+        onExport={handleExport}
+        onCancelExport={cancelExport}
+      />
 
-        <button
-          onClick={() => {
-            if (currentTurn >= maxTurn) {
-              setCurrentTurn(initialTurn);
-              followingLatestRef.current = false;
-            }
-            setPlaying(!playing);
-          }}
-          disabled={!!exporting}
-          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30 disabled:pointer-events-none"
-          title={playing ? "Pause" : "Play"}
-        >
-          {playing ? (
-            <Pause className="h-4 w-4" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-        </button>
-
-        <button
-          onClick={() => { setPlaying(false); setCurrentTurn(maxTurn); followingLatestRef.current = true; }}
-          disabled={!!exporting}
-          className="rounded p-1.5 text-marble-500 hover:bg-marble-200 hover:text-marble-700 disabled:opacity-30 disabled:pointer-events-none"
-          title="Jump to end"
-        >
-          <SkipForward className="h-4 w-4" />
-        </button>
-
-        <input
-          type="range"
-          min={initialTurn}
-          max={maxTurn}
-          value={currentTurn}
-          disabled={!!exporting}
-          aria-label="Turn navigation"
-          onChange={(e) => {
-            setPlaying(false);
-            const newTurn = Number(e.target.value);
-            setCurrentTurn(newTurn);
-            followingLatestRef.current = newTurn === maxTurn;
-          }}
-          className="flex-1 accent-gold-dark disabled:opacity-30"
-        />
-
-        <button
-          onClick={() => setSpeed((s) => (s + 1) % speedLabels.length)}
-          disabled={!!exporting}
-          className="rounded border border-marble-300 px-2 py-0.5 font-mono text-xs tabular-nums text-marble-600 hover:bg-marble-200 disabled:opacity-30 disabled:pointer-events-none"
-          title="Change speed"
-        >
-          {speedLabels[speed]}
-        </button>
-
-        {/* Export */}
-        <MapExportControls
-          exporting={exporting}
-          exportProgress={exportProgress}
-          exportMenuOpen={exportMenuOpen}
-          exportMenuRef={exportMenuRef}
-          onToggleMenu={() => setExportMenuOpen((s) => !s)}
-          onExport={handleExport}
-          onCancel={cancelExport}
-        />
-      </div>
-
-      {/* Legend — major civs */}
-      <div className="flex flex-wrap gap-2">
-        {players
-          .filter((p) => !p.csType)
-          .map((p) => {
-            const civName = canonicalCivName(cleanCivName(p.civ));
-            const leader = getDefaultLeader(civName);
-            return (
-              <div
-                key={p.pid}
-                className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
-              >
-                <CivSymbol civ={civName} className="h-3 w-3" />
-                <span className="text-xs font-medium text-marble-600">
-                  {civName}
-                </span>
-                {leader && (
-                  <span className="text-xs text-marble-400">{leader}</span>
-                )}
-              </div>
-            );
-          })}
-
-        {/* Legend — city-states */}
-        {players.some((p) => p.csType) && (
-          <>
-            <span className="self-center text-xs text-marble-400">|</span>
-            {players
-              .filter((p) => p.csType)
-              .map((p) => {
-                const colors = playerColors.get(p.pid);
-                return (
-                  <div
-                    key={p.pid}
-                    className="flex items-center gap-1.5 rounded-full border border-marble-300 bg-marble-50 px-2.5 py-1"
-                  >
-                    <span
-                      className="inline-block h-2 w-2 rotate-45"
-                      style={{
-                        backgroundColor: "#1a1a2e",
-                        border: `1.5px solid ${colors?.secondary ?? "#888"}`,
-                      }}
-                    />
-                    <span className="text-xs font-medium text-marble-400">
-                      {canonicalCivName(cleanCivName(p.civ))}
-                    </span>
-                  </div>
-                );
-              })}
-          </>
-        )}
-      </div>
+      {/* Legend */}
+      <MapLegend players={players} playerColors={playerColors} />
 
       {/* Spatial attention charts */}
       {spatialTurns && spatialTurns.length > 0 && (

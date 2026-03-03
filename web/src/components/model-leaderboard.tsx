@@ -15,6 +15,7 @@ import {
   Swords,
   TrendingUp,
 } from "lucide-react";
+import { SkeletonBlock, SkeletonLine } from "./skeleton";
 
 // ─── Shared ─────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,36 @@ function WinRateBar({ pct }: { pct: number }) {
 export function LeaderboardPreview() {
   const { ratings, gameCount, loading } = useElo();
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <section>
+        <div className="flex items-baseline justify-between">
+          <h3 className="flex items-center gap-1.5 font-display text-sm font-bold uppercase tracking-[0.08em] text-marble-500">
+            <CivIcon icon={Trophy} color={CIV6_COLORS.goldMetal} size="sm" />
+            Model ELO Rankings
+          </h3>
+        </div>
+        <div className="mt-3 space-y-2">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex items-stretch gap-0 rounded-sm border border-marble-300/50 bg-marble-50"
+            >
+              <div className="w-1.5 shrink-0 rounded-l-sm bg-marble-200" />
+              <div className="flex flex-1 items-center gap-2.5 py-2.5 pl-3 pr-2">
+                <SkeletonBlock className="h-6 w-6 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <SkeletonLine className="w-28" />
+                  <SkeletonLine className="w-16" />
+                </div>
+                <SkeletonLine className="w-10" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   const models = ratings.filter((e) => e.type === "model");
   if (models.length === 0) return null;
@@ -179,8 +209,27 @@ export function FullLeaderboard({ filter }: { filter?: EloFilter } = {}) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-sm text-marble-400">
-        Loading ratings...
+      <div className="space-y-10">
+        <section>
+          <SkeletonLine className="mb-3 w-32" />
+          <div className="overflow-x-auto rounded-sm border border-marble-300/50">
+            <div className="space-y-0">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 border-b border-marble-300/30 px-3 py-3 last:border-0"
+                >
+                  <SkeletonBlock className="h-5 w-5 rounded-full" />
+                  <SkeletonBlock className="h-8 w-8 rounded-full" />
+                  <SkeletonLine className="w-32" />
+                  <div className="flex-1" />
+                  <SkeletonLine className="w-12" />
+                  <SkeletonLine className="w-16" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
     );
   }

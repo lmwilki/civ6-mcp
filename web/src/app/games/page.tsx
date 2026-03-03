@@ -1,13 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, X } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { useDiaryList } from "@/lib/use-diary";
-import type { DiaryFile } from "@/lib/diary-types";
 import { slugFromFilename } from "@/lib/diary-types";
 import { getCivColors } from "@/lib/civ-colors";
 import { CivSymbol } from "@/components/civ-icon";
@@ -16,85 +15,19 @@ import { LeaderPortrait } from "@/components/leader-portrait";
 import {
   GameStatusBadge,
   getGameStatusColor,
-  getVictoryTypeMeta,
   statusColor,
 } from "@/components/game-status-badge";
 import { SCENARIOS, DIFFICULTY_META } from "@/lib/scenarios";
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function formatTimeAgo(ms: number): string {
-  const seconds = Math.floor((Date.now() - ms) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(ms).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function deriveStatus(game: DiaryFile): string {
-  if (game.status === "live") return "live";
-  if (game.outcome?.result === "victory") return "victory";
-  if (game.outcome?.result === "defeat") return "defeat";
-  return "unfinished";
-}
-
-function deriveProvider(game: DiaryFile): string {
-  return game.agentModel ? getModelMeta(game.agentModel).provider : "Unknown";
-}
-
-function deriveVictoryLabel(game: DiaryFile): string | null {
-  if (!game.outcome?.victoryType) return null;
-  return getVictoryTypeMeta(game.outcome.victoryType).label;
-}
-
-// ── Types ────────────────────────────────────────────────────
-
-interface Filters {
-  status: Set<string>;
-  civs: Set<string>;
-  providers: Set<string>;
-  models: Set<string>;
-  victoryTypes: Set<string>;
-  scenarios: Set<string>;
-  difficulties: Set<string>;
-}
-
-type SortKey = "updated" | "score" | "turns";
-type SortDir = "asc" | "desc";
-
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "updated", label: "Updated" },
-  { key: "score", label: "Score" },
-  { key: "turns", label: "Turns" },
-];
-
-const STATUS_OPTIONS = ["live", "victory", "defeat", "unfinished"];
-
-const EMPTY_FILTERS: Filters = {
-  status: new Set(),
-  civs: new Set(),
-  providers: new Set(),
-  models: new Set(),
-  victoryTypes: new Set(),
-  scenarios: new Set(),
-  difficulties: new Set(),
-};
-
-function hasActiveFilters(f: Filters): boolean {
-  return (
-    f.status.size + f.civs.size + f.providers.size + f.models.size +
-    f.victoryTypes.size + f.scenarios.size + f.difficulties.size > 0
-  );
-}
-
 import { chipBase, chipDefault, chipActive } from "@/lib/chip-styles";
+import { formatTimeAgo, deriveProvider } from "@/lib/game-utils";
+import {
+  useGameFilters,
+  SORT_OPTIONS,
+  STATUS_OPTIONS,
+  type Filters,
+  type SortKey,
+  type SortDir,
+} from "@/lib/use-game-filters";
 
 // ── Filter chip components ───────────────────────────────────
 
@@ -274,119 +207,17 @@ function GamesPageInner() {
   const searchParams = useSearchParams();
   const games = useDiaryList();
 
-  // Initialize scenario filter from URL param (?scenario=ground_control)
-  const [filters, setFilters] = useState<Filters>(() => {
-    const scenarioParam = searchParams.get("scenario");
-    if (scenarioParam && SCENARIOS[scenarioParam]) {
-      return { ...EMPTY_FILTERS, scenarios: new Set([scenarioParam]) };
-    }
-    return EMPTY_FILTERS;
-  });
-  const [sortKey, setSortKey] = useState<SortKey>("updated");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-
-  const toggleFilter = useCallback(
-    (field: keyof Filters, value: string) => {
-      setFilters((prev) => {
-        const next = new Set(prev[field]);
-        if (next.has(value)) next.delete(value);
-        else next.add(value);
-        return { ...prev, [field]: next };
-      });
-    },
-    [],
-  );
-
-  const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
-
-  const handleSort = useCallback(
-    (key: SortKey) => {
-      if (key === sortKey) {
-        setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-      } else {
-        setSortKey(key);
-        setSortDir("desc");
-      }
-    },
-    [sortKey],
-  );
-
-  // Derive available filter options from data
-  const filterOptions = useMemo(() => {
-    const civs = [...new Set(games.map((g) => g.label))].sort();
-    const providers = [...new Set(games.map(deriveProvider))].sort();
-    const models = [
-      ...new Set(
-        games.map((g) => g.agentModel).filter((m): m is string => !!m),
-      ),
-    ].sort();
-    const victoryTypes = [
-      ...new Set(
-        games.map(deriveVictoryLabel).filter((v): v is string => v !== null),
-      ),
-    ].sort();
-    const scenarios = [
-      ...new Set(
-        games.map((g) => g.scenarioId).filter((s): s is string => !!s),
-      ),
-    ].sort();
-    const difficulties = [
-      ...new Set(
-        games.map((g) => g.difficulty).filter((d): d is string => !!d),
-      ),
-    ].sort(
-      (a, b) => (DIFFICULTY_META[a]?.order ?? 99) - (DIFFICULTY_META[b]?.order ?? 99),
-    );
-    return { civs, providers, models, victoryTypes, scenarios, difficulties };
-  }, [games]);
-
-  // Filter
-  const filtered = useMemo(() => {
-    return games.filter((game) => {
-      if (filters.status.size > 0 && !filters.status.has(deriveStatus(game)))
-        return false;
-      if (filters.civs.size > 0 && !filters.civs.has(game.label)) return false;
-      if (filters.providers.size > 0 && !filters.providers.has(deriveProvider(game)))
-        return false;
-      if (filters.models.size > 0 && (!game.agentModel || !filters.models.has(game.agentModel)))
-        return false;
-      if (filters.victoryTypes.size > 0) {
-        const vt = deriveVictoryLabel(game);
-        if (!vt || !filters.victoryTypes.has(vt)) return false;
-      }
-      if (filters.scenarios.size > 0 && (!game.scenarioId || !filters.scenarios.has(game.scenarioId)))
-        return false;
-      if (filters.difficulties.size > 0 && (!game.difficulty || !filters.difficulties.has(game.difficulty)))
-        return false;
-      return true;
-    });
-  }, [games, filters]);
-
-  // Sort
-  const sorted = useMemo(() => {
-    const dir = sortDir === "desc" ? -1 : 1;
-    return [...filtered].sort((a, b) => {
-      // Live games always first regardless of sort
-      if (a.status === "live" && b.status !== "live") return -1;
-      if (b.status === "live" && a.status !== "live") return 1;
-
-      let cmp = 0;
-      switch (sortKey) {
-        case "updated":
-          cmp = (a.lastUpdated ?? 0) - (b.lastUpdated ?? 0);
-          break;
-        case "score":
-          cmp = (a.score ?? 0) - (b.score ?? 0);
-          break;
-        case "turns":
-          cmp = a.count - b.count;
-          break;
-      }
-      return cmp * dir;
-    });
-  }, [filtered, sortKey, sortDir]);
-
-  const active = hasActiveFilters(filters);
+  const {
+    filters,
+    sortKey,
+    sortDir,
+    filterOptions,
+    sorted,
+    active,
+    toggleFilter,
+    clearFilters,
+    handleSort,
+  } = useGameFilters(games, searchParams.get("scenario"));
 
   return (
     <PageShell active="games">

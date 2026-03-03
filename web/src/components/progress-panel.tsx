@@ -6,6 +6,8 @@ import { ScoreDelta } from "./agent-overview";
 import { CollapsiblePanel } from "./collapsible-panel";
 import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
+import { StatValue } from "./stat-value";
+import { GP_COLORS, VICTORY_TYPES } from "@/lib/civ-metadata";
 import {
   FlaskConical,
   BookOpen,
@@ -17,7 +19,6 @@ import {
   Trophy,
   Building2,
   Landmark,
-  Luggage,
 } from "lucide-react";
 
 interface ProgressPanelProps {
@@ -25,52 +26,6 @@ interface ProgressPanelProps {
   prevAgent?: PlayerRow;
 }
 
-const GP_COLORS: Record<string, string> = {
-  GREAT_PERSON_CLASS_GREAT_SCIENTIST: CIV6_COLORS.science,
-  GREAT_PERSON_CLASS_GREAT_ENGINEER: CIV6_COLORS.production,
-  GREAT_PERSON_CLASS_GREAT_MERCHANT: CIV6_COLORS.goldDark,
-  GREAT_PERSON_CLASS_GREAT_GENERAL: CIV6_COLORS.military,
-  GREAT_PERSON_CLASS_GREAT_ADMIRAL: CIV6_COLORS.marine,
-  GREAT_PERSON_CLASS_GREAT_PROPHET: CIV6_COLORS.faith,
-  GREAT_PERSON_CLASS_GREAT_WRITER: CIV6_COLORS.culture,
-  GREAT_PERSON_CLASS_GREAT_ARTIST: CIV6_COLORS.tourism,
-  GREAT_PERSON_CLASS_GREAT_MUSICIAN: CIV6_COLORS.favor,
-};
-
-const VICTORY_TYPES = [
-  {
-    label: "Science",
-    key: "sci_vp" as const,
-    max: 4,
-    color: CIV6_COLORS.science,
-    icon: FlaskConical,
-  },
-  {
-    label: "Diplo",
-    key: "diplo_vp" as const,
-    max: 20,
-    color: CIV6_COLORS.favor,
-    icon: Landmark,
-  },
-  {
-    label: "Tourism",
-    key: "tourism" as const,
-    color: CIV6_COLORS.tourism,
-    icon: Luggage,
-  },
-  {
-    label: "Domestic",
-    key: "staycationers" as const,
-    color: CIV6_COLORS.goldMetal,
-    icon: UserRound,
-  },
-  {
-    label: "Religion",
-    key: "religion_cities" as const,
-    color: CIV6_COLORS.faith,
-    icon: Church,
-  },
-];
 
 export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
   const hasResearch = agent.current_research !== "NONE";
@@ -251,20 +206,14 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
             </h4>
             <div className="flex flex-wrap gap-3 text-xs">
               {agent.pantheon !== "NONE" && (
-                <span className="text-marble-600">
-                  Pantheon:{" "}
-                  <span className="font-medium text-marble-800">
-                    {cleanCivName(agent.pantheon)}
-                  </span>
-                </span>
+                <StatValue label="Pantheon" mono={false}>
+                  {cleanCivName(agent.pantheon)}
+                </StatValue>
               )}
               {agent.religion !== "NONE" && (
-                <span className="text-marble-600">
-                  Religion:{" "}
-                  <span className="font-medium text-marble-800">
-                    {cleanCivName(agent.religion)}
-                  </span>
-                </span>
+                <StatValue label="Religion" mono={false}>
+                  {cleanCivName(agent.religion)}
+                </StatValue>
               )}
             </div>
             {agent.religion_beliefs.length > 0 && (

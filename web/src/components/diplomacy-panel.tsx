@@ -6,6 +6,7 @@ import { CollapsiblePanel } from "./collapsible-panel";
 import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS, getCivColors } from "@/lib/civ-colors";
 import { Crown, Handshake } from "lucide-react";
+import { StatValue } from "./stat-value";
 
 interface DiplomacyPanelProps {
   agent: PlayerRow;
@@ -86,20 +87,10 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
             </h4>
             <div className="mb-1.5 flex gap-4 text-sm">
               {agent.envoys_available !== undefined && (
-                <span className="text-marble-600">
-                  Available:{" "}
-                  <span className="font-mono tabular-nums text-marble-800">
-                    {agent.envoys_available}
-                  </span>
-                </span>
+                <StatValue label="Available">{agent.envoys_available}</StatValue>
               )}
               {agent.suzerainties !== undefined && (
-                <span className="text-marble-600">
-                  Suzerainties:{" "}
-                  <span className="font-mono tabular-nums text-marble-800">
-                    {agent.suzerainties}
-                  </span>
-                </span>
+                <StatValue label="Suzerainties">{agent.suzerainties}</StatValue>
               )}
             </div>
             {envoysSent && Object.keys(envoysSent).length > 0 && (
@@ -133,24 +124,9 @@ export function DiplomacyPanel({ agent }: DiplomacyPanelProps) {
               Trade Routes
             </h4>
             <div className="flex gap-4 text-sm">
-              <span className="text-marble-600">
-                Active:{" "}
-                <span className="font-mono tabular-nums text-marble-800">
-                  {trade.active}/{trade.capacity}
-                </span>
-              </span>
-              <span className="text-marble-600">
-                Domestic:{" "}
-                <span className="font-mono tabular-nums text-marble-800">
-                  {trade.domestic}
-                </span>
-              </span>
-              <span className="text-marble-600">
-                International:{" "}
-                <span className="font-mono tabular-nums text-marble-800">
-                  {trade.international}
-                </span>
-              </span>
+              <StatValue label="Active">{trade.active}/{trade.capacity}</StatValue>
+              <StatValue label="Domestic">{trade.domestic}</StatValue>
+              <StatValue label="International">{trade.international}</StatValue>
             </div>
           </div>
         )}
