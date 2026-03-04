@@ -520,6 +520,11 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
+    async def build_route(self, unit_index: int) -> str:
+        lua = lq.build_build_route(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
     async def set_city_production(
         self,
         city_id: int,

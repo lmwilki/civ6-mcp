@@ -265,6 +265,7 @@ from civ_mcp.lua.units import (  # noqa: F401
     build_fortify_remaining_units,
     build_fortify_unit,
     build_heal_unit,
+    build_build_route,
     build_improve_tile,
     build_pathing_estimate_query,
     build_post_move_visibility_query,

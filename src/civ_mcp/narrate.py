@@ -479,7 +479,7 @@ def narrate_map(tiles: list[lq.TileInfo]) -> str:
                 imp_label += " PILLAGED"
             parts.append(f"({imp_label})")
         if t.route_type >= 0:
-            route_name = "Railroad" if t.route_type == 2 else "Road"
+            route_name = "Railroad" if t.route_type == 4 else "Road"
             parts.append(f"({route_name})")
         if t.district:
             parts.append(f"[{t.district.replace('DISTRICT_', '')}]")

@@ -316,7 +316,7 @@ class TileInfo:
     owner_name: str | None = (
         None  # resolved name, e.g. "Vatican City" (with :CS suffix for city-states)
     )
-    route_type: int = -1  # -1=none, 0=ancient road, 1=medieval road, 2=railroad
+    route_type: int = -1  # -1=none, 0=ancient, 1=medieval, 2=industrial, 3=modern, 4=railroad
     movement_cost: int = 1  # base movement cost for land units
 
 

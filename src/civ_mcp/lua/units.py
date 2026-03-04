@@ -134,6 +134,38 @@ for i, u in Players[id]:GetUnits():Members() do
                 if #impList > 0 then validImps = table.concat(impList, ";") end
             end
         end
+        -- Military Engineer advisor (BUILD_ROUTE + fort/airstrip)
+        if ut == "UNIT_MILITARY_ENGINEER" and u:GetMovesRemaining() > 0 then
+            local meList = {{}}
+            pcall(function()
+                local opRow = GameInfo.UnitOperations["UNITOPERATION_BUILD_ROUTE"]
+                if opRow then
+                    local rp = {{}}
+                    rp[UnitOperationTypes.PARAM_X] = x
+                    rp[UnitOperationTypes.PARAM_Y] = y
+                    if UnitManager.CanStartOperation(u, opRow.Hash, nil, rp) then
+                        table.insert(meList, "BUILD_ROUTE")
+                    end
+                end
+            end)
+            local plot = Map.GetPlot(x, y)
+            if plot and plot:GetOwner() == id then
+                for imp in GameInfo.Improvements() do
+                    if imp.Buildable and not imp.TraitType then
+                        pcall(function()
+                            local bp = {{}}
+                            bp[UnitOperationTypes.PARAM_X] = x
+                            bp[UnitOperationTypes.PARAM_Y] = y
+                            bp[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = imp.Hash
+                            if UnitManager.CanStartOperation(u, UnitOperationTypes.BUILD_IMPROVEMENT, nil, bp) then
+                                table.insert(meList, imp.ImprovementType)
+                            end
+                        end)
+                    end
+                end
+            end
+            if #meList > 0 then validImps = table.concat(meList, ";") end
+        end
         print(uid .. "|" .. (uid % 65536) .. "|" .. nm .. "|" .. ut .. "|" .. x .. "," .. y .. "|" .. u:GetMovesRemaining() .. "/" .. u:GetMaxMoves() .. "|" .. (u:GetMaxDamage() - u:GetDamage()) .. "/" .. u:GetMaxDamage() .. "|" .. cs .. "|" .. rs .. "|" .. charges .. "|" .. targets .. "|" .. promo .. "|" .. canUp .. "|" .. upName .. "|" .. upCost .. "|" .. validImps .. "|" .. relName)
     end
 end
@@ -1108,6 +1140,51 @@ if newCharges < charges then
 else
     print("WARN:SACRIFICE_UNCERTAIN|Command sent but charges unchanged (" .. charges .. "). Builder at (" .. ux .. "," .. uy .. ") on " .. dName .. ", city building " .. producing .. ". Ensure builder is on the exact district tile where the project's district is located.")
 end
+print("{SENTINEL}")
+"""
+
+
+def build_build_route(unit_index: int) -> str:
+    """Build a route (road/railroad) on the Military Engineer's current tile.
+
+    Uses UNITOPERATION_BUILD_ROUTE — after Steam Power tech this builds
+    railroads (route type 4).  Does NOT consume charges.  Costs 1 Iron +
+    1 Coal per railroad tile from the player's stockpile.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+if unit:GetMovesRemaining() <= 0 then
+    {_bail("ERR:NO_MOVES|Military Engineer has no moves remaining this turn")}
+end
+local x, y = unit:GetX(), unit:GetY()
+local plot = Map.GetPlot(x, y)
+if not plot or plot:GetOwner() ~= me then
+    {_bail_lua('"ERR:NOT_YOUR_TERRITORY|Tile (" .. x .. "," .. y .. ") is not in your territory"')}
+end
+local opRow = GameInfo.UnitOperations["UNITOPERATION_BUILD_ROUTE"]
+if not opRow then
+    {_bail("ERR:OP_NOT_FOUND|UNITOPERATION_BUILD_ROUTE not in game database")}
+end
+local params = {{}}
+params[UnitOperationTypes.PARAM_X] = x
+params[UnitOperationTypes.PARAM_Y] = y
+local canStart = UnitManager.CanStartOperation(unit, opRow.Hash, nil, params, true)
+if not canStart then
+    local rt = plot:GetRouteType()
+    local reason = "unknown reason"
+    if rt == 4 then reason = "tile already has a railroad"
+    elseif plot:IsCity() then reason = "cannot build on city center"
+    end
+    {_bail_lua('"ERR:CANNOT_BUILD_ROUTE|" .. reason .. " at (" .. x .. "," .. y .. ")"')}
+end
+UnitManager.RequestOperation(unit, opRow.Hash, params)
+-- Read back route type (may be stale same-frame, but try)
+local newRoute = plot:GetRouteType()
+local routeName = "ROUTE"
+if newRoute == 4 then routeName = "RAILROAD"
+elseif newRoute >= 0 then routeName = "ROAD"
+end
+print("OK:BUILT_" .. routeName .. "|" .. x .. "," .. y)
 print("{SENTINEL}")
 """
 
