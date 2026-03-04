@@ -11,7 +11,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
@@ -21,7 +20,6 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
-from mcp.server.fastmcp.utilities.types import Image
 
 from civ_mcp import game_launcher
 from civ_mcp import narrate as nr
@@ -2129,71 +2127,6 @@ async def run_lua(ctx: Context, code: str, context: str = "gamecore") -> str:
     return await _logged(
         ctx, "run_lua", {"context": context}, lambda: gs.execute_lua(code, context)
     )
-
-
-@mcp.tool(annotations={"readOnlyHint": True})
-async def screenshot(ctx: Context) -> Image:
-    """Capture a screenshot of the Civilization VI game window.
-
-    Returns the current game screen as an image for visual reasoning.
-    Useful for verifying game state, reading UI elements, or checking
-    map positions that are hard to describe with data alone.
-    """
-    if sys.platform == "win32":
-        return await asyncio.to_thread(_screenshot_win32)
-    if sys.platform != "darwin":
-        raise NotImplementedError(f"Screenshot not supported on {sys.platform}")
-
-    # macOS: Find the Civ 6 window ID via Swift/CoreGraphics
-    swift_code = """
-import CoreGraphics
-let options = CGWindowListOption(arrayLiteral: .optionAll)
-if let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] {
-    for w in list {
-        let owner = w["kCGWindowOwnerName"] as? String ?? ""
-        let name = w["kCGWindowName"] as? String ?? ""
-        if owner.contains("Civilization") && name.contains("Civilization") {
-            print(w["kCGWindowNumber"] as? Int ?? 0)
-            break
-        }
-    }
-}
-"""
-    result = subprocess.run(
-        ["swift", "-e", swift_code],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    wid = result.stdout.strip()
-    if not wid or not wid.isdigit():
-        raise ValueError("Could not find Civilization VI window")
-
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-        tmp_path = f.name
-
-    try:
-        subprocess.run(
-            ["screencapture", "-x", "-l", wid, tmp_path],
-            check=True,
-            timeout=10,
-        )
-        return Image(data=Path(tmp_path).read_bytes(), format="png")
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
-
-
-def _screenshot_win32() -> Image:
-    """Capture the Civ 6 window on Windows via PrintWindow."""
-    import io
-
-    win = game_launcher._find_game_window()
-    if win is None:
-        raise ValueError("Could not find Civilization VI window")
-    pil_img = game_launcher._capture_window_win32(win.window_id)
-    buf = io.BytesIO()
-    pil_img.save(buf, format="PNG")
-    return Image(data=buf.getvalue(), format="png")
 
 
 # ---------------------------------------------------------------------------
