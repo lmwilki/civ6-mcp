@@ -149,6 +149,41 @@ def is_game_running() -> bool:
     raise NotImplementedError(f"is_game_running not supported on {sys.platform}")
 
 
+def _dismiss_crash_dialog() -> bool:
+    """Dismiss macOS crash report dialog if present.
+
+    Returns True if a dialog was dismissed, False if none found.
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        script = (
+            'tell application "System Events"\n'
+            "    set found to false\n"
+            '    repeat with proc in (every process whose name is "UserNotificationCenter")\n'
+            "        repeat with win in (every window of proc)\n"
+            '            if name of win contains "quit unexpectedly" or name of win contains "Problem Report" then\n'
+            '                click button "OK" of win\n'
+            "                set found to true\n"
+            "            end if\n"
+            "        end repeat\n"
+            "    end repeat\n"
+            "    return found\n"
+            "end tell"
+        )
+        r = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=5,
+        )
+        dismissed = r.stdout.strip() == "true"
+        if dismissed:
+            log.info("Dismissed macOS crash report dialog")
+        return dismissed
+    except Exception as e:
+        log.debug("Crash dialog check failed: %s", e)
+        return False
+
+
 def _kill_game_sync() -> str:
     """Kill Civ 6 and wait for Steam to deregister. Blocking."""
     if not is_game_running():
@@ -1131,6 +1166,9 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     _require_gui_deps()  # Fail fast if deps missing
     steps = []
 
+    # Dismiss crash dialog if present — it overlays the menu and blocks OCR
+    _dismiss_crash_dialog()
+
     log.info("[1/6] Waiting for main menu (Single Player)...")
     if not _click_text("Single Player", timeout=90, exact=True, post_delay=3):
         return "FAILED: Could not find 'Single Player' on main menu. Is the game at the main menu?"
@@ -1181,6 +1219,7 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     for elapsed in range(1, _LOAD_PASSIVE_WAIT + 1):
         time.sleep(1)
         if not is_game_running():
+            _dismiss_crash_dialog()
             log.warning("Game process died during save loading (after %ds)", elapsed)
             return (
                 f"FAILED: Game crashed during save loading after {elapsed}s. "
@@ -1273,6 +1312,9 @@ async def restart_and_load(save_name: str | None = None) -> str:
     results.append(f"Launch: {launch_result}")
     if "not detected" in launch_result:
         return " | ".join(results) + " | ABORTED: Game failed to launch."
+
+    # Dismiss any lingering crash dialog from previous session
+    _dismiss_crash_dialog()
 
     # Step 3: Load save via OCR
     load_result = await load_save_from_menu(save_name)
