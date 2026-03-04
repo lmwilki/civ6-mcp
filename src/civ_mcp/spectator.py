@@ -200,6 +200,15 @@ class PopupWatcher:
             except asyncio.CancelledError:
                 pass
 
+    @staticmethod
+    async def _dismiss_crash_dialogs() -> None:
+        """Check for and dismiss Win32 crash reporter dialogs."""
+        from civ_mcp.game_launcher import dismiss_crash_dialogs
+
+        dismissed = await dismiss_crash_dialogs()
+        if dismissed:
+            log.warning("PopupWatcher: dismissed crash dialog: %s", dismissed)
+
     async def _poll(self) -> str:
         """Returns 'POPUP', 'CRITICAL', or 'CLEAR'."""
         try:
@@ -216,9 +225,13 @@ class PopupWatcher:
         from civ_mcp.game_lifecycle import dismiss_popup
 
         first_seen: float | None = None
+        # Check for Win32 crash dialogs every N iterations (not every 0.5s)
+        _crash_check_interval = 6  # every ~3 seconds
+        _iteration = 0
 
         while True:
             await asyncio.sleep(POPUP_POLL_INTERVAL)
+            _iteration += 1
             try:
                 status = await self._poll()
                 now = asyncio.get_running_loop().time()
@@ -239,3 +252,8 @@ class PopupWatcher:
 
             except Exception:
                 first_seen = None
+
+            # Periodically check for Win32 crash reporter dialogs.
+            # These are OS-level dialogs outside the game's Lua layer.
+            if _iteration % _crash_check_interval == 0:
+                await self._dismiss_crash_dialogs()
