@@ -51,7 +51,7 @@ from inspect_ai import Task, task
 from inspect_ai.agent import AgentPrompt, AgentState, react
 from inspect_ai.dataset import Sample
 from inspect_ai.model import ChatMessageTool
-from inspect_ai.model import CompactionAuto
+from inspect_ai.model import CompactionSummary
 from inspect_ai.tool import mcp_server_stdio
 from inspect_ai.util import store
 
@@ -301,7 +301,7 @@ def civbench_standard(
             tools=[server],
             submit=False,
             on_continue=_keep_playing,
-            compaction=CompactionAuto(),
+            compaction=CompactionSummary(),
         ),
         scorer=civbench_scorer(),
         message_limit=message_limit,
@@ -346,7 +346,7 @@ def civbench_open(
             tools=[server],
             submit=False,
             on_continue=_keep_playing,
-            compaction=CompactionAuto(),
+            compaction=CompactionSummary(),
         ),
         scorer=civbench_scorer(),
         message_limit=message_limit,
