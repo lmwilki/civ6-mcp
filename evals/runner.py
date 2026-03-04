@@ -227,6 +227,29 @@ def _build_diary_summary(diary_glob: str = "diary_*.jsonl") -> str | None:
     return "\n".join(parts)
 
 
+def _discover_run_id() -> str | None:
+    """Find the run_id from the most recent diary file.
+
+    Extracts from filename: diary_{civ}_{seed}_{run_id}.jsonl
+    The run_id is the last underscore-delimited segment before .jsonl.
+    """
+    diary_dir = Path.home() / ".civ6-mcp"
+    if not diary_dir.exists():
+        return None
+    # Exclude _cities files
+    files = [
+        f for f in diary_dir.glob("diary_*.jsonl")
+        if not f.name.endswith("_cities.jsonl")
+    ]
+    if not files:
+        return None
+    latest = max(files, key=lambda p: p.stat().st_mtime)
+    # diary_babylon_stk_-1498189056_050d5491.jsonl → 050d5491
+    stem = latest.stem  # diary_babylon_stk_-1498189056_050d5491
+    run_id = stem.rsplit("_", 1)[-1]
+    return run_id if run_id else None
+
+
 def run_scenario(
     model: str,
     scenario: str,
@@ -260,6 +283,11 @@ def run_scenario(
         cmd.extend(["--message-limit", str(message_limit)])
     if resume_save:
         cmd.extend(["-T", f"resume_save={resume_save}"])
+        # Discover original run_id from existing diary files so the resumed
+        # game appends to the same JSONL files (and same Convex game entry).
+        original_run_id = _discover_run_id()
+        if original_run_id:
+            cmd.extend(["-T", f"run_id={original_run_id}"])
         diary_summary = _build_diary_summary()
         if diary_summary:
             # Write to temp file to avoid shell escaping issues

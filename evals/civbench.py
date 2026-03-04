@@ -269,6 +269,7 @@ def civbench_standard(
     time_limit: int = DEFAULT_TIME_LIMIT,
     resume_save: str | None = None,
     resume_context: str | None = None,
+    run_id: str | None = None,
     model_id: str = "",
 ):
     """Standardised baseline track.
@@ -284,9 +285,10 @@ def civbench_standard(
         time_limit: Max wall-clock seconds before stopping.
         resume_save: Resume from this save instead of the scenario start save.
         resume_context: Diary summary / game history for context when resuming.
+        run_id: Reuse an existing run_id (for resume). Generated if not provided.
     """
     scenario_list = _normalise_scenarios(scenarios)
-    run_id = uuid.uuid4().hex[:8]
+    run_id = run_id or uuid.uuid4().hex[:8]
     # Pass scenario metadata when running a single scenario. Multi-scenario
     # runs share one MCP process, so env vars can't vary per sample — the
     # diary/log entries still carry per-turn civ/game info for identification.

@@ -151,13 +151,12 @@ export const ingestPlayerRows = mutation({
         lastTurn: Math.max(game.lastTurn, maxTurn),
         lastUpdated: Date.now(),
         turnCount: Math.max(game.turnCount, maxTurn),
-        // Don't resurrect completed games — lookback re-syncs can re-send old rows
-        ...(game.status !== "completed" ? { status: "live" as const } : {}),
+        status: "live" as const,
         ...evalMeta,
       };
-      // Backfill leader/civ if game was created by log ingestion with empty values
-      if (!game.leader && leader) patch.leader = leader;
-      if (!game.civ && civ) patch.civ = civ;
+      // Diary has canonical display names (e.g. "Babylon" vs log's "babylon_stk")
+      if (leader) patch.leader = leader;
+      if (civ) patch.civ = civ;
       // Denormalized fields
       if (agentRow) {
         if (agentRow.agent_model) patch.agentModel = agentRow.agent_model;
