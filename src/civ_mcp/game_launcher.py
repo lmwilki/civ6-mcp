@@ -372,6 +372,9 @@ def _launch_game_sync() -> str:
     On Windows, sends Escape keypresses during startup to dismiss intro
     videos, and falls back to direct EXE launch if steam://run fails.
     """
+    # Dismiss any crash reporter dialogs blocking relaunch
+    _dismiss_crash_dialogs_sync()
+
     if is_game_running():
         if _is_tuner_port_open():
             return "Game is already running and FireTuner port is open."
@@ -1095,7 +1098,9 @@ def _dismiss_crash_dialogs_sync() -> list[str]:
             def _enum_children(child_hwnd: int, buttons: list) -> bool:
                 try:
                     text = win32gui.GetWindowText(child_hwnd)
-                    if text == target_button:
+                    # Strip Win32 accelerator prefix (&Yes -> Yes, &No -> No)
+                    clean = text.replace("&", "")
+                    if clean == target_button:
                         buttons.append(child_hwnd)
                 except Exception:
                     pass
@@ -1306,6 +1311,11 @@ async def restart_and_load(save_name: str | None = None) -> str:
     """
     results = []
 
+    # Dismiss crash dialogs before kill — they block the process from exiting
+    pre_dismissed = await dismiss_crash_dialogs()
+    if pre_dismissed:
+        log.info("Pre-kill: dismissed %s", pre_dismissed)
+
     # Step 1: Kill
     kill_result = await kill_game()
     results.append(f"Kill: {kill_result}")
@@ -1316,8 +1326,8 @@ async def restart_and_load(save_name: str | None = None) -> str:
     if "not detected" in launch_result:
         return " | ".join(results) + " | ABORTED: Game failed to launch."
 
-    # Dismiss any lingering crash dialog from previous session
-    _dismiss_crash_dialog()
+    # Dismiss any lingering crash dialog from previous session (both platforms)
+    await dismiss_crash_dialogs()
 
     # Step 3: Load save via OCR
     load_result = await load_save_from_menu(save_name)
