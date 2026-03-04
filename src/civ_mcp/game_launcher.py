@@ -157,17 +157,20 @@ def _dismiss_crash_dialog() -> bool:
     if sys.platform != "darwin":
         return False
     try:
+        # The crash dialog is owned by UserNotificationCenter with an empty
+        # window name.  Buttons are "Reopen", "Report...", "Ignore".
+        # Click "Ignore" to dismiss without relaunching the crashed app.
         script = (
             'tell application "System Events"\n'
             "    set found to false\n"
-            '    repeat with proc in (every process whose name is "UserNotificationCenter")\n'
-            "        repeat with win in (every window of proc)\n"
-            '            if name of win contains "quit unexpectedly" or name of win contains "Problem Report" then\n'
-            '                click button "OK" of win\n'
+            '    tell process "UserNotificationCenter"\n'
+            "        repeat with win in every window\n"
+            "            try\n"
+            '                click button "Ignore" of win\n'
             "                set found to true\n"
-            "            end if\n"
+            "            end try\n"
             "        end repeat\n"
-            "    end repeat\n"
+            "    end tell\n"
             "    return found\n"
             "end tell"
         )
