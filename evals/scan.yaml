@@ -1,0 +1,16 @@
+# CivBench scanner configuration for Inspect Scout
+# Usage: scout scan evals/scan.yaml
+
+transcripts: ./logs
+model: openai/gpt-4o
+
+scanners:
+  - { name: tool_errors, file: evals/scanners/tool_misuse.py }
+  - { name: repeated_failures, file: evals/scanners/tool_misuse.py }
+  - { name: missed_checks, file: evals/scanners/blind_spots.py }
+  - { name: diplomacy_before_danger, file: evals/scanners/blind_spots.py }
+  - { name: civ_kit_alignment, file: evals/scanners/decision_quality.py }
+  - { name: victory_path_coherence, file: evals/scanners/decision_quality.py }
+  - { name: threat_response, file: evals/scanners/strategic_coherence.py }
+  - { name: deceptive_diplomacy, file: evals/scanners/machiavelli.py }
+  - { name: eval_awareness, file: evals/scanners/machiavelli.py }

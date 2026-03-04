@@ -35,9 +35,11 @@ Usage:
     uv run python evals/runner.py --model anthropic/claude-sonnet-4-5-20250929
 """
 
+import json
 import os
 import re
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -50,7 +52,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from inspect_ai import Task, task
 from inspect_ai.agent import AgentPrompt, AgentState, react
 from inspect_ai.dataset import Sample
-from inspect_ai.model import ChatMessageTool
+from inspect_ai.model import ChatMessageAssistant, ChatMessageTool
 from inspect_ai.model import CompactionSummary
 from inspect_ai.tool import mcp_server_stdio
 from inspect_ai.util import store
@@ -76,6 +78,13 @@ CONTINUE_PLAYING = (
     "from the system prompt. Call `get_game_overview` to orient yourself, "
     "then proceed with unit orders, city management, and `end_turn`."
 )
+
+# Reasoning capture — JSONL sidecar for assistant message text
+REASONING_DIR = Path.home() / ".civ6-mcp"
+
+
+def _reasoning_path(run_id: str) -> Path:
+    return REASONING_DIR / f"reasoning_{run_id}.jsonl"
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +160,82 @@ def _extract_to_store(state: AgentState) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Reasoning capture — extract assistant message text to JSONL sidecar
+# ---------------------------------------------------------------------------
+
+
+def _extract_visible_text(msg: ChatMessageAssistant) -> str:
+    """Extract visible text from an assistant message, excluding reasoning blocks."""
+    if isinstance(msg.content, str):
+        return msg.content
+    parts = []
+    for item in msg.content:
+        if getattr(item, "type", None) == "text" and hasattr(item, "text"):
+            parts.append(item.text)
+    return "\n".join(parts)
+
+
+def _extract_reasoning(state: AgentState) -> None:
+    """Scan recent assistant messages and write reasoning text to JSONL sidecar.
+
+    Writes to reasoning_{run_id}.jsonl alongside diary/log files.
+    Also updates store["reasoning_summary"] with aggregate counts.
+    """
+    s = store()
+    scanned = s.get("_scanned_reasoning", 0)
+    run_id = os.environ.get("CIV_MCP_RUN_ID")
+    if not run_id:
+        s.set("_scanned_reasoning", len(state.messages))
+        return
+
+    path = _reasoning_path(run_id)
+    turn = s.get("last_turn", 0)
+    entries: list[dict] = []
+
+    for i in range(scanned, len(state.messages)):
+        msg = state.messages[i]
+        if not isinstance(msg, ChatMessageAssistant):
+            continue
+        text = _extract_visible_text(msg)
+        if not text.strip():
+            continue
+
+        has_tools = bool(msg.tool_calls)
+        entry = {
+            "run_id": run_id,
+            "turn": turn,
+            "msg_index": i,
+            "msg_type": "reasoning" if has_tools else "summary",
+            "tool_call_count": len(msg.tool_calls) if msg.tool_calls else 0,
+            "text": text.strip(),
+            "text_len": len(text.strip()),
+            "ts": time.time(),
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as f:
+            f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+        entries.append(entry)
+
+    s.set("_scanned_reasoning", len(state.messages))
+
+    if entries:
+        summary = s.get("reasoning_summary", {
+            "total_entries": 0,
+            "summary_count": 0,
+            "reasoning_count": 0,
+            "total_chars": 0,
+        })
+        for e in entries:
+            summary["total_entries"] += 1
+            summary["total_chars"] += e["text_len"]
+            if e["msg_type"] == "summary":
+                summary["summary_count"] += 1
+            else:
+                summary["reasoning_count"] += 1
+        s.set("reasoning_summary", summary)
+
+
+# ---------------------------------------------------------------------------
 # on_continue callback
 # ---------------------------------------------------------------------------
 
@@ -163,6 +248,7 @@ async def _keep_playing(state: AgentState) -> str | bool:
     Only injects the nudge message when the model goes quiet (no tool calls).
     """
     _extract_to_store(state)
+    _extract_reasoning(state)
     s = store()
     if s.get("game_over"):
         return False
@@ -289,6 +375,7 @@ def civbench_standard(
     """
     scenario_list = _normalise_scenarios(scenarios)
     run_id = run_id or uuid.uuid4().hex[:8]
+    os.environ["CIV_MCP_RUN_ID"] = run_id  # reasoning capture reads this
     # Pass scenario metadata when running a single scenario. Multi-scenario
     # runs share one MCP process, so env vars can't vary per sample — the
     # diary/log entries still carry per-turn civ/game info for identification.
@@ -341,6 +428,7 @@ def civbench_open(
     """
     scenario_list = _normalise_scenarios(scenarios)
     run_id = uuid.uuid4().hex[:8]
+    os.environ["CIV_MCP_RUN_ID"] = run_id  # reasoning capture reads this
     # See civbench_standard for why scenario_obj is None for multi-scenario runs
     scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
     server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_open", model_id=model_id)

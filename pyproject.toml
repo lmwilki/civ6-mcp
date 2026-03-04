@@ -27,6 +27,10 @@ evals = [
     "openai>=1.0",
     "google-cloud-aiplatform>=1.38",
 ]
+scout = [
+    "inspect-scout>=0.4",
+    "inspect-ai>=0.3.175",
+]
 launcher-macos = [
     "pyobjc-framework-Quartz>=11.0",
     "pyobjc-framework-Vision>=11.0",
