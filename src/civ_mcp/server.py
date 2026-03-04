@@ -1217,7 +1217,7 @@ async def unit_action(
 
     Args:
         unit_id: The unit's composite ID (from get_units output)
-        action: One of: move, attack, fortify, skip, found_city, improve, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion
+        action: One of: move, attack, fortify, skip, found_city, improve, repair, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, sacrifice_charges, teleport, spread_religion
         target_x: Target X coordinate (required for move/attack/trade_route/teleport)
         target_y: Target Y coordinate (required for move/attack/trade_route/teleport)
         improvement: Improvement type for builders (required for improve), e.g.
@@ -1229,7 +1229,9 @@ async def unit_action(
     For trade_route: provide target_x and target_y of destination city.
     For teleport: provide target_x and target_y of destination city. Traders only, must be idle (not on active route).
     For improve: provide improvement name. Builder must be on the tile.
+    For repair: repairs a pillaged improvement on the builder's current tile. No improvement name needed.
     For activate: activates a Great Person on their matching district.
+    For sacrifice_charges: Royal Society builder sacrifice — spends ALL builder charges to boost a district project (2% of cost per charge). Builder must be on the district tile.
     For spread_religion: spreads religion at current tile. Missionaries/Apostles only.
     For fortify/skip/found_city/automate/heal/alert/sleep/delete: no target needed.
     heal = fortify until healed (auto-wake at full HP).
@@ -1264,8 +1266,10 @@ async def unit_action(
                 return await gs.found_city(unit_index)
             case "improve":
                 if not improvement:
-                    return "Error: improve requires improvement name (e.g. IMPROVEMENT_FARM)"
+                    return "Error: improve requires improvement name (e.g. IMPROVEMENT_FARM). To repair a pillaged improvement, use action='repair' instead."
                 return await gs.improve_tile(unit_index, improvement)
+            case "repair":
+                return await gs.repair_improvement(unit_index)
             case "remove_feature":
                 return await gs.remove_feature(unit_index)
             case "automate":
@@ -1284,6 +1288,8 @@ async def unit_action(
                 return await gs.make_trade_route(unit_index, target_x, target_y)
             case "activate":
                 return await gs.activate_great_person(unit_index)
+            case "sacrifice_charges":
+                return await gs.sacrifice_builder_charges(unit_index)
             case "spread_religion":
                 return await gs.spread_religion(unit_index)
             case "teleport":
@@ -1291,7 +1297,7 @@ async def unit_action(
                     return "Error: teleport requires target_x and target_y of the destination city"
                 return await gs.teleport_to_city(unit_index, target_x, target_y)
             case _:
-                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, teleport, spread_religion"
+                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, repair, remove_feature, automate, heal, alert, sleep, delete, trade_route, activate, sacrifice_charges, teleport, spread_religion"
 
     result = await _logged(ctx, "unit_action", params, _run)
     if (

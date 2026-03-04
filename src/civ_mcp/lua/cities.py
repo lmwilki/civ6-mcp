@@ -271,7 +271,9 @@ for unit in GameInfo.Units() do
         else
             local t = bq:GetTurnsLeft(unit.Hash)
             local gc = getGoldCost(unit.Hash, true)
-            print("UNIT|" .. unit.UnitType .. "|" .. unit.Cost .. "|" .. t .. "|" .. gc)
+            local adjCost = unit.Cost
+            pcall(function() local c = bq:GetProductionCost(unit.Hash); if c > 0 then adjCost = math.floor(c) end end)
+            print("UNIT|" .. unit.UnitType .. "|" .. adjCost .. "|" .. t .. "|" .. gc)
         end
     end
 end
@@ -288,7 +290,9 @@ for bldg in GameInfo.Buildings() do
             if not bldg.IsWonder then
                 gc = getGoldCost(bldg.Hash, false)
             end
-            print("BUILDING|" .. bldg.BuildingType .. "|" .. bldg.Cost .. "|" .. t .. "|" .. gc)
+            local adjCost = bldg.Cost
+            pcall(function() local c = bq:GetProductionCost(bldg.Hash); if c > 0 then adjCost = math.floor(c) end end)
+            print("BUILDING|" .. bldg.BuildingType .. "|" .. adjCost .. "|" .. t .. "|" .. gc)
         end
     end
 end
@@ -296,14 +300,18 @@ print("DISTRICTS:")
 for dist in GameInfo.Districts() do
     if bq:CanProduce(dist.Hash, true) then
         local t = bq:GetTurnsLeft(dist.Hash)
-        print("DISTRICT|" .. dist.DistrictType .. "|" .. dist.Cost .. "|" .. t .. "|-1")
+        local adjCost = dist.Cost
+        pcall(function() local c = bq:GetProductionCost(dist.Hash); if c > 0 then adjCost = math.floor(c) end end)
+        print("DISTRICT|" .. dist.DistrictType .. "|" .. adjCost .. "|" .. t .. "|-1")
     end
 end
 print("PROJECTS:")
 for proj in GameInfo.Projects() do
     if bq:CanProduce(proj.Hash, true) then
         local t = bq:GetTurnsLeft(proj.Hash)
-        print("PROJECT|" .. proj.ProjectType .. "|" .. proj.Cost .. "|" .. t .. "|-1")
+        local adjCost = proj.Cost
+        pcall(function() local c = bq:GetProductionCost(proj.Hash); if c > 0 then adjCost = math.floor(c) end end)
+        print("PROJECT|" .. proj.ProjectType .. "|" .. adjCost .. "|" .. t .. "|-1")
     end
 end
 -- Pillaged districts/buildings that can be repaired via production queue
@@ -320,7 +328,9 @@ for _, d in pCity:GetDistricts():Members() do
             local canRepair = CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, repParams, true)
             if canRepair then
                 local t = bq:GetTurnsLeft(dInfo.Hash)
-                print("DISTRICT|" .. dInfo.DistrictType .. "|" .. dInfo.Cost .. "|" .. t .. "|-1|REPAIR|" .. d:GetX() .. "," .. d:GetY())
+                local adjCost = dInfo.Cost
+                pcall(function() local c = bq:GetProductionCost(dInfo.Hash); if c > 0 then adjCost = math.floor(c) end end)
+                print("DISTRICT|" .. dInfo.DistrictType .. "|" .. adjCost .. "|" .. t .. "|-1|REPAIR|" .. d:GetX() .. "," .. d:GetY())
             end
         end
     end
@@ -332,7 +342,9 @@ for bldg in GameInfo.Buildings() do
         local canRepair = CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, repCheck, true)
         if canRepair then
             local t = bq:GetTurnsLeft(bldg.Hash)
-            print("BUILDING|" .. bldg.BuildingType .. "|" .. bldg.Cost .. "|" .. t .. "|-1|REPAIR")
+            local adjCost = bldg.Cost
+            pcall(function() local c = bq:GetProductionCost(bldg.Hash); if c > 0 then adjCost = math.floor(c) end end)
+            print("BUILDING|" .. bldg.BuildingType .. "|" .. adjCost .. "|" .. t .. "|-1|REPAIR")
         end
     end
 end

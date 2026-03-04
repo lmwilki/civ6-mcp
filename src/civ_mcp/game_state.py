@@ -510,6 +510,16 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
+    async def repair_improvement(self, unit_index: int) -> str:
+        lua = lq.build_repair_improvement(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
+    async def sacrifice_builder_charges(self, unit_index: int) -> str:
+        lua = lq.build_sacrifice_builder_charges(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
     async def set_city_production(
         self,
         city_id: int,

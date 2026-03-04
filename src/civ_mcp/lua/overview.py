@@ -151,6 +151,15 @@ table.sort(ubParts, function(a, b)
     return tonumber(a:match(":(%d+)$")) > tonumber(b:match(":(%d+)$"))
 end)
 print("UNITBREAKDOWN|" .. table.concat(ubParts, ",") .. "|" .. unitMaint)
+pcall(function()
+    local gsIdx = Game.GetGameSpeedType()
+    local gsRow = GameInfo.GameSpeeds[gsIdx]
+    if gsRow then
+        local gsName = Locale.Lookup(gsRow.Name)
+        local gsMult = gsRow.CostMultiplier or 100
+        print("SPEED|" .. gsRow.GameSpeedType .. "|" .. gsName .. "|" .. gsMult)
+    end
+end)
 print("{SENTINEL}")
 """
 
@@ -329,6 +338,9 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     difficulty = ""
     unit_breakdown: dict[str, int] | None = None
     unit_maintenance = 0
+    game_speed = ""
+    game_speed_name = ""
+    speed_cost_multiplier = 100
     player_id_parsed = int(parts[1])
     for line in lines[1:]:
         if line.startswith("RANK|"):
@@ -375,6 +387,15 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
                 max_turns = int(ep[1])
         elif line.startswith("DIFFICULTY|"):
             difficulty = line.split("|", 1)[1]
+        elif line.startswith("SPEED|"):
+            sp = line.split("|")
+            if len(sp) >= 4:
+                game_speed = sp[1]
+                game_speed_name = sp[2]
+                try:
+                    speed_cost_multiplier = int(sp[3])
+                except ValueError:
+                    pass
         elif line.startswith("UNITBREAKDOWN|"):
             bp = line.split("|")
             if len(bp) >= 3:
@@ -425,6 +446,9 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         era_golden_threshold=era_golden_threshold,
         max_turns=max_turns,
         difficulty=difficulty,
+        game_speed=game_speed,
+        game_speed_name=game_speed_name,
+        speed_cost_multiplier=speed_cost_multiplier,
     )
 
 

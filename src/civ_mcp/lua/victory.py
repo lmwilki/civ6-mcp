@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL
-from civ_mcp.lua.models import DemographicEntry, VictoryPlayerProgress, VictoryProgress
+from civ_mcp.lua.models import DemographicEntry, SpaceProject, VictoryPlayerProgress, VictoryProgress
 
 
 def build_victory_proximity_query() -> str:
@@ -112,6 +112,74 @@ for i = 0, 62 do
             end
             print("PLAYER|" .. i .. "|" .. name .. "|" .. p:GetScore() .. "|" .. sciVP .. "|" .. sciNeeded .. "|" .. diploVP .. "|" .. tourism .. "|" .. milStr .. "|" .. techs .. "|" .. civics .. "|" .. relCities .. "|" .. stay .. "|" .. tostring(hasRel) .. "|" .. nCities .. "|" .. string.format("%.1f", pSci) .. "|" .. string.format("%.1f", pCulYield) .. "|" .. string.format("%.1f", pGold2))
             print("SPACE|" .. name .. "|" .. spaceports .. "|" .. sciVP .. "/" .. sciNeeded)
+            if i == me then
+                -- Space project chain detail (our player only)
+                local spaceChain = {{}}
+                if GameInfo.Projects["PROJECT_LAUNCH_MARS_HABITAT"] then
+                    spaceChain = {{
+                        {{"PROJECT_LAUNCH_EARTH_SATELLITE", "TECH_ROCKETRY"}},
+                        {{"PROJECT_LAUNCH_MOON_LANDING", "TECH_SATELLITES"}},
+                        {{"PROJECT_LAUNCH_MARS_HABITAT", "TECH_NUCLEAR_FUSION"}},
+                        {{"PROJECT_LAUNCH_MARS_HYDROPONICS", "TECH_NUCLEAR_FUSION"}},
+                        {{"PROJECT_LAUNCH_MARS_REACTOR", "TECH_NUCLEAR_FUSION"}},
+                    }}
+                else
+                    spaceChain = {{
+                        {{"PROJECT_LAUNCH_EARTH_SATELLITE", "TECH_ROCKETRY"}},
+                        {{"PROJECT_LAUNCH_MOON_LANDING", "TECH_SATELLITES"}},
+                        {{"PROJECT_LAUNCH_MARS_COLONY", "TECH_NUCLEAR_FUSION"}},
+                    }}
+                end
+                if GameInfo.Projects["PROJECT_LAUNCH_EXOPLANET_EXPEDITION"] then
+                    table.insert(spaceChain, {{"PROJECT_LAUNCH_EXOPLANET_EXPEDITION", "TECH_OFFWORLD_MISSION"}})
+                end
+                local pTechs = p:GetTechs()
+                local completedCount = 0
+                for _, sp in ipairs(spaceChain) do
+                    local projType, techType = sp[1], sp[2]
+                    local projRow = GameInfo.Projects[projType]
+                    if projRow then
+                        local projName = Locale.Lookup(projRow.Name)
+                        local techRow = GameInfo.Technologies[techType]
+                        local hasTech = techRow and pTechs:HasTech(techRow.Index) or false
+                        local status = "locked"
+                        local progPct, turnsLeft, cost, cityBuild = 0, 0, 0, ""
+                        local building = false
+                        for _, city in p:GetCities():Members() do
+                            local bq = city:GetBuildQueue()
+                            local okH, h = pcall(function() return bq:GetCurrentProductionTypeHash() end)
+                            if okH and h and h == projRow.Hash then
+                                status = "building"
+                                building = true
+                                pcall(function()
+                                    turnsLeft = bq:GetTurnsLeft(projRow.Hash)
+                                    cost = math.floor(bq:GetProductionCost(projRow.Hash))
+                                    local prog = bq:GetProductionProgress(projRow.Hash)
+                                    if cost > 0 then progPct = math.floor(prog * 100 / cost) end
+                                end)
+                                cityBuild = Locale.Lookup(city:GetName())
+                                break
+                            end
+                        end
+                        if not building then
+                            if completedCount < sciVP then
+                                status = "completed"
+                                completedCount = completedCount + 1
+                            elseif hasTech then
+                                status = "available"
+                            end
+                            pcall(function()
+                                for _, city in p:GetCities():Members() do
+                                    local bq = city:GetBuildQueue()
+                                    local c = bq:GetProductionCost(projRow.Hash)
+                                    if c and c > 0 then cost = math.floor(c); break end
+                                end
+                            end)
+                        end
+                        print("SPACEPROJ|" .. projType .. "|" .. projName .. "|" .. status .. "|" .. progPct .. "|" .. turnsLeft .. "|" .. cost .. "|" .. techType .. "|" .. tostring(hasTech) .. "|" .. cityBuild)
+                    end
+                end
+            end
             if i ~= me then
                 local ourTourists = pCul:GetTouristsFrom(i)
                 local theirStay = p:GetCulture():GetStaycationers()
@@ -197,6 +265,7 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
     religions_founded = 0
     religions_max = 0
     demographics: dict[str, DemographicEntry] = {}
+    space_projects: list[SpaceProject] = []
 
     for line in lines:
         if line.startswith("PLAYER|"):
@@ -257,6 +326,22 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
             if len(p) >= 3:
                 religions_founded = int(p[1])
                 religions_max = int(p[2])
+        elif line.startswith("SPACEPROJ|"):
+            p = line.split("|")
+            if len(p) >= 9:
+                space_projects.append(
+                    SpaceProject(
+                        project_type=p[1],
+                        name=p[2],
+                        status=p[3],
+                        progress_pct=int(p[4]),
+                        turns_remaining=int(p[5]),
+                        cost=int(p[6]),
+                        tech_prereq=p[7],
+                        has_tech=p[8] == "true",
+                        city_name=p[9] if len(p) > 9 else "",
+                    )
+                )
         elif line.startswith("DEMO|"):
             p = line.split("|")
             if len(p) >= 6:
@@ -278,4 +363,5 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
         religions_founded=religions_founded,
         religions_max=religions_max,
         demographics=demographics,
+        space_projects=space_projects,
     )

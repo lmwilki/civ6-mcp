@@ -35,22 +35,80 @@ local function getAbility(ind)
         if mod.GreatPersonIndividualType == ind.GreatPersonIndividualType then
             local mrow = GameInfo.Modifiers[mod.ModifierId]
             if mrow then
-                local amt = ""
+                local args = {{}}
                 for arg in GameInfo.ModifierArguments() do
-                    if arg.ModifierId == mod.ModifierId and arg.Name == "Amount" then amt = arg.Value end
+                    if arg.ModifierId == mod.ModifierId then args[arg.Name] = arg.Value end
                 end
+                local amt = args["Amount"] or ""
+                local yt = args["YieldType"] and string.gsub(args["YieldType"], "YIELD_", "") or ""
                 local mt = mrow.ModifierType
-                if string.find(mt, "GRANT_YIELD") and amt ~= "" then
-                    local yt = ""
-                    for arg in GameInfo.ModifierArguments() do
-                        if arg.ModifierId == mod.ModifierId and arg.Name == "YieldType" then yt = string.gsub(arg.Value, "YIELD_", "") end
-                    end
+                local matched = false
+                if string.find(mt, "ADJACENT") and string.find(mt, "YIELD") and amt ~= "" then
+                    local feat = args["FeatureType"] and string.gsub(args["FeatureType"], "FEATURE_", "") or "feature"
+                    table.insert(parts, "+" .. amt .. " " .. yt .. " per adjacent " .. feat .. " tile")
+                    matched = true
+                elseif string.find(mt, "GRANT_YIELD") and amt ~= "" then
                     table.insert(parts, "+" .. amt .. " " .. yt)
-                elseif string.find(mt, "GRANT_PRODUCTION") and amt ~= "" then table.insert(parts, "+" .. amt .. " production toward current build")
-                elseif string.find(mt, "GRANT_INFLUENCE") and amt ~= "" then table.insert(parts, "+" .. amt .. " envoy tokens")
-                elseif string.find(mt, "GRANT_UNIT") then table.insert(parts, "free military unit")
-                elseif string.find(mt, "GRANT_TECH") then table.insert(parts, "free tech boost")
-                elseif string.find(mt, "ADJUST_SCIENCE") and amt ~= "" then table.insert(parts, "+" .. amt .. " science to adjacent tiles")
+                    matched = true
+                elseif string.find(mt, "GRANT_PRODUCTION") and amt ~= "" then
+                    table.insert(parts, "+" .. amt .. " production toward current build")
+                    matched = true
+                elseif string.find(mt, "GRANT_INFLUENCE") and amt ~= "" then
+                    table.insert(parts, "+" .. amt .. " envoy tokens")
+                    matched = true
+                elseif string.find(mt, "GRANT_UNIT") then
+                    local ut = args["UnitType"] or ""
+                    if ut ~= "" then
+                        local uRow = GameInfo.Units[ut]
+                        table.insert(parts, "free " .. (uRow and Locale.Lookup(uRow.Name) or ut:gsub("UNIT_", "")))
+                    else
+                        table.insert(parts, "free military unit")
+                    end
+                    matched = true
+                elseif string.find(mt, "RANDOM_TECHNOLOGY_BOOST") then
+                    local era = args["StartEraType"] or args["EraType"] or ""
+                    era = era:gsub("ERA_", "")
+                    if era ~= "" then
+                        table.insert(parts, (amt ~= "" and amt or "1") .. " random eurekas from " .. era .. " era onward")
+                    else
+                        table.insert(parts, (amt ~= "" and amt or "1") .. " random eurekas")
+                    end
+                    matched = true
+                elseif string.find(mt, "GRANT_TECH") then
+                    table.insert(parts, "free tech boost")
+                    matched = true
+                elseif string.find(mt, "GOVERNOR") then
+                    table.insert(parts, "+" .. (amt ~= "" and amt or "1") .. " governor title(s)")
+                    matched = true
+                elseif string.find(mt, "GREAT_WORK") or string.find(mt, "CREATE_GREAT_WORK") then
+                    local gwType = args["GreatWorkType"] or ""
+                    if gwType ~= "" then
+                        table.insert(parts, "creates " .. gwType:gsub("GREATWORK_", ""))
+                    else
+                        table.insert(parts, "creates great work")
+                    end
+                    matched = true
+                elseif string.find(mt, "GRANT_RESOURCE") then
+                    local resType = args["ResourceType"] or ""
+                    table.insert(parts, "+" .. (amt ~= "" and amt or "1") .. " " .. resType:gsub("RESOURCE_", ""))
+                    matched = true
+                elseif string.find(mt, "ADJUST_SCIENCE") and amt ~= "" then
+                    table.insert(parts, "+" .. amt .. " science to adjacent tiles")
+                    matched = true
+                elseif string.find(mt, "ADJUST_CULTURE") and amt ~= "" then
+                    table.insert(parts, "+" .. amt .. " culture to adjacent tiles")
+                    matched = true
+                elseif string.find(mt, "TOURISM") and amt ~= "" then
+                    table.insert(parts, "+" .. amt .. " tourism")
+                    matched = true
+                elseif string.find(mt, "ADJUST_POPULATION") and amt ~= "" then
+                    table.insert(parts, "+" .. amt .. " population in city")
+                    matched = true
+                end
+                if not matched then
+                    local desc = mt:gsub("MODIFIER_PLAYER_", ""):gsub("MODIFIER_", "")
+                    if amt ~= "" then desc = desc .. " (amount=" .. amt .. ")" end
+                    table.insert(parts, desc)
                 end
             end
         end
@@ -62,6 +120,8 @@ local function getAbility(ind)
                 local mt = mrow.ModifierType
                 if string.find(mt, "COMBAT_STRENGTH") then table.insert(parts, "combat bonus to nearby units (passive)")
                 elseif string.find(mt, "MOVEMENT") then table.insert(parts, "movement bonus to nearby units (passive)")
+                else
+                    table.insert(parts, mt:gsub("MODIFIER_", "") .. " (passive)")
                 end
             end
         end

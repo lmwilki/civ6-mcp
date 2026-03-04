@@ -191,6 +191,10 @@ class GameOverview:
     unit_maintenance: int = 0  # maintenance from units specifically
     # Unit type breakdown
     unit_breakdown: dict[str, int] | None = None  # e.g. {"Builder": 45}
+    # Game speed
+    game_speed: str = ""  # e.g. "GAMESPEED_QUICK"
+    game_speed_name: str = ""  # e.g. "Quick"
+    speed_cost_multiplier: int = 100  # 67 for Quick, 100 for Standard, etc.
 
 
 @dataclass
@@ -684,6 +688,23 @@ class VictoryProgress:
     religions_max: int = 0
     # Demographics (anonymized aggregates for all civs, mirrors in-game panel)
     demographics: dict[str, DemographicEntry] = field(default_factory=dict)
+    # Space race project detail (our player only)
+    space_projects: list[SpaceProject] = field(default_factory=list)
+
+
+@dataclass
+class SpaceProject:
+    """Status of a single space race project."""
+
+    project_type: str  # e.g. "PROJECT_LAUNCH_EARTH_SATELLITE"
+    name: str  # localized name
+    status: str  # "completed" / "building" / "available" / "locked"
+    progress_pct: int = 0  # 0-100, only if building
+    turns_remaining: int = 0  # only if building
+    cost: int = 0  # speed-adjusted production cost
+    tech_prereq: str = ""  # e.g. "TECH_ROCKETRY"
+    has_tech: bool = False
+    city_name: str = ""  # city building it (if status=building)
 
 
 @dataclass

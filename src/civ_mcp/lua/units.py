@@ -970,6 +970,148 @@ print("{SENTINEL}")
 """
 
 
+def build_repair_improvement(unit_index: int) -> str:
+    """Repair a pillaged improvement at the builder's current tile (InGame context).
+
+    Auto-detects the pillaged improvement — no improvement name needed.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+local ux, uy = unit:GetX(), unit:GetY()
+if unit:GetMovesRemaining() <= 0 then
+    {_bail("ERR:NO_MOVES|Builder has no moves remaining this turn")}
+end
+local plot = Map.GetPlot(ux, uy)
+if not plot then {_bail("ERR:NO_PLOT|Invalid plot")} end
+local impType = plot:GetImprovementType()
+if impType < 0 then
+    {_bail_lua('"ERR:NO_IMPROVEMENT|No improvement on tile (" .. ux .. "," .. uy .. ") to repair"')}
+end
+local okPil, isPillaged = pcall(function() return plot:IsImprovementPillaged() end)
+if not okPil or not isPillaged then
+    local impInfo = GameInfo.Improvements[impType]
+    local impName = impInfo and impInfo.ImprovementType or "UNKNOWN"
+    {_bail_lua('"ERR:NOT_PILLAGED|" .. impName .. " at (" .. ux .. "," .. uy .. ") is not pillaged"')}
+end
+local impInfo = GameInfo.Improvements[impType]
+local impName = impInfo and impInfo.ImprovementType or "UNKNOWN"
+local repairOp = GameInfo.UnitOperations["UNITOPERATION_REPAIR"]
+if not repairOp then {_bail("ERR:OP_NOT_FOUND|UNITOPERATION_REPAIR not available")} end
+local rParams = {{}}
+rParams[UnitOperationTypes.PARAM_X] = ux
+rParams[UnitOperationTypes.PARAM_Y] = uy
+if impInfo then rParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = impInfo.Hash end
+local canRepair = UnitManager.CanStartOperation(unit, repairOp.Hash, nil, rParams)
+if canRepair then
+    UnitManager.RequestOperation(unit, repairOp.Hash, rParams)
+    print("OK:REPAIRING|" .. impName .. " at (" .. ux .. "," .. uy .. ")")
+else
+    pcall(function() UnitManager.RequestOperation(unit, repairOp.Hash, rParams) end)
+    print("WARN:REPAIR_ATTEMPTED|CanStartOperation=false but RequestOperation sent for " .. impName .. " at (" .. ux .. "," .. uy .. "). Verify next turn.")
+end
+print("{SENTINEL}")
+"""
+
+
+def build_sacrifice_builder_charges(unit_index: int) -> str:
+    """Sacrifice builder charges to boost a district project (Royal Society).
+
+    Requires the Royal Society (BUILDING_GOV_SCIENCE) to be built.
+    Builder must be on the district tile where a project is actively building.
+    Consumes ALL remaining charges. Once per city per turn.
+    Each charge adds 2% of the project's production cost.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+local entry = GameInfo.Units[unit:GetType()]
+if not entry or entry.UnitType ~= "UNIT_BUILDER" then {_bail("ERR:NOT_A_BUILDER|Unit is not a builder")} end
+local ux, uy = unit:GetX(), unit:GetY()
+local charges = unit:GetBuildCharges()
+if charges <= 0 then {_bail("ERR:NO_CHARGES|Builder has no charges remaining")} end
+if unit:GetMovesRemaining() <= 0 then {_bail("ERR:NO_MOVES|Builder has no moves remaining this turn")} end
+-- Verify Royal Society exists
+local hasRS = false
+local rsIdx = GameInfo.Buildings["BUILDING_GOV_SCIENCE"] and GameInfo.Buildings["BUILDING_GOV_SCIENCE"].Index
+if rsIdx then
+    for _, city in Players[me]:GetCities():Members() do
+        if city:GetBuildings():HasBuilding(rsIdx) then hasRS = true; break end
+    end
+end
+if not hasRS then {_bail("ERR:NO_ROYAL_SOCIETY|Royal Society (Tier 3 government building) required")} end
+-- Check builder is on a district tile
+local plot = Map.GetPlot(ux, uy)
+local distType = plot:GetDistrictType()
+if distType < 0 then
+    {_bail_lua('"ERR:NOT_ON_DISTRICT|Builder at (" .. ux .. "," .. uy .. ") is not on a district tile. Move to the district with an active project."')}
+end
+local dInfo = GameInfo.Districts[distType]
+local dName = dInfo and dInfo.DistrictType or "UNKNOWN"
+-- Find the city owning this plot and check for active project
+local cityOwner = nil
+for _, city in Players[me]:GetCities():Members() do
+    for _, d in city:GetDistricts():Members() do
+        if d:GetX() == ux and d:GetY() == uy then cityOwner = city; break end
+    end
+    if cityOwner then break end
+end
+if not cityOwner then {_bail("ERR:NO_CITY|Could not find city owning this district")} end
+local bq = cityOwner:GetBuildQueue()
+local producing = "nothing"
+local okProd, currentHash = pcall(function() return bq:GetCurrentProductionTypeHash() end)
+if okProd and currentHash then
+    for proj in GameInfo.Projects() do
+        if proj.Hash == currentHash then producing = proj.ProjectType; break end
+    end
+end
+if producing == "nothing" then
+    {_bail_lua('"ERR:NO_PROJECT|" .. Locale.Lookup(cityOwner:GetName()) .. " is not building a project. Queue a project first."')}
+end
+-- Execute the command
+local cmdRow = GameInfo.UnitCommands["UNITCOMMAND_PROJECT_PRODUCTION"]
+if not cmdRow then {_bail("ERR:CMD_NOT_FOUND|UNITCOMMAND_PROJECT_PRODUCTION not in game database")} end
+local cmdHash = cmdRow.Hash
+local can, failTable = UnitManager.CanStartCommand(unit, cmdHash, nil, true)
+if not can then
+    local reasons = {{}}
+    if failTable then
+        for _, v in pairs(failTable) do
+            if type(v) == "table" then
+                for _, s in pairs(v) do
+                    if type(s) == "string" and s ~= "" then table.insert(reasons, s) end
+                end
+            end
+        end
+    end
+    local reasonStr = #reasons > 0 and table.concat(reasons, "; ") or "unknown"
+    {_bail_lua('"ERR:CANNOT_SACRIFICE|" .. reasonStr .. ". Builder at (" .. ux .. "," .. uy .. ") on " .. dName .. " with " .. charges .. " charges, city building " .. producing')}
+end
+-- Try with coordinate params first
+local tParams = {{}}
+tParams[UnitCommandTypes.PARAM_X] = ux
+tParams[UnitCommandTypes.PARAM_Y] = uy
+UnitManager.RequestCommand(unit, cmdHash, tParams)
+-- Verify charges were consumed
+local newCharges = unit:GetBuildCharges()
+if newCharges == charges then
+    -- Fallback: try with empty params
+    UnitManager.RequestCommand(unit, cmdHash, {{}})
+    newCharges = unit:GetBuildCharges()
+end
+if newCharges == charges then
+    -- Second fallback: try RequestCommandImmediate
+    pcall(function() UnitManager.RequestCommandImmediate(unit, cmdHash, tParams) end)
+    newCharges = unit:GetBuildCharges()
+end
+if newCharges < charges then
+    local consumed = charges - newCharges
+    print("OK:SACRIFICED|" .. consumed .. " charges consumed for " .. producing .. " in " .. Locale.Lookup(cityOwner:GetName()) .. " at (" .. ux .. "," .. uy .. ") on " .. dName)
+else
+    print("WARN:SACRIFICE_UNCERTAIN|Command sent but charges unchanged (" .. charges .. "). Builder at (" .. ux .. "," .. uy .. ") on " .. dName .. ", city building " .. producing .. ". Ensure builder is on the exact district tile where the project's district is located.")
+end
+print("{SENTINEL}")
+"""
+
+
 def parse_units_response(lines: list[str]) -> list[UnitInfo]:
     units = []
     for line in lines:

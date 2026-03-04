@@ -10,10 +10,16 @@ from civ_mcp import lua as lq
 
 def narrate_overview(ov: lq.GameOverview) -> str:
     diff_str = f" | {ov.difficulty}" if ov.difficulty else ""
+    speed_str = ""
+    if ov.game_speed_name:
+        if ov.speed_cost_multiplier != 100:
+            speed_str = f" | {ov.game_speed_name} speed ({ov.speed_cost_multiplier}% costs)"
+        else:
+            speed_str = f" | {ov.game_speed_name} speed"
     lines = []
     lines.extend(
         [
-            f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}{diff_str}",
+            f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}{diff_str}{speed_str}",
             f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn)"
             + (f" | Income: {ov.gold_income:.0f} | Maintenance: -{ov.total_maintenance:.0f} (units: {ov.unit_maintenance})"
                if ov.gold_income > 0 or ov.total_maintenance > 0 else "")
@@ -1469,6 +1475,23 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
         lines.append(
             f"  {p.name}: {p.science_vp}/{p.science_vp_needed} VP | {p.techs_researched} techs{sp_info}{marker}"
         )
+
+    if vp.space_projects:
+        lines.append("")
+        lines.append("  YOUR SPACE PROJECT CHAIN:")
+        for sp in vp.space_projects:
+            icons = {"completed": "[DONE]", "building": "[>>>]", "available": "[READY]", "locked": "[LOCKED]"}
+            icon = icons.get(sp.status, sp.status.upper())
+            detail = f"    {icon} {sp.name}"
+            if sp.status == "building":
+                detail += f" -- {sp.progress_pct}% ({sp.turns_remaining} turns) in {sp.city_name}"
+            if sp.status == "locked":
+                tech_status = "HAVE" if sp.has_tech else "NEED"
+                tech_name = sp.tech_prereq.replace("TECH_", "").replace("_", " ").title()
+                detail += f" -- requires {tech_name} ({tech_status})"
+            if sp.cost > 0 and sp.status != "completed":
+                detail += f" [cost: {sp.cost}]"
+            lines.append(detail)
 
     # --- Domination Victory ---
     lines.append("")
