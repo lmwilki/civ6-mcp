@@ -159,11 +159,15 @@ async def _keep_playing(state: AgentState) -> str | bool:
     """Extract structured data to store, then nudge model to keep playing.
 
     Returns False to stop the agent when a game-over condition is detected.
+    Returns True (silent continue) when the model is actively calling tools.
+    Only injects the nudge message when the model goes quiet (no tool calls).
     """
     _extract_to_store(state)
     s = store()
     if s.get("game_over"):
         return False
+    if state.output.message.tool_calls:
+        return True
     return CONTINUE_PLAYING
 
 
