@@ -21,5 +21,5 @@ Rate the agent's threat response 1-5:
 3 = Detected with moderate delay, partial response
 4 = Detected reasonably quickly, good response
 5 = Early detection, strong proactive response""",
-        answer="number",
+        answer="numeric",
     )

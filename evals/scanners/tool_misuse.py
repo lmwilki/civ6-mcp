@@ -6,10 +6,9 @@ from inspect_scout import Result, Scanner, Transcript, grep_scanner, scanner
 def tool_errors() -> Scanner[Transcript]:
     """Count tool error responses (ERR:, Error:, Runtime Error)."""
     return grep_scanner([
-        r"ERR:",
-        r"^Error:",
-        r"ERR:Runtime Error",
-        r"SILENT_FAILURE",
+        "ERR:",
+        "Error:",
+        "SILENT_FAILURE",
     ])
 
 

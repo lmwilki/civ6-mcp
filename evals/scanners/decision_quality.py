@@ -22,7 +22,7 @@ civilization's strengths? Rate 1-5:
 1 = Completely ignored civ kit
 3 = Partially used civ kit
 5 = Excellent civ kit exploitation""",
-        answer="number",
+        answer="numeric",
     )
 
 

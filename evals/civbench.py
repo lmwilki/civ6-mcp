@@ -189,6 +189,7 @@ def _extract_reasoning(state: AgentState) -> None:
         return
 
     path = _reasoning_path(run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
     turn = s.get("last_turn", 0)
     entries: list[dict] = []
 
@@ -201,7 +202,7 @@ def _extract_reasoning(state: AgentState) -> None:
             continue
 
         has_tools = bool(msg.tool_calls)
-        entry = {
+        entries.append({
             "run_id": run_id,
             "turn": turn,
             "msg_index": i,
@@ -210,11 +211,12 @@ def _extract_reasoning(state: AgentState) -> None:
             "text": text.strip(),
             "text_len": len(text.strip()),
             "ts": time.time(),
-        }
-        path.parent.mkdir(parents=True, exist_ok=True)
+        })
+
+    if entries:
         with open(path, "a") as f:
-            f.write(json.dumps(entry, separators=(",", ":")) + "\n")
-        entries.append(entry)
+            for entry in entries:
+                f.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
     s.set("_scanned_reasoning", len(state.messages))
 
