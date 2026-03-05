@@ -90,6 +90,11 @@ for i = 0, 62 do
                 local ok2, valid = pcall(function() return pDiplo:IsDiplomaticActionValid(aName, i, false) end)
                 if ok2 and valid then table.insert(avail, (aName:gsub("DIPLOACTION_", ""))) end
             end
+            if not pDiplo:IsAtWarWith(i) then
+                local canWar = false
+                pcall(function() canWar = pDiplo:CanDeclareWarOn(i) end)
+                if canWar then table.insert(avail, "DECLARE_WAR") end
+            end
             if #avail > 0 then print("ACTIONS|" .. i .. "|" .. table.concat(avail, ",")) end
             -- Agendas (visibility-gated: historical always, random only at SECRET+)
             local okAg, agendas = pcall(function() return Players[i]:GetAgendaTypes() end)
@@ -307,7 +312,7 @@ def build_send_diplo_action(other_player_id: int, action_name: str) -> str:
     """Send a proactive diplomatic action and detect acceptance/rejection.
 
     action_name is e.g. DIPLOMATIC_DELEGATION, DECLARE_FRIENDSHIP, DENOUNCE,
-    RESIDENT_EMBASSY, OPEN_BORDERS.
+    RESIDENT_EMBASSY, OPEN_BORDERS, DECLARE_SURPRISE_WAR, DECLARE_FORMAL_WAR, etc.
 
     Key discovery: RequestSession uses DIFFERENT action strings from DIPLOACTION_ names:
     - DECLARE_FRIENDSHIP -> session string "DECLARE_FRIEND" (not "DECLARE_FRIENDSHIP")
@@ -324,16 +329,41 @@ def build_send_diplo_action(other_player_id: int, action_name: str) -> str:
         "RESIDENT_EMBASSY": "RESIDENT_EMBASSY",
         "DENOUNCE": "DENOUNCE",
         "OPEN_BORDERS": "OPEN_BORDERS",
+        # War declarations — session strings match action names
+        "DECLARE_SURPRISE_WAR": "DECLARE_SURPRISE_WAR",
+        "DECLARE_FORMAL_WAR": "DECLARE_FORMAL_WAR",
+        "DECLARE_HOLY_WAR": "DECLARE_HOLY_WAR",
+        "DECLARE_LIBERATION_WAR": "DECLARE_LIBERATION_WAR",
+        "DECLARE_RECONQUEST_WAR": "DECLARE_RECONQUEST_WAR",
+        "DECLARE_PROTECTORATE_WAR": "DECLARE_PROTECTORATE_WAR",
+        "DECLARE_COLONIAL_WAR": "DECLARE_COLONIAL_WAR",
+        "DECLARE_TERRITORIAL_WAR": "DECLARE_TERRITORIAL_WAR",
     }
+    is_war = action_name.endswith("_WAR") and action_name.startswith("DECLARE_")
     session_str = session_string_map.get(action_name, action_name)
 
-    return f"""
+    # War declarations use CanDeclareWarOn; other actions use IsDiplomaticActionValid
+    if is_war:
+        validation_block = f"""
+local me = Game.GetLocalPlayer()
+local pDiplo = Players[me]:GetDiplomacy()
+local target = {other_player_id}
+local action = "{action_name}"
+if pDiplo:IsAtWarWith(target) then
+    {_bail("ERR:ALREADY_AT_WAR|Already at war with this player")}
+end
+local canWar = false
+pcall(function() canWar = pDiplo:CanDeclareWarOn(target) end)
+if not canWar then
+    {_bail("ERR:CANNOT_DECLARE_WAR|Cannot declare war. Possible reasons: friendship/alliance active, 10-turn peace cooldown, or target is invalid.")}
+end"""
+    else:
+        validation_block = f"""
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
 local target = {other_player_id}
 local action = "{action_name}"
 local fullAction = "DIPLOACTION_" .. action
--- Validate first
 local valid, results = pDiplo:IsDiplomaticActionValid(fullAction, target, true)
 if not valid then
     local reasons = "unknown"
@@ -341,7 +371,6 @@ if not valid then
         local parts = {{}}
         for _, r in ipairs(results.FailureReasons) do
             local s = tostring(r or "")
-            -- Check for obsolete civic reason key before Locale lookup
             if s:find("OBSOLETE_CIVIC") or s:find("ObsoleteCivic") then
                 table.insert(parts, "obsolete (Diplomatic Service civic researched — use embassy instead)")
             else
@@ -351,7 +380,6 @@ if not valid then
         end
         if #parts > 0 then reasons = table.concat(parts, "; ") end
     end
-    -- Fallback: if still "unknown", check for delegation-obsoleted-by-civic case
     if reasons == "unknown" and action == "DIPLOMATIC_DELEGATION" then
         local dipSvcCivic = GameInfo.Civics["CIVIC_DIPLOMATIC_SERVICE"]
         if dipSvcCivic then
@@ -363,7 +391,15 @@ if not valid then
         end
     end
     {_bail_lua('"ERR:INVALID|" .. reasons')}
-end
+end"""
+
+    # War declarations leave the session open so the leader animation plays.
+    # Python schedules cleanup after ~8s via build_war_diplo_cleanup().
+    close_session_lua = "" if is_war else "    DiplomacyManager.CloseSession(sid)"
+    cleanup_lua = "" if is_war else _lua_close_diplo_session()
+
+    return f"""
+{validation_block}
 -- Clean stale session for THIS target only (not all session IDs).
 -- Mass-closing sessions via IsSessionIDOpen loop corrupts AI diplomacy state.
 local staleSid = DiplomacyManager.FindOpenSessionID(me, target)
@@ -377,12 +413,10 @@ local sessionCompleted = false
 if sid and sid >= 0 then
     DiplomacyManager.AddResponse(sid, me, "POSITIVE")
     DiplomacyManager.AddResponse(sid, me, "POSITIVE")
-    DiplomacyManager.CloseSession(sid)
+{close_session_lua}
     sessionCompleted = true
 end
--- Restore UI (ShowIngameUI undoes HideLeaderScreen from RequestSession)
-LuaEvents.DiplomacyActionView_ShowIngameUI()
-pcall(function() Events.HideLeaderScreen() end)
+{cleanup_lua}
 -- Report result.
 -- NOTE: All post-state queries (HasDelegationAt, HasEmbassyAt, IsDiplomaticActionValid,
 -- GetGoldBalance, GetVisibilityOn) are STALE same-frame after CloseSession. The C++ engine
@@ -390,7 +424,14 @@ pcall(function() Events.HideLeaderScreen() end)
 -- comparing pre/post state. Instead: IsDiplomaticActionValid passed the pre-check (line above),
 -- meaning the action was valid. If the session completed, the game accepted it.
 local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
-if action == "DIPLOMATIC_DELEGATION" then
+if action:find("_WAR") then
+    local atWar = pDiplo:IsAtWarWith(target)
+    if atWar then
+        print("OK:WAR_DECLARED|" .. action .. " on " .. name .. " — now at war")
+    else
+        print("WARN:WAR_UNCERTAIN|" .. action .. " session completed but war state not yet confirmed for " .. name .. ". Check next turn.")
+    end
+elseif action == "DIPLOMATIC_DELEGATION" then
     if sessionCompleted then
         print("OK:ACCEPTED|" .. name .. " accepted your delegation")
     else
@@ -412,6 +453,47 @@ else
     print("OK:SENT|" .. action .. " sent to " .. name)
 end
 print("{SENTINEL}")
+"""
+
+
+def build_war_close_session(other_player_id: int) -> str:
+    """Phase 1: close the war diplomacy session (InGame context).
+
+    After this, DiplomacyActionView transitions to OVERVIEW_MODE (intel screen).
+    Must wait ~1s for the engine event to process before phase 2.
+    """
+    sentinel = SENTINEL
+    return f"""
+local me = Game.GetLocalPlayer()
+local target = {other_player_id}
+local sid = DiplomacyManager.FindOpenSessionID(me, target)
+if sid and sid >= 0 then
+    DiplomacyManager.CloseSession(sid)
+end
+print("OK:SESSION_CLOSED")
+print("{sentinel}")
+"""
+
+
+def build_war_dismiss_view() -> str:
+    """Phase 2: force-dismiss DiplomacyActionView from OVERVIEW_MODE (InGame context).
+
+    NaturalWonderPopup_Shown triggers OnBlockingPopupShown → OnForceClose →
+    CloseFocusedState(true) → Close() which calls UninitializeView + ShowIngameUI
+    (balancing InitializeView's HideIngameUI).  NaturalWonderPopup_Closed then
+    balances NW's own BulkHide(true) entry.
+
+    Must be called in a SEPARATE Lua execution from CloseSession — the engine
+    fires OnDiplomacySessionClosed asynchronously, so the view needs a frame to
+    transition from CONVERSATION_MODE to OVERVIEW_MODE first.
+    """
+    sentinel = SENTINEL
+    return f"""
+LuaEvents.NaturalWonderPopup_Shown()
+LuaEvents.NaturalWonderPopup_Closed()
+pcall(function() Events.HideLeaderScreen() end)
+print("OK:VIEW_DISMISSED")
+print("{sentinel}")
 """
 
 

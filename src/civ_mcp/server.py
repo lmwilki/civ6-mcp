@@ -1118,10 +1118,16 @@ async def send_diplomatic_action(
     Args:
         other_player_id: The player ID (from get_diplomacy output)
         action: One of: DIPLOMATIC_DELEGATION, DECLARE_FRIENDSHIP, DENOUNCE,
-                RESIDENT_EMBASSY, OPEN_BORDERS
+                RESIDENT_EMBASSY, OPEN_BORDERS,
+                DECLARE_SURPRISE_WAR, DECLARE_FORMAL_WAR, DECLARE_HOLY_WAR,
+                DECLARE_LIBERATION_WAR, DECLARE_RECONQUEST_WAR,
+                DECLARE_PROTECTORATE_WAR, DECLARE_COLONIAL_WAR,
+                DECLARE_TERRITORIAL_WAR
 
     Delegations cost 25 gold and can be rejected if the civ dislikes you.
     Embassies require Writing tech. Use get_diplomacy to see available actions.
+    Surprise war is always available if not allied/friends. Other war types
+    (casus belli) require specific civics and conditions.
     """
     gs = _get_game(ctx)
     return await _logged(
@@ -1217,7 +1223,7 @@ async def unit_action(
 
     Args:
         unit_id: The unit's composite ID (from get_units output)
-        action: One of: move, attack, fortify, skip, found_city, improve, repair, remove_feature, build_route, automate, heal, alert, sleep, delete, trade_route, activate, sacrifice_charges, teleport, spread_religion
+        action: One of: move, attack, fortify, skip, found_city, improve, repair, remove_improvement, remove_feature, build_route, automate, heal, alert, sleep, delete, trade_route, activate, sacrifice_charges, teleport, spread_religion
         target_x: Target X coordinate (required for move/attack/trade_route/teleport)
         target_y: Target Y coordinate (required for move/attack/trade_route/teleport)
         improvement: Improvement type for builders (required for improve), e.g.
@@ -1230,6 +1236,7 @@ async def unit_action(
     For teleport: provide target_x and target_y of destination city. Traders only, must be idle (not on active route).
     For improve: provide improvement name. Builder must be on the tile.
     For repair: repairs a pillaged improvement on the builder's current tile. No improvement name needed.
+    For remove_improvement: demolishes an intact improvement on the builder's current tile (e.g. to replace a farm with a mine). Costs one charge.
     For activate: activates a Great Person on their matching district.
     For sacrifice_charges: Royal Society builder sacrifice — spends ALL builder charges to boost a district project (2% of cost per charge). Builder must be on the district tile.
     For spread_religion: spreads religion at current tile. Missionaries/Apostles only.
@@ -1271,6 +1278,8 @@ async def unit_action(
                 return await gs.improve_tile(unit_index, improvement)
             case "repair":
                 return await gs.repair_improvement(unit_index)
+            case "remove_improvement":
+                return await gs.remove_improvement(unit_index)
             case "remove_feature":
                 return await gs.remove_feature(unit_index)
             case "build_route":
@@ -1300,7 +1309,7 @@ async def unit_action(
                     return "Error: teleport requires target_x and target_y of the destination city"
                 return await gs.teleport_to_city(unit_index, target_x, target_y)
             case _:
-                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, repair, remove_feature, build_route, automate, heal, alert, sleep, delete, trade_route, activate, sacrifice_charges, teleport, spread_religion"
+                return f"Error: Unknown action '{action}'. Valid: move, attack, fortify, skip, found_city, improve, repair, remove_improvement, remove_feature, build_route, automate, heal, alert, sleep, delete, trade_route, activate, sacrifice_charges, teleport, spread_religion"
 
     result = await _logged(ctx, "unit_action", params, _run)
     if (
@@ -2123,14 +2132,20 @@ async def dismiss_popup(ctx: Context) -> str:
 
 @mcp.tool(annotations={"destructiveHint": True})
 async def run_lua(ctx: Context, code: str, context: str = "gamecore") -> str:
-    """Run arbitrary Lua code in the game. Advanced escape hatch.
+    """Run arbitrary Lua code in the game. Advanced escape hatch — prefer built-in tools.
 
     Args:
         code: Lua code to execute. Use print() for output, end with print("---END---").
-        context: "gamecore" for simulation state, "ingame" for UI commands (default: gamecore)
+        context: "gamecore" (default) for read-only state queries.
+                 "ingame" for commands and UI-dependent queries.
 
-    The code runs in the game's Lua environment with full access to the
-    Civ 6 API. Always use print() for output (not return).
+    Context differences:
+      gamecore: Players[], GameInfo.*, Map.*, Game.* — safe read-only access.
+                CANNOT use: UI.*, UnitManager.*, CityManager.*, notifications.
+      ingame:   All APIs including UI.*, UnitManager.*, CityManager.*.
+                Use for: moving units, setting research, diplomacy actions.
+
+    Always use print() for output (not return).
     """
     gs = _get_game(ctx)
     return await _logged(

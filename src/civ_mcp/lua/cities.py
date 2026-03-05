@@ -37,6 +37,9 @@ for i, c in Players[me]:GetCities():Members() do
         turnsLeft = bq:GetTurnsLeft()
     end
     local g = c:GetGrowth()
+    local amNeed = 0
+    pcall(function() amNeed = g:GetAmenitiesNeeded() end)
+    local amTotal = amNeed + g:GetAmenities()
     -- City defense info
     local defStr, garHP, garMax, wallHP, wallMax = 0, 0, 0, 0, 0
     local ccIdx = GameInfo.Districts["DISTRICT_CITY_CENTER"].Index
@@ -55,10 +58,10 @@ for i, c in Players[me]:GetCities():Members() do
     local cityTargets = {{}}
     if wallMax > 0 then
         local cx, cy = c:GetX(), c:GetY()
-        for dy = -2, 2 do for dx = -2, 2 do
+        for dy = -3, 3 do for dx = -3, 3 do
             local tx, ty = cx + dx, cy + dy
             local d = Map.GetPlotDistance(cx, cy, tx, ty)
-            if d >= 1 and d <= 2 then
+            if d >= 1 and d <= 3 then
                 local pu = Map.GetUnitsAt(tx, ty)
                 if pu then for other in pu:Units() do
                     if other:GetOwner() ~= me then
@@ -83,10 +86,14 @@ for i, c in Players[me]:GetCities():Members() do
         end
     end
     local pillBuildings = {{}}
+    local allBuildings = {{}}
     local pBuildings = c:GetBuildings()
     for bldg in GameInfo.Buildings() do
-        if pBuildings:HasBuilding(bldg.Index) and pBuildings:IsPillaged(bldg.Index) then
-            table.insert(pillBuildings, bldg.BuildingType)
+        if pBuildings:HasBuilding(bldg.Index) then
+            table.insert(allBuildings, (bldg.BuildingType:gsub("BUILDING_", "")))
+            if pBuildings:IsPillaged(bldg.Index) then
+                table.insert(pillBuildings, bldg.BuildingType)
+            end
         end
     end
     -- Scan owned tiles for unimproved resources and pillaged improvements
@@ -142,9 +149,12 @@ for i, c in Players[me]:GetCities():Members() do
             end
         end
     end
-    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. g:GetAmenities() .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax .. "|" .. table.concat(cityTargets, ";") .. "|" .. table.concat(pillDistricts, ";") .. "|" .. table.concat(distLocs, ";") .. "|" .. string.format("%.1f|%.1f|%.1f|%d", loy, loyMax, loyPT, loyFlip) .. "|" .. string.format("%.1f|%.1f|%d", g:GetFoodSurplus(), g:GetFood(), g:GetGrowthThreshold()) .. "|" .. table.concat(pillBuildings, ";") .. "|" .. garrisonUnit)
+    print(c:GetID() .. "|" .. nm .. "|" .. c:GetX() .. "," .. c:GetY() .. "|" .. c:GetPopulation() .. "|" .. string.format("%.1f|%.1f|%.1f|%.1f|%.1f|%.1f", c:GetYield(0), c:GetYield(1), c:GetYield(2), c:GetYield(3), c:GetYield(4), c:GetYield(5)) .. "|" .. string.format("%.1f", g:GetHousing()) .. "|" .. amTotal .. "|" .. g:GetTurnsUntilGrowth() .. "|" .. producing .. "|" .. turnsLeft .. "|" .. defStr .. "|" .. garHP .. "/" .. garMax .. "|" .. wallHP .. "/" .. wallMax .. "|" .. table.concat(cityTargets, ";") .. "|" .. table.concat(pillDistricts, ";") .. "|" .. table.concat(distLocs, ";") .. "|" .. string.format("%.1f|%.1f|%.1f|%d", loy, loyMax, loyPT, loyFlip) .. "|" .. string.format("%.1f|%.1f|%d", g:GetFoodSurplus(), g:GetFood(), g:GetGrowthThreshold()) .. "|" .. table.concat(pillBuildings, ";") .. "|" .. garrisonUnit)
     if #unimproved > 0 or #pillImprov > 0 then
         print("CITYTILES|" .. c:GetID() .. "|" .. table.concat(unimproved, ",") .. "|" .. table.concat(pillImprov, ","))
+    end
+    if #allBuildings > 0 then
+        print("CITYBLDG|" .. c:GetID() .. "|" .. table.concat(allBuildings, ","))
     end
 end
 for i = 1, #cityCoords do for j = i + 1, #cityCoords do
@@ -161,7 +171,6 @@ def build_city_attack(city_id: int, target_x: int, target_y: int) -> str:
 {_lua_get_city(city_id)}
 local cx, cy = pCity:GetX(), pCity:GetY()
 local dist = Map.GetPlotDistance(cx, cy, {target_x}, {target_y})
-if dist > 2 then {_bail_lua('"ERR:OUT_OF_RANGE|City range is 2, target is at distance " .. dist')} end
 local enemy = nil
 local pu = Map.GetUnitsAt({target_x}, {target_y})
 if pu then for other in pu:Units() do if other:GetOwner() ~= me then enemy = other end end end
@@ -186,7 +195,7 @@ if not canAttack then
     if not hasWalls then
         {_bail("ERR:NO_WALLS|City has no walls — build Ancient Walls first")}
     else
-        {_bail("ERR:ALREADY_FIRED|City already fired this turn or LOS blocked")}
+        {_bail_lua('"ERR:CANNOT_ATTACK|City already fired this turn, target out of range (dist=" .. dist .. "), or LOS blocked"')}
     end
 end
 CityManager.RequestCommand(pCity, CityCommandTypes.RANGE_ATTACK, params)
@@ -391,6 +400,9 @@ local isCorrupted = bq:GetSize() > 0 and bq:GetCurrentProductionTypeHash() == 0
 if not bq:CanProduce(item.Hash, true) then
     {_bail(f"ERR:CANNOT_PRODUCE|{item_name} cannot be produced in this city")}
 end
+{"" if itype != "BUILDING" or (target_x is not None and target_y is not None) else f'''if item.IsWonder then
+    {_bail(f"ERR:MISSING_COORDS|{item_name} is a wonder and requires target_x/target_y for placement. Use get_wonder_advisor(city_id, '{item_name}') to find valid tiles.")}
+end'''}
 -- Trader cap check: game silently rejects when count >= route capacity
 if "{item_name}" == "UNIT_TRADER" then
     local pTrade = Players[me]:GetTrade()
@@ -632,6 +644,15 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
                     ]
                     city_by_id[cid].pillaged_improvements = [
                         r for r in p[3].split(",") if r
+                    ]
+            continue
+        if line.startswith("CITYBLDG|"):
+            p = line.split("|")
+            if len(p) >= 3:
+                cid = int(p[1])
+                if cid in city_by_id:
+                    city_by_id[cid].buildings = [
+                        b for b in p[2].split(",") if b
                     ]
             continue
         parts = line.split("|")

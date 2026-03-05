@@ -1045,6 +1045,43 @@ print("{SENTINEL}")
 """
 
 
+def build_remove_improvement(unit_index: int) -> str:
+    """Remove (demolish) an intact improvement from the builder's current tile.
+
+    Uses UNITOPERATION_REMOVE_IMPROVEMENT. The game auto-detects which
+    improvement is present; no improvement param needed. Costs one builder charge.
+    """
+    return f"""
+{_lua_get_unit(unit_index)}
+local ux, uy = unit:GetX(), unit:GetY()
+if unit:GetMovesRemaining() <= 0 then
+    {_bail("ERR:NO_MOVES|Builder has no moves remaining this turn")}
+end
+local plot = Map.GetPlot(ux, uy)
+if not plot then {_bail("ERR:NO_PLOT|Invalid plot")} end
+local impType = plot:GetImprovementType()
+if impType < 0 then
+    {_bail_lua('"ERR:NO_IMPROVEMENT|No improvement on tile (" .. ux .. "," .. uy .. ") to remove"')}
+end
+local impInfo = GameInfo.Improvements[impType]
+local impName = impInfo and impInfo.ImprovementType or "UNKNOWN"
+local opRow = GameInfo.UnitOperations["UNITOPERATION_REMOVE_IMPROVEMENT"]
+if not opRow then
+    {_bail("ERR:OP_NOT_FOUND|UNITOPERATION_REMOVE_IMPROVEMENT not available in this game version")}
+end
+local params = {{}}
+params[UnitOperationTypes.PARAM_X] = ux
+params[UnitOperationTypes.PARAM_Y] = uy
+local canStart = UnitManager.CanStartOperation(unit, opRow.Hash, nil, params, true)
+if not canStart then
+    {_bail_lua('"ERR:CANNOT_REMOVE|Cannot remove " .. impName .. " at (" .. ux .. "," .. uy .. "). Builder must be on the tile with moves and charges."')}
+end
+UnitManager.RequestOperation(unit, opRow.Hash, params)
+print("OK:REMOVING_IMPROVEMENT|" .. impName .. " at (" .. ux .. "," .. uy .. ")")
+print("{SENTINEL}")
+"""
+
+
 def build_sacrifice_builder_charges(unit_index: int) -> str:
     """Sacrifice builder charges to boost a district project (Royal Society).
 
@@ -1652,7 +1689,7 @@ for _, city in pCities:Members() do
         if not seen[key] then
             seen[key] = true
             local plot = Map.GetPlot(px, py)
-            if plot and plot:GetOwner() == me and not plot:IsWater() then
+            if plot and plot:GetOwner() == me and not plot:IsWater() and not plot:IsMountain() then
                 local distIdx = plot:GetDistrictType()
                 local impIdx = plot:GetImprovementType()
                 local resIdx = plot:GetResourceType()

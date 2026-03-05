@@ -36,8 +36,8 @@ local SPY_OPS = {{{op_entries}}}
 for i, u in Players[me]:GetUnits():Members() do
     local entry = GameInfo.Units[u:GetType()]
     if entry and entry.UnitType == "UNIT_SPY" then
-        local x, y = u:GetX(), u:GetY()
-        if x ~= -9999 then
+        local ok_spy, err_spy = pcall(function()
+            local x, y = u:GetX(), u:GetY()
             local name = Locale.Lookup(u:GetName())
             local uid = u:GetID() + me * 65536
             local rank = 1
@@ -52,36 +52,41 @@ for i, u in Players[me]:GetUnits():Members() do
             local moves = u:GetMovesRemaining()
             local cityName = "none"
             local cityOwner = -1
-            local pCity = CityManager.GetCityAt(x, y)
-            if pCity then
-                cityName = Locale.Lookup(pCity:GetName())
-                cityOwner = pCity:GetOwner()
-            end
-            local params = {{[UnitOperationTypes.PARAM_X0]=x, [UnitOperationTypes.PARAM_Y0]=y}}
-            local availOps = {{}}
-            for opName, opHash in pairs(SPY_OPS) do
-                local ok, can = pcall(function() return UnitManager.CanStartOperation(u, opHash, nil, params) end)
-                if ok and can then
-                    table.insert(availOps, opName)
-                end
-            end
-            local opStr = table.concat(availOps, ",")
-            -- Current mission: GetSpyOperation returns Index; look up name in GameInfo
+            local opStr = ""
             local currentOp = "none"
-            local ok_op, opIdx = pcall(function() return u:GetSpyOperation() end)
-            if ok_op and opIdx and opIdx >= 0 then
-                for row in GameInfo.UnitOperations() do
-                    if row.Index == opIdx then
-                        -- Strip "UNITOPERATION_SPY_" prefix for readability
-                        currentOp = row.OperationType:gsub("UNITOPERATION_SPY_", ""):gsub("UNITOPERATION_", "")
-                        break
+            local status = "idle"
+            if x == -9999 then
+                status = "in_transit"
+            else
+                local pCity = CityManager.GetCityAt(x, y)
+                if pCity then
+                    cityName = Locale.Lookup(pCity:GetName())
+                    cityOwner = pCity:GetOwner()
+                end
+                local params = {{[UnitOperationTypes.PARAM_X0]=x, [UnitOperationTypes.PARAM_Y0]=y}}
+                local availOps = {{}}
+                for opName, opHash in pairs(SPY_OPS) do
+                    local ok, can = pcall(function() return UnitManager.CanStartOperation(u, opHash, nil, params) end)
+                    if ok and can then
+                        table.insert(availOps, opName)
                     end
                 end
+                opStr = table.concat(availOps, ",")
+                local ok_op, opIdx = pcall(function() return u:GetSpyOperation() end)
+                if ok_op and opIdx and opIdx >= 0 then
+                    for row in GameInfo.UnitOperations() do
+                        if row.Index == opIdx then
+                            currentOp = row.OperationType:gsub("UNITOPERATION_SPY_", ""):gsub("UNITOPERATION_", "")
+                            break
+                        end
+                    end
+                    status = "on_mission"
+                end
             end
-            local escaping = "idle"
-            local ok_esc, escID = pcall(function() return Players[me]:GetDiplomacy():GetNextEscapingSpyID() end)
-            if ok_esc and escID and escID == u:GetID() then escaping = "escaping" end
-            print(uid.."|"..name.."|"..x.."|"..y.."|"..rank.."|"..xp.."|"..moves.."|"..cityName.."|"..cityOwner.."|"..opStr.."|"..currentOp.."|"..escaping)
+            print(uid.."|"..name.."|"..x.."|"..y.."|"..rank.."|"..xp.."|"..moves.."|"..cityName.."|"..cityOwner.."|"..opStr.."|"..currentOp.."|"..status)
+        end)
+        if not ok_spy then
+            print("0|ERROR_SPY|0|0|1|0|0|none|-1||none|idle")
         end
     end
 end
@@ -111,9 +116,8 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
             ops_str = parts[9].strip()
             available_ops = [op for op in ops_str.split(",") if op]
             current_mission = parts[10].strip() if len(parts) > 10 else "none"
-            is_escaping = (
-                parts[11].strip() == "escaping" if len(parts) > 11 else False
-            )
+            status_str = parts[11].strip() if len(parts) > 11 else "idle"
+            is_escaping = status_str == "escaping"
             spies.append(
                 SpyInfo(
                     unit_id=uid,
@@ -129,6 +133,7 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
                     available_ops=available_ops,
                     current_mission=current_mission,
                     is_escaping=is_escaping,
+                    status=status_str,
                 )
             )
         except (ValueError, IndexError):
@@ -253,11 +258,14 @@ def build_spy_escape_route() -> str:
             )
     checks_lua = " ".join(district_checks)
 
+    # WARNING: GetNextEscapingSpyID() causes native ACCESS_VIOLATION crashes
+    # in some game states. Only call it here where it's essential (escape blocker
+    # is active, so the game expects this call). Never call it speculatively.
     return (
         f"local me = Game.GetLocalPlayer() "
         f"local pDiplo = Players[me]:GetDiplomacy() "
-        f"local spyID = pDiplo:GetNextEscapingSpyID() "
-        f"if spyID == nil or spyID < 0 then "
+        f"local ok_esc, spyID = pcall(function() return pDiplo:GetNextEscapingSpyID() end) "
+        f"if not ok_esc or spyID == nil or spyID < 0 then "
         f'  print("NO_ESCAPING_SPY") print("{sentinel}") do return end '
         f"end "
         f"local spy = Players[me]:GetUnits():FindID(spyID) "

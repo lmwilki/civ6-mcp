@@ -236,6 +236,7 @@ class SpyInfo:
     available_ops: list[str]  # e.g. ["TRAVEL", "COUNTERSPY"]
     current_mission: str = "none"  # active mission e.g. "COUNTERSPY", or "none"
     is_escaping: bool = False  # True if spy is caught and needs escape route
+    status: str = "idle"  # "idle", "in_transit", "on_mission", "escaping"
 
 
 @dataclass
@@ -277,6 +278,7 @@ class CityInfo:
         default_factory=list
     )  # e.g. ["HORSES@5,10"]
     pillaged_improvements: list[str] = field(default_factory=list)  # e.g. ["MINE@6,11"]
+    buildings: list[str] = field(default_factory=list)  # completed buildings (BUILDING_ prefix stripped)
 
 
 @dataclass
@@ -383,6 +385,14 @@ class LockedCivic:
 
 
 @dataclass
+class LockedTech:
+    name: str
+    tech_type: str
+    missing_prereqs: list[str]  # localized names of unmet prerequisites
+    era: str = ""  # e.g. "ERA_MODERN"
+
+
+@dataclass
 class TechOption:
     """An available technology for research."""
 
@@ -394,6 +404,8 @@ class TechOption:
     boosted: bool
     boost_desc: str  # trigger description, empty if none
     unlocks: str  # comma-separated unlock names
+    prereqs: str = ""  # comma-separated prereq tech type names
+    era: str = ""  # e.g. "ERA_ANCIENT"
 
 
 @dataclass
@@ -420,6 +432,7 @@ class TechCivicStatus:
     completed_tech_count: int = 0
     completed_civic_count: int = 0
     locked_civics: list[LockedCivic] | None = None
+    locked_techs: list[LockedTech] | None = None
 
 
 @dataclass

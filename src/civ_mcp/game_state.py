@@ -515,6 +515,11 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
 
+    async def remove_improvement(self, unit_index: int) -> str:
+        lua = lq.build_remove_improvement(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return _action_result(lines)
+
     async def sacrifice_builder_charges(self, unit_index: int) -> str:
         lua = lq.build_sacrifice_builder_charges(unit_index)
         lines = await self.conn.execute_write(lua)
@@ -745,9 +750,43 @@ class GameState:
                 offer_items=[{"type": "AGREEMENT", "subtype": "OPEN_BORDERS"}],
                 request_items=[{"type": "AGREEMENT", "subtype": "OPEN_BORDERS"}],
             )
+        is_war = action.upper().endswith("_WAR") and action.upper().startswith(
+            "DECLARE_"
+        )
         lua = lq.build_send_diplo_action(other_player_id, action.upper())
         lines = await self.conn.execute_write(lua)
-        return _action_result(lines)
+        result = _action_result(lines)
+
+        if is_war and not result.startswith("ERR:"):
+            # War session left open for ~8s so the leader animation plays.
+            # Background task will close session + dismiss DiplomacyActionView.
+            asyncio.create_task(self._cleanup_war_diplomacy(other_player_id))
+
+        return result
+
+    async def _cleanup_war_diplomacy(self, other_player_id: int) -> None:
+        """Background: dismiss war declaration diplomacy view after animation.
+
+        Two-phase cleanup (must be separate Lua calls — the engine fires
+        OnDiplomacySessionClosed asynchronously so the view needs a frame
+        to transition from CONVERSATION_MODE to OVERVIEW_MODE):
+        1. CloseSession — view transitions to OVERVIEW_MODE
+        2. NaturalWonderPopup trick — forces Close() from OVERVIEW_MODE
+        """
+        await asyncio.sleep(8)
+        try:
+            # Phase 1: close session → view goes to OVERVIEW_MODE
+            lua1 = lq.build_war_close_session(other_player_id)
+            await self.conn.execute_write(lua1)
+
+            # Let engine process OnDiplomacySessionClosed
+            await asyncio.sleep(1)
+
+            # Phase 2: force-dismiss the OVERVIEW_MODE view
+            lua2 = lq.build_war_dismiss_view()
+            await self.conn.execute_write(lua2)
+        except Exception as e:
+            log.warning("War diplomacy cleanup failed: %s", e)
 
     # ------------------------------------------------------------------
     # Trade deal methods (InGame context)

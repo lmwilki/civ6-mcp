@@ -939,6 +939,7 @@ def build_diary_full_query() -> str:
         # Amenities needed
         "    local amNeed = 0 "
         "    pcall(function() amNeed = g:GetAmenitiesNeeded() end) "
+        "    local amTotal = amNeed + g:GetAmenities() "
         # Print PCITY
         '    print("PCITY|" .. i .. "|" .. cID '
         '      .. "|" .. cName .. "|" .. cPop '
@@ -949,7 +950,7 @@ def build_diary_full_query() -> str:
         '      .. "|" .. string.format("%.1f", c:GetYield(4)) '
         '      .. "|" .. string.format("%.1f", c:GetYield(5)) '
         '      .. "|" .. string.format("%.1f", g:GetHousing()) '
-        '      .. "|" .. g:GetAmenities() .. "|" .. amNeed '
+        '      .. "|" .. amTotal .. "|" .. amNeed '
         '      .. "|" .. dStr .. "|" .. producing '
         '      .. "|" .. string.format("%.1f", loyalty) '
         '      .. "|" .. string.format("%.1f", loyaltyPT)) '

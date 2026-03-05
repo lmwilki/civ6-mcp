@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import SENTINEL, _bail
-from civ_mcp.lua.models import CivicOption, LockedCivic, TechCivicStatus, TechOption
+from civ_mcp.lua.models import (
+    CivicOption,
+    LockedCivic,
+    LockedTech,
+    TechCivicStatus,
+    TechOption,
+)
 
 
 def build_tech_civics_query() -> str:
@@ -33,6 +39,14 @@ for b in GameInfo.Boosts() do
     if b.TechnologyType then boostsByTech[b.TechnologyType] = b end
     if b.CivicType then boostsByCivic[b.CivicType] = b end
 end
+-- Build tech prereqs lookup
+local techPrereqs = {{}}
+pcall(function()
+    for row in GameInfo.TechnologyPrereqs() do
+        if not techPrereqs[row.Technology] then techPrereqs[row.Technology] = {{}} end
+        table.insert(techPrereqs[row.Technology], row.PrereqTech)
+    end
+end)
 for tech in GameInfo.Technologies() do
     if te:CanResearch(tech.Index) and not te:HasTech(tech.Index) then
         local cost = te:GetResearchCost(tech.Index)
@@ -55,7 +69,11 @@ for tech in GameInfo.Technologies() do
         end
         local unlockStr = table.concat(unlocks, ", "):gsub("|", "/")
         local boostTag = boosted and "BOOSTED" or "UNBOOSTED"
-        print("TECH|" .. Locale.Lookup(tech.Name) .. "|" .. tech.TechnologyType .. "|" .. cost .. "|" .. pct .. "|" .. turns .. "|" .. boostTag .. "|" .. boostDesc .. "|" .. unlockStr)
+        local prereqStr = ""
+        if techPrereqs[tech.TechnologyType] then
+            prereqStr = table.concat(techPrereqs[tech.TechnologyType], ",")
+        end
+        print("TECH|" .. Locale.Lookup(tech.Name) .. "|" .. tech.TechnologyType .. "|" .. cost .. "|" .. pct .. "|" .. turns .. "|" .. boostTag .. "|" .. boostDesc .. "|" .. unlockStr .. "|" .. prereqStr .. "|" .. (tech.EraType or ""))
     end
 end
 local completedTechs = 0
@@ -120,6 +138,26 @@ for civic in GameInfo.Civics() do
             end
             if #missing > 0 then
                 print("LOCKED_CIVIC|" .. Locale.Lookup(civic.Name):gsub("|", "/") .. "|" .. civic.CivicType .. "|" .. table.concat(missing, ","))
+            end
+        end
+    end
+end
+-- Locked techs: within era+1, have unmet prerequisites
+for tech in GameInfo.Technologies() do
+    if not te:HasTech(tech.Index) and not te:CanResearch(tech.Index) then
+        local techEra = eraLookup[tech.EraType] or 99
+        if techEra <= curEra + 1 then
+            local missing = {{}}
+            if techPrereqs[tech.TechnologyType] then
+                for _, pType in ipairs(techPrereqs[tech.TechnologyType]) do
+                    local pEntry = GameInfo.Technologies[pType]
+                    if pEntry and not te:HasTech(pEntry.Index) then
+                        table.insert(missing, (Locale.Lookup(pEntry.Name):gsub("|", "/")))
+                    end
+                end
+            end
+            if #missing > 0 then
+                print("LOCKED_TECH|" .. Locale.Lookup(tech.Name):gsub("|", "/") .. "|" .. tech.TechnologyType .. "|" .. table.concat(missing, ",") .. "|" .. (tech.EraType or ""))
             end
         end
     end
@@ -232,6 +270,7 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
     completed_civic_count = 0
 
     locked_civics: list[LockedCivic] = []
+    locked_techs: list[LockedTech] = []
 
     for line in lines:
         if line.startswith("COMPLETED|"):
@@ -257,6 +296,8 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
                         boosted=parts[6] == "BOOSTED",
                         boost_desc=parts[7],
                         unlocks=parts[8],
+                        prereqs=parts[9] if len(parts) > 9 else "",
+                        era=parts[10] if len(parts) > 10 else "",
                     )
                 )
             elif len(parts) >= 3:
@@ -308,6 +349,17 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
                         missing_prereqs=parts[3].split(","),
                     )
                 )
+        elif line.startswith("LOCKED_TECH|"):
+            parts = line.split("|")
+            if len(parts) >= 4:
+                locked_techs.append(
+                    LockedTech(
+                        name=parts[1],
+                        tech_type=parts[2],
+                        missing_prereqs=parts[3].split(","),
+                        era=parts[4] if len(parts) > 4 else "",
+                    )
+                )
 
     return TechCivicStatus(
         current_research=current_research,
@@ -319,4 +371,5 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
         completed_tech_count=completed_tech_count,
         completed_civic_count=completed_civic_count,
         locked_civics=locked_civics or None,
+        locked_techs=locked_techs or None,
     )

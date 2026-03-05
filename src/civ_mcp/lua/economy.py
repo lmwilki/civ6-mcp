@@ -741,7 +741,7 @@ local tParams = {{}}
 tParams[UnitOperationTypes.PARAM_X] = {target_x}
 tParams[UnitOperationTypes.PARAM_Y] = {target_y}
 local can = UnitManager.CanStartOperation(unit, opHash, nil, tParams, true)
-if not can then {_bail("ERR:CANNOT_TELEPORT|Cannot teleport trader to ({target_x},{target_y}). Is the trader idle (not on an active route)?")} end
+if not can then {_bail(f"ERR:CANNOT_TELEPORT|Cannot teleport trader to ({target_x},{target_y}). Is the trader idle (not on an active route)?")} end
 UnitManager.RequestOperation(unit, opHash, tParams)
 local destCity = CityManager.GetCityAt({target_x}, {target_y})
 local destName = destCity and Locale.Lookup(destCity:GetName()) or "({target_x},{target_y})"
@@ -825,12 +825,21 @@ if not can then
     local reqStr = #requirements > 0 and " Requirements: " .. table.concat(requirements, "; ") or ""
     local tilesStr = #validTiles > 0 and " Valid tiles: " .. table.concat(validTiles, "; ") or " No valid activation tiles found."
     local classStr = ""
+    local classHint = ""
     pcall(function()
         local gpClass = uInfo and uInfo.GreatPersonClass or nil
-        if gpClass then classStr = " class=" .. gpClass end
+        if gpClass then
+            classStr = " class=" .. gpClass
+            if gpClass == "GREAT_PERSON_CLASS_WRITER" or gpClass == "GREAT_PERSON_CLASS_ARTIST" or gpClass == "GREAT_PERSON_CLASS_MUSICIAN" then
+                classHint = " Hint: Must be on a city center with an empty Great Work slot of the matching type."
+            end
+        end
     end)
-    {_bail_lua('"ERR:CANNOT_ACTIVATE|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ")" .. classStr .. " at (" .. ux .. "," .. uy .. ") charges=" .. charges .. "." .. reqStr .. tilesStr')}
+    {_bail_lua('"ERR:CANNOT_ACTIVATE|" .. Locale.Lookup(unit:GetName()) .. " (" .. uName .. ")" .. classStr .. " at (" .. ux .. "," .. uy .. ") charges=" .. charges .. "." .. reqStr .. tilesStr .. classHint')}
 end
+-- Track charges before activation to compute remaining
+local chargesBefore = -1
+pcall(function() chargesBefore = unit:GetGreatPerson():GetActionCharges() end)
 UnitManager.RequestCommand(unit, cmdHash, {{}})
 -- Report remaining charges so agent knows whether to activate again
 local remCharges = -1
@@ -838,14 +847,10 @@ pcall(function()
     local gp2 = unit:GetGreatPerson()
     if gp2 then
         remCharges = gp2:GetActionCharges() or 0
-        if remCharges == 0 then
-            local indIdx = gp2:GetIndividual()
-            for ind in GameInfo.GreatPersonIndividuals() do
-                if ind.Index == indIdx then
-                    remCharges = (ind.ActionCharges or 1) - 1
-                    break
-                end
-            end
+        -- If GetActionCharges still returns 0 and we had charges before,
+        -- the activation consumed one charge
+        if remCharges == 0 and chargesBefore > 0 then
+            remCharges = chargesBefore - 1
         end
     end
 end)
