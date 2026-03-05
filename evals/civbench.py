@@ -242,10 +242,47 @@ def _extract_reasoning(state: AgentState) -> None:
 # ---------------------------------------------------------------------------
 
 
+LOOP_THRESHOLD = 5  # identical consecutive tool calls before intervention
+LOOP_HARD_LIMIT = 15  # hard stop after this many identical consecutive calls
+
+
+def _detect_tool_loop(state: AgentState) -> int:
+    """Count consecutive identical tool calls at the tail of the conversation.
+
+    Fingerprints each tool call as (function_name, sorted_args_json) and counts
+    how many consecutive identical calls appear at the end of the message history.
+    Returns the streak length (0 if no repetition).
+    """
+    # Walk backwards through messages collecting tool call fingerprints
+    fingerprints: list[str] = []
+    for msg in reversed(state.messages):
+        if not isinstance(msg, ChatMessageAssistant):
+            continue
+        if not msg.tool_calls:
+            break  # hit an assistant message without tool calls — stop scanning
+        for tc in reversed(msg.tool_calls):
+            args = json.dumps(tc.arguments, sort_keys=True) if tc.arguments else "{}"
+            fingerprints.append(f"{tc.function}|{args}")
+
+    if len(fingerprints) < 2:
+        return 0
+
+    # fingerprints[0] is the most recent call — count how many match it
+    latest = fingerprints[0]
+    streak = 0
+    for fp in fingerprints:
+        if fp == latest:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 async def _keep_playing(state: AgentState) -> str | bool:
     """Extract structured data to store, then nudge model to keep playing.
 
-    Returns False to stop the agent when a game-over condition is detected.
+    Returns False to stop the agent when a game-over condition is detected
+    or when a hard tool-call loop limit is exceeded.
     Returns True (silent continue) when the model is actively calling tools.
     Only injects the nudge message when the model goes quiet (no tool calls).
     """
@@ -254,6 +291,22 @@ async def _keep_playing(state: AgentState) -> str | bool:
     s = store()
     if s.get("game_over"):
         return False
+
+    # Detect degenerate tool-call loops (same tool+args repeated)
+    streak = _detect_tool_loop(state)
+    if streak >= LOOP_HARD_LIMIT:
+        s.set("loop_terminated", True)
+        return False
+    if streak >= LOOP_THRESHOLD:
+        tool_calls = state.output.message.tool_calls
+        tool_name = tool_calls[0].function if tool_calls else "unknown"
+        return (
+            f"LOOP DETECTED: You have called `{tool_name}` with the same "
+            f"arguments {streak} times consecutively. This is not productive. "
+            f"Stop repeating this call. Either act on the information you "
+            f"already have, try a different approach, or call `end_turn`."
+        )
+
     if state.output.message.tool_calls:
         return True
     return CONTINUE_PLAYING

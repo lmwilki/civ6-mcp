@@ -430,6 +430,7 @@ def civbench_scorer():
                 "first_overview": first_overview,
                 "last_overview": last_overview,
                 "data_source": "store" if store_last else "messages",
+                "loop_terminated": bool(state.store.get("loop_terminated")),
                 "tool_distribution": dict(Counter(c.name for c in calls)),
             },
         )
