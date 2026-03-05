@@ -344,10 +344,32 @@ def _civ_mcp_server(
         env["CIV_MCP_GAME_SPEED"] = scenario.game_speed
     if eval_track:
         env["CIV_MCP_EVAL_TRACK"] = eval_track
+    # Pass through display/GUI env vars needed for Linux GUI automation
+    # (xdotool, mss screen capture). mcp_server_stdio only inherits a
+    # minimal Posix set (HOME, PATH, SHELL, etc.) — DISPLAY is not included.
+    for gui_var in ("DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"):
+        val = os.environ.get(gui_var)
+        if val:
+            env[gui_var] = val
+    # Include platform-specific launcher deps so the MCP server can do
+    # GUI automation (OCR, window focus, clicks) for save loading / recovery.
+    extras = []
+    if sys.platform == "darwin":
+        extras.append("launcher-macos")
+    elif sys.platform == "linux":
+        extras.append("launcher-linux")
+    elif sys.platform == "win32":
+        extras.append("launcher-windows")
+
+    args = ["run", "--directory", PROJECT_ROOT]
+    for ex in extras:
+        args.extend(["--extra", ex])
+    args.append("civ-mcp")
+
     return mcp_server_stdio(
         name="civ6",
         command="uv",
-        args=["run", "--directory", PROJECT_ROOT, "civ-mcp"],
+        args=args,
         env=env or None,
     )
 

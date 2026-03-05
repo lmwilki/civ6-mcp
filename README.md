@@ -46,6 +46,12 @@ Enable the FireTuner debug interface and configure recommended settings:
 ~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid Meier's Civilization VI/AppOptions.txt
 ```
 
+**Linux:** Same as macOS — edit `AppOptions.txt` directly and set `EnableTuner 1`:
+
+```
+~/.local/share/aspyr-media/Sid Meier's Civilization VI/AppOptions.txt
+```
+
 <details>
 <summary><strong>Windows: additional setup</strong></summary>
 
@@ -57,6 +63,14 @@ Enable the FireTuner debug interface and configure recommended settings:
 - Close `FireTuner.exe` (the SDK's GUI tool) before running civ6-mcp — the game only allows **one** tuner connection at a time
 - Do **not** run from WSL — the network bridging between WSL2 and Windows is unreliable and the tuner server locks up after failed connections
 - If the connection fails, **restart the game** — the tuner often hangs after a bad handshake and won't recover until the process is recycled
+</details>
+
+<details>
+<summary><strong>Linux: additional notes</strong></summary>
+
+- The **native Linux port** is required — the FireTuner debug interface is built into the native binary. Proton/Wine builds do not expose it.
+- The game runs as a single `Civ6` process launched via Steam Linux Runtime (scout-on-soldier).
+- GUI automation (OCR-based menu navigation) requires **X11**. On Wayland, the game typically runs under XWayland which should work, but a native X11 session is most reliable.
 </details>
 
 Restart Civ 6. The game will listen on TCP port 4318 for connections.
@@ -77,6 +91,10 @@ uv pip install 'civ6-mcp[launcher-macos]'
 
 # Windows (uses built-in Windows OCR — no external binaries needed)
 uv pip install 'civ6-mcp[launcher-windows]'
+
+# Linux (Ubuntu/Debian)
+sudo apt install xdotool tesseract-ocr
+uv pip install 'civ6-mcp[launcher-linux]'
 ```
 
 ### 3. Test the connection
@@ -205,7 +223,7 @@ The repo includes an [AGENTS.md](AGENTS.md) playbook (symlinked as `CLAUDE.md` f
 
 ## Requirements
 
-- **macOS or Windows** with Civilization VI (Steam version, Gathering Storm DLC)
+- **macOS, Windows, or Linux** with Civilization VI (Steam version, Gathering Storm DLC)
 - **Python 3.12+** with [uv](https://docs.astral.sh/uv/)
 - An **MCP client** (Claude Code, Codex, Gemini CLI, or any MCP-compatible client)
 

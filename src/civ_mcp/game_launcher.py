@@ -12,6 +12,9 @@ Platform support:
   Install with: uv pip install 'civ6-mcp[launcher-macos]'
 - Windows: fully supported (process mgmt, OCR, window automation)
   Install with: uv pip install 'civ6-mcp[launcher-windows]'
+- Linux: fully supported (process mgmt, OCR, window automation)
+  Install with: uv pip install 'civ6-mcp[launcher-linux]'
+  System deps: sudo apt install xdotool tesseract-ocr
 """
 
 from __future__ import annotations
@@ -39,9 +42,9 @@ if sys.platform == "win32":
 
 
 class WindowInfo(NamedTuple):
-    """Game window metadata (Quartz CGWindowList on macOS, win32gui on Windows)."""
+    """Game window metadata (Quartz on macOS, win32gui on Windows, xdotool on Linux)."""
 
-    window_id: int  # CGWindowNumber on macOS, HWND on Windows
+    window_id: int  # CGWindowNumber on macOS, HWND on Windows, XID on Linux
     x: int  # screen points
     y: int  # screen points
     w: int  # screen points
@@ -78,6 +81,13 @@ elif sys.platform == "win32":
     )
     SAVE_DIR = os.path.join(_SAVE_BASE, "auto")
     SINGLE_SAVE_DIR = _SAVE_BASE
+elif sys.platform == "linux":
+    _PROCESS_NAMES = ("Civ6",)
+    _SAVE_BASE = os.path.expanduser(
+        "~/.local/share/aspyr-media/Sid Meier's Civilization VI/Saves/Single"
+    )
+    SAVE_DIR = os.path.join(_SAVE_BASE, "auto")
+    SINGLE_SAVE_DIR = _SAVE_BASE
 else:
     _PROCESS_NAMES = ()
     SAVE_DIR = ""
@@ -111,6 +121,27 @@ def _require_gui_deps() -> None:
                 "Install with: uv pip install 'civ6-mcp[launcher-windows]'"
             )
         return
+    if sys.platform == "linux":
+        import shutil
+
+        missing = []
+        if shutil.which("xdotool") is None:
+            missing.append("xdotool (sudo apt install xdotool)")
+        try:
+            import mss  # noqa: F401
+        except ImportError:
+            missing.append("python-mss (uv pip install 'civ6-mcp[launcher-linux]')")
+        try:
+            import pytesseract  # noqa: F401
+        except ImportError:
+            missing.append("pytesseract (uv pip install 'civ6-mcp[launcher-linux]')")
+        if shutil.which("tesseract") is None:
+            missing.append("tesseract-ocr (sudo apt install tesseract-ocr)")
+        if missing:
+            raise RuntimeError(
+                "Game launcher GUI requires: " + ", ".join(missing)
+            )
+        return
     if sys.platform != "darwin":
         raise NotImplementedError(f"GUI automation not supported on {sys.platform}")
     try:
@@ -130,7 +161,7 @@ def _require_gui_deps() -> None:
 
 def is_game_running() -> bool:
     """Check if Civ 6 is running."""
-    if sys.platform == "darwin":
+    if sys.platform in ("darwin", "linux"):
         r = subprocess.run(
             ["pgrep", "-f", _ALLOWED_PROCESS_PATTERNS[0]],
             capture_output=True,
@@ -192,7 +223,7 @@ def _kill_game_sync() -> str:
     if not is_game_running():
         return "Game is not running."
 
-    if sys.platform == "darwin":
+    if sys.platform in ("darwin", "linux"):
         subprocess.run(["pkill", "-9", "-f", "Civ6"], capture_output=True)
     elif sys.platform == "win32":
         for name in _PROCESS_NAMES:
@@ -405,6 +436,8 @@ def _launch_game_sync() -> str:
     # Launch via Steam
     if sys.platform == "darwin":
         subprocess.run(["open", f"steam://run/{STEAM_APP_ID}"])
+    elif sys.platform == "linux":
+        subprocess.run(["steam", f"steam://run/{STEAM_APP_ID}"])
     elif sys.platform == "win32":
         os.startfile(f"steam://run/{STEAM_APP_ID}")  # noqa: S606 — hardcoded Steam URL
     else:
@@ -438,19 +471,21 @@ def _launch_game_sync() -> str:
 
 
 # ---------------------------------------------------------------------------
-# OCR + GUI helpers (require pyobjc)
+# OCR + GUI helpers (require pyobjc on macOS, winrt on Windows, xdotool on Linux)
 # ---------------------------------------------------------------------------
 
 
 def _find_game_window() -> WindowInfo | None:
     """Find the Civ 6 game window.
 
-    Uses Quartz CGWindowList on macOS, win32gui on Windows.
+    Uses Quartz CGWindowList on macOS, win32gui on Windows, xdotool on Linux.
     Returns WindowInfo with window ID, bounds (screen points), and PID.
     Returns None if no matching window is found on screen.
     """
     if sys.platform == "win32":
         return _find_game_window_win32()
+    if sys.platform == "linux":
+        return _find_game_window_linux()
     _require_gui_deps()
     import Quartz
 
@@ -517,15 +552,85 @@ def _find_game_window_win32() -> WindowInfo | None:
     return results[0] if results else None
 
 
+def _find_game_window_linux() -> WindowInfo | None:
+    """Find the Civ 6 window via xdotool on Linux.
+
+    Searches for windows whose title exactly matches "Civilization VI"
+    to avoid false positives (e.g. a browser tab showing civ6-mcp docs).
+    When multiple windows match, prefers the one owned by a Civ6 process.
+    """
+    try:
+        r = subprocess.run(
+            ["xdotool", "search", "--name", "Civilization VI"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+
+        candidates = r.stdout.strip().split("\n")
+
+        # Score candidates: prefer windows owned by the game process
+        best: WindowInfo | None = None
+        for wid_str in candidates:
+            wid = int(wid_str)
+
+            name_r = subprocess.run(
+                ["xdotool", "getwindowname", str(wid)],
+                capture_output=True, text=True, timeout=5,
+            )
+            name = name_r.stdout.strip() if name_r.returncode == 0 else ""
+            if name != "Civilization VI":
+                continue
+
+            r2 = subprocess.run(
+                ["xdotool", "getwindowgeometry", "--shell", str(wid)],
+                capture_output=True, text=True, timeout=5,
+            )
+            geo: dict[str, int] = {}
+            for line in r2.stdout.strip().split("\n"):
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    if v.isdigit():
+                        geo[k] = int(v)
+
+            r3 = subprocess.run(
+                ["xdotool", "getwindowpid", str(wid)],
+                capture_output=True, text=True, timeout=5,
+            )
+            pid = int(r3.stdout.strip()) if r3.returncode == 0 else 0
+
+            info = WindowInfo(
+                window_id=wid,
+                x=geo.get("X", 0), y=geo.get("Y", 0),
+                w=geo.get("WIDTH", 0), h=geo.get("HEIGHT", 0),
+                pid=pid,
+            )
+
+            # Prefer the window whose dimensions match a standard game
+            # resolution (the inner client window, not the decorated one)
+            if best is None:
+                best = info
+            elif info.w <= best.w and info.h <= best.h and info.w > 0:
+                # Smaller "Civilization VI" window is the client area
+                best = info
+
+        return best
+    except Exception as e:
+        log.debug("xdotool window search failed: %s", e)
+        return None
+
+
 def _capture_window(window_id: int) -> object:
     """Capture a single window as an in-memory image.
 
-    Returns a CGImageRef on macOS, PIL Image on Windows.
+    Returns a CGImageRef on macOS, PIL Image on Windows/Linux.
     Falls back to screencapture subprocess on macOS 15+ where
     CGWindowListCreateImage is obsoleted.
     """
     if sys.platform == "win32":
         return _capture_window_win32(window_id)
+    if sys.platform == "linux":
+        return _capture_window_linux(window_id)
     import Quartz
 
     image = Quartz.CGWindowListCreateImage(
@@ -614,6 +719,50 @@ def _capture_window_win32(hwnd: int) -> "PIL.Image.Image":
     win32gui.DeleteObject(bitmap.GetHandle())
 
     return img
+
+
+def _capture_window_linux(window_id: int) -> "PIL.Image.Image":
+    """Capture a window region on Linux using python-mss.
+
+    mss captures screen regions (not window content by ID), so we use
+    xdotool to get the window geometry and grab that screen region.
+    The window should be in the foreground for accurate capture.
+    Clamps the region to display bounds to avoid XGetImage failures.
+    """
+    import mss
+    from PIL import Image
+
+    r = subprocess.run(
+        ["xdotool", "getwindowgeometry", "--shell", str(window_id)],
+        capture_output=True, text=True, timeout=5,
+    )
+    geo: dict[str, int] = {}
+    for line in r.stdout.strip().split("\n"):
+        if "=" in line:
+            k, v = line.split("=", 1)
+            if v.isdigit():
+                geo[k] = int(v)
+
+    x, y = geo.get("X", 0), geo.get("Y", 0)
+    w, h = geo.get("WIDTH", 0), geo.get("HEIGHT", 0)
+    if w <= 0 or h <= 0:
+        raise RuntimeError(f"Window {window_id} has no geometry ({w}x{h})")
+
+    # Clamp to display bounds — mss fails if the region exceeds the screen
+    with mss.mss() as sct:
+        disp = sct.monitors[0]  # virtual display (union of all monitors)
+        disp_r = disp["left"] + disp["width"]
+        disp_b = disp["top"] + disp["height"]
+        x = max(x, disp["left"])
+        y = max(y, disp["top"])
+        w = min(w, disp_r - x)
+        h = min(h, disp_b - y)
+        if w <= 0 or h <= 0:
+            raise RuntimeError(f"Window {window_id} is off-screen")
+
+        monitor = {"left": x, "top": y, "width": w, "height": h}
+        screenshot = sct.grab(monitor)
+        return Image.frombytes("RGB", screenshot.size, screenshot.rgb)
 
 
 def _ocr_vision(
@@ -745,11 +894,108 @@ def _ocr_winrt(
     return results
 
 
+def _ocr_tesseract(
+    pil_image: "PIL.Image.Image",
+    origin_x: int,
+    origin_y: int,
+    extent_w: int,
+    extent_h: int,
+) -> list[tuple[str, int, int, int, int]]:
+    """Run Tesseract OCR on a PIL Image, mapping results to screen points (Linux).
+
+    Groups words into text regions using tesseract's block/par/line hierarchy,
+    then splits regions where a large horizontal gap exists between words
+    (common in two-column game menus where tesseract merges both columns
+    into one line).
+    """
+    import pytesseract
+
+    img_w, img_h = pil_image.size
+    # --psm 11 (sparse text) handles scattered game UI text better than
+    # the default page segmentation, especially for faded/low-contrast buttons.
+    #
+    # Two-pass OCR: normal image first, then a thresholded version to catch
+    # faded/low-contrast UI elements (e.g. greyed-out buttons). Results are
+    # merged with the normal pass taking priority (higher confidence).
+    data = pytesseract.image_to_data(
+        pil_image, config="--psm 11", output_type=pytesseract.Output.DICT,
+    )
+    # Threshold pass: grayscale → binary at brightness 80
+    gray = pil_image.convert("L")
+    thresh = gray.point(lambda x: 255 if x > 80 else 0)
+    data_thresh = pytesseract.image_to_data(
+        thresh, config="--psm 11", output_type=pytesseract.Output.DICT,
+    )
+    # Append threshold results with a tag so we can de-duplicate
+    n_orig = len(data["text"])
+    for key in data:
+        data[key].extend(data_thresh[key])
+
+    # Group words by block + par + line (not just block + line)
+    lines: dict[tuple[int, int, int], list[int]] = {}
+    n = len(data["text"])
+    for i in range(n):
+        if int(data["conf"][i]) < 50 or not data["text"][i].strip():
+            continue
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        lines.setdefault(key, []).append(i)
+
+    # Split lines at large horizontal gaps (e.g. two-column menus).
+    # A gap > 3x the median word width suggests separate text regions.
+    def _split_line(indices: list[int]) -> list[list[int]]:
+        if len(indices) <= 1:
+            return [indices]
+        sorted_idx = sorted(indices, key=lambda i: data["left"][i])
+        groups: list[list[int]] = [[sorted_idx[0]]]
+        for prev, cur in zip(sorted_idx, sorted_idx[1:]):
+            gap = data["left"][cur] - (data["left"][prev] + data["width"][prev])
+            avg_h = (data["height"][prev] + data["height"][cur]) / 2
+            # Gap larger than 3x the average character height = column break
+            if gap > avg_h * 3:
+                groups.append([cur])
+            else:
+                groups[-1].append(cur)
+        return groups
+
+    results = []
+    for indices in lines.values():
+        for group in _split_line(indices):
+            text = " ".join(data["text"][i] for i in group)
+            x0 = min(data["left"][i] for i in group)
+            y0 = min(data["top"][i] for i in group)
+            x1 = max(data["left"][i] + data["width"][i] for i in group)
+            y1 = max(data["top"][i] + data["height"][i] for i in group)
+            cx = (x0 + x1) / 2 / img_w
+            cy = (y0 + y1) / 2 / img_h
+            bw = (x1 - x0) / img_w
+            bh = (y1 - y0) / img_h
+            sx = origin_x + cx * extent_w
+            sy = origin_y + cy * extent_h
+            sw = bw * extent_w
+            sh = bh * extent_h
+            results.append((text, int(sx), int(sy), int(sw), int(sh)))
+
+    # De-duplicate: threshold pass may re-find text the normal pass got.
+    # Keep only one region per unique (normalized_text, approximate_position).
+    seen: set[tuple[str, int, int]] = set()
+    deduped = []
+    for text, sx, sy, sw, sh in results:
+        # Bucket position to ~20px grid to catch near-duplicates
+        key = (_normalize(text), sx // 20, sy // 20)
+        if key not in seen:
+            seen.add(key)
+            deduped.append((text, sx, sy, sw, sh))
+    return deduped
+
+
 def _ocr_game_window(win: WindowInfo) -> list[tuple[str, int, int, int, int]]:
     """Capture the game window and OCR it. All coords in screen points."""
     if sys.platform == "win32":
         pil_image = _capture_window_win32(win.window_id)
         return _ocr_winrt(pil_image, win.x, win.y, win.w, win.h)
+    if sys.platform == "linux":
+        pil_image = _capture_window_linux(win.window_id)
+        return _ocr_tesseract(pil_image, win.x, win.y, win.w, win.h)
     cg_image = _capture_window(win.window_id)
     return _ocr_vision(cg_image, win.x, win.y, win.w, win.h)
 
@@ -762,6 +1008,8 @@ def _ocr_fullscreen() -> list[tuple[str, int, int, int, int]]:
     """
     if sys.platform == "win32":
         return _ocr_fullscreen_win32()
+    if sys.platform == "linux":
+        return _ocr_fullscreen_linux()
 
     import Quartz
 
@@ -817,14 +1065,36 @@ def _ocr_fullscreen_win32() -> list[tuple[str, int, int, int, int]]:
     return _ocr_winrt(img, 0, 0, w, h)
 
 
+def _ocr_fullscreen_linux() -> list[tuple[str, int, int, int, int]]:
+    """Full-screen capture + OCR on Linux using mss + pytesseract."""
+    import mss
+    from PIL import Image
+
+    with mss.mss() as sct:
+        monitor = sct.monitors[1]  # primary monitor
+        screenshot = sct.grab(monitor)
+        img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
+        return _ocr_tesseract(
+            img, monitor["left"], monitor["top"],
+            monitor["width"], monitor["height"],
+        )
+
+
 def _normalize(s: str) -> str:
     """Normalize text for OCR comparison.
 
     Handles common OCR confusions:
     - Underscores ↔ spaces (game UI shows underscores, OCR reads spaces)
     - 0 ↔ O (OCR confuses zero and capital O, especially in save names like 0A_...)
+    - Leading/trailing punctuation noise from tesseract (e.g. ": Load Game =:")
     """
-    return s.lower().strip().replace("_", " ").replace("0", "o")
+    import re
+
+    s = s.lower().strip().replace("_", " ").replace("0", "o")
+    # Strip leading/trailing non-alphanumeric chars (OCR artifacts)
+    s = re.sub(r"^[^a-z0-9]+", "", s)
+    s = re.sub(r"[^a-z0-9]+$", "", s)
+    return s
 
 
 def _find_text(
@@ -832,6 +1102,7 @@ def _find_text(
     target: str,
     exact: bool = False,
     prefer_bottom: bool = False,
+    min_y_fraction: float = 0.0,
 ) -> tuple[str, int, int, int, int] | None:
     """Find OCR result matching target text.
 
@@ -843,6 +1114,9 @@ def _find_text(
             with the largest y coordinate (lowest on screen). Useful when a
             label and a button have the same text (e.g. "Load Game" title
             at top vs "Load Game" button at bottom).
+        min_y_fraction: Reject matches in the top portion of the screen.
+            0.7 means only accept matches in the bottom 30%. Requires a
+            game window to determine screen bounds; ignored if no window.
     """
     target_norm = _normalize(target)
     matches = []
@@ -852,6 +1126,12 @@ def _find_text(
             matches.append((text, x, y, w, h))
         elif not exact and target_norm in text_norm:
             matches.append((text, x, y, w, h))
+    if min_y_fraction > 0 and matches:
+        # Filter by screen position — use the max y from all results as proxy
+        # for screen bottom (avoids needing window info here)
+        max_y = max(r[2] for r in ocr_results)
+        min_y = max_y * min_y_fraction
+        matches = [(t, x, y, w, h) for t, x, y, w, h in matches if y >= min_y]
     if not matches:
         return None
     if prefer_bottom:
@@ -863,6 +1143,8 @@ def _click(x: int, y: int) -> None:
     """Click at screen coordinates (points)."""
     if sys.platform == "win32":
         return _click_win32(x, y)
+    if sys.platform == "linux":
+        return _click_linux(x, y)
     _require_gui_deps()
     import Quartz
 
@@ -932,6 +1214,19 @@ def _click_win32(x: int, y: int) -> None:
     user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(INPUT))
 
 
+def _click_linux(x: int, y: int) -> None:
+    """Click at screen coordinates using xdotool (Linux)."""
+    subprocess.run(
+        ["xdotool", "mousemove", str(x), str(y)],
+        capture_output=True, timeout=5,
+    )
+    time.sleep(0.15)
+    subprocess.run(
+        ["xdotool", "click", "1"],
+        capture_output=True, timeout=5,
+    )
+
+
 def _is_window_focused() -> bool:
     """Check if a Civ 6 window is the frontmost application."""
     if sys.platform == "win32":
@@ -939,6 +1234,18 @@ def _is_window_focused() -> bool:
             import win32gui
             hwnd = win32gui.GetForegroundWindow()
             title = win32gui.GetWindowText(hwnd)
+            return any(p in title for p in _APP_NAME_PATTERNS)
+        except Exception:
+            return False
+    if sys.platform == "linux":
+        try:
+            r = subprocess.run(
+                ["xdotool", "getactivewindow", "getwindowname"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode != 0:
+                return False
+            title = r.stdout.strip()
             return any(p in title for p in _APP_NAME_PATTERNS)
         except Exception:
             return False
@@ -967,6 +1274,8 @@ def _bring_to_front(pid: int | None = None) -> None:
     """
     if sys.platform == "win32":
         return _bring_to_front_win32()
+    if sys.platform == "linux":
+        return _bring_to_front_linux()
     if sys.platform != "darwin":
         raise NotImplementedError(f"Window focus not supported on {sys.platform}")
     try:
@@ -1044,12 +1353,26 @@ def _bring_to_front_win32() -> None:
         log.debug("Could not bring window to front (non-fatal)")
 
 
+def _bring_to_front_linux() -> None:
+    """Bring the game window to foreground using xdotool (Linux)."""
+    win = _find_game_window_linux()
+    if win is None:
+        log.debug("Cannot bring to front: no game window found")
+        return
+    subprocess.run(
+        ["xdotool", "windowactivate", "--sync", str(win.window_id)],
+        capture_output=True, timeout=5,
+    )
+    time.sleep(0.3)
+
+
 def _wait_for_text(
     target: str,
     timeout: int = 60,
     exact: bool = False,
-    interval: int = 3,
+    interval: float = 1.5,
     prefer_bottom: bool = False,
+    min_y_fraction: float = 0.0,
 ) -> tuple[str, int, int, int, int] | None:
     """Wait until OCR finds target text in game window.
 
@@ -1074,7 +1397,8 @@ def _wait_for_text(
                 results = _ocr_fullscreen()
 
         match = _find_text(
-            results, target, exact=exact, prefer_bottom=prefer_bottom
+            results, target, exact=exact, prefer_bottom=prefer_bottom,
+            min_y_fraction=min_y_fraction,
         )
         if match:
             return match
@@ -1086,12 +1410,14 @@ def _click_text(
     target: str,
     timeout: int = 30,
     exact: bool = False,
-    post_delay: float = 2,
+    post_delay: float = 1,
     prefer_bottom: bool = False,
+    min_y_fraction: float = 0.0,
 ) -> bool:
     """Find text via OCR and click it. Returns success."""
     match = _wait_for_text(
-        target, timeout=timeout, exact=exact, prefer_bottom=prefer_bottom
+        target, timeout=timeout, exact=exact, prefer_bottom=prefer_bottom,
+        min_y_fraction=min_y_fraction,
     )
     if not match:
         log.warning("OCR: '%s' not found after %ds", target, timeout)
@@ -1248,18 +1574,18 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
         _click_aspyr_launcher_sync()
 
     log.info("[1/6] Waiting for main menu (Single Player)...")
-    if not _click_text("Single Player", timeout=90, exact=True, post_delay=3):
+    if not _click_text("Single Player", timeout=90, exact=True, post_delay=1.5):
         return "FAILED: Could not find 'Single Player' on main menu. Is the game at the main menu?"
     steps.append("Clicked Single Player")
 
     log.info("[2/6] Clicking 'Load Game'...")
-    if not _click_text("Load Game", timeout=15, exact=True, post_delay=3):
+    if not _click_text("Load Game", timeout=15, exact=True, post_delay=1.5):
         return "FAILED: Could not find 'Load Game' button."
     steps.append("Clicked Load Game")
 
     if tab is not None:
         log.info("[3/7] Clicking '%s' filter...", tab)
-        if not _click_text(tab, timeout=10, exact=True, post_delay=2):
+        if not _click_text(tab, timeout=10, exact=True, post_delay=1):
             log.info("%s filter not found — may already be active", tab)
             steps.append(f"{tab} filter (may already be active)")
         else:
@@ -1288,12 +1614,15 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
         steps.append("Already sorted by Name")
 
     log.info("[5/7] Looking for save '%s'...", save_name)
-    if not _click_text(save_name, timeout=15, post_delay=2):
+    if not _click_text(save_name, timeout=15, post_delay=1):
         return f"FAILED: Save '{save_name}' not found. Steps completed: {', '.join(steps)}"
     steps.append(f"Selected save {save_name}")
 
     log.info("[6/7] Clicking 'Load Game' button (bottom, not title)...")
-    if not _click_text("Load Game", timeout=10, post_delay=2, prefer_bottom=True):
+    # prefer_bottom picks the button over the page title. If the only match
+    # is the title (y < 50% of screen), skip it — the button wasn't detected.
+    if not _click_text("Load Game", timeout=10, post_delay=1, prefer_bottom=True,
+                       min_y_fraction=0.7):
         steps.append("Load Game button not found (may have loaded from double-click)")
     else:
         steps.append("Clicked Load Game button")
@@ -1311,7 +1640,7 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     # Instead: passively wait for the loading phase to complete (checking
     # only that the game process is alive), THEN do OCR for CONTINUE.
 
-    log.info("[6/6] Passive wait for save to load (no window capture)...")
+    log.info("[7/7] Passive wait for save to load (no window capture)...")
     _LOAD_PASSIVE_WAIT = 20  # seconds — enough for most saves to load
     for elapsed in range(1, _LOAD_PASSIVE_WAIT + 1):
         time.sleep(1)

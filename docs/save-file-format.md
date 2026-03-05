@@ -259,6 +259,36 @@ La Venta, Yerevan, Nan Madol, Caguana, Singapore,
 Akkad, Kumasi, Geneva, Kandy, Shahr-i-Qumis
 ```
 
+## DLC Entries
+
+The header contains a tagged array of installed DLC/mod entries. This array is repeated once per player slot (typically 6 copies).
+
+### Structure
+
+Each copy starts with a **count field** (uint32) followed by `0x0A` (array type marker), then N DLC blocks:
+
+```
+[count: uint32][0x0A][padding: 6 bytes][block_0][block_1]...[block_N-1]
+```
+
+Each DLC block starts with the marker `05 00 00 00 00 04 00 00 00 54 5F C4 04`, followed by:
+- A 36-character GUID string (null-terminated)
+- A JSON localization payload: `{"LOC_<NAME>_MOD_TITLE":[<locale array>]}`
+- Trailing marker bytes
+
+Blocks are ~150–1000 bytes depending on how many locale strings the JSON contains. Leader Pass entries have empty locale arrays (`:[]}`) while most other DLCs include `de_DE`, `en_US`, `es_ES`, `fr_FR`, etc.
+
+### Leader Pass and Linux
+
+The 6 Leader Pass DLCs (Great Builders, Great Commanders/Warlords, Great Negotiators, Rulers of the Sahara, Rulers of China, Rulers of England) were **never ported to the native Linux build** by Aspyr. Saves created on Windows/macOS with the Leader Pass installed contain these entries, and the Linux binary refuses to load them — showing the DLC names in red in the Load Game screen (displayed in German because the binary can't resolve the localization keys).
+
+The `scripts/strip_leader_pass.py` tool removes these entries by:
+1. Finding all DLC blocks with Leader Pass keys (`GREAT_BUILDERS`, `RULERS_OF_ENGLAND`, `GREAT_NEGOTIATORS`, `RULERS_OF_CHINA`, `RULERS_OF_THE_SAHARA`, `GREAT_WARLORDS`)
+2. Excising the block bytes from each of the 6 header copies
+3. Decrementing the count field in each copy (e.g. 23 → 17)
+
+This removes ~5.8KB per save and makes the saves loadable on native Linux without affecting gameplay.
+
 ## What's NOT in the Save File
 
 The save stores **cumulative counters and snapshots**, not event logs:

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -411,6 +411,11 @@ launcher = [
     { name = "pyobjc-framework-quartz" },
     { name = "pyobjc-framework-vision" },
 ]
+launcher-linux = [
+    { name = "mss" },
+    { name = "pillow" },
+    { name = "pytesseract" },
+]
 launcher-macos = [
     { name = "pyobjc-framework-quartz" },
     { name = "pyobjc-framework-vision" },
@@ -442,16 +447,19 @@ requires-dist = [
     { name = "inspect-ai", marker = "extra == 'scout'", specifier = ">=0.3.175" },
     { name = "inspect-scout", marker = "extra == 'scout'", specifier = ">=0.4" },
     { name = "mcp", specifier = ">=1.20" },
+    { name = "mss", marker = "extra == 'launcher-linux'", specifier = ">=9.0" },
     { name = "openai", marker = "extra == 'evals'", specifier = ">=1.0" },
+    { name = "pillow", marker = "extra == 'launcher-linux'", specifier = ">=10.0" },
     { name = "pyobjc-framework-quartz", marker = "extra == 'launcher-macos'", specifier = ">=11.0" },
     { name = "pyobjc-framework-vision", marker = "extra == 'launcher-macos'", specifier = ">=11.0" },
+    { name = "pytesseract", marker = "extra == 'launcher-linux'", specifier = ">=0.3.10" },
     { name = "winrt-windows-foundation", marker = "extra == 'launcher-windows'", specifier = ">=2.1" },
     { name = "winrt-windows-foundation-collections", marker = "extra == 'launcher-windows'", specifier = ">=2.1" },
     { name = "winrt-windows-graphics-imaging", marker = "extra == 'launcher-windows'", specifier = ">=2.1" },
     { name = "winrt-windows-media-ocr", marker = "extra == 'launcher-windows'", specifier = ">=2.1" },
     { name = "winrt-windows-storage-streams", marker = "extra == 'launcher-windows'", specifier = ">=2.1" },
 ]
-provides-extras = ["evals", "scout", "launcher-macos", "launcher-windows", "launcher"]
+provides-extras = ["evals", "scout", "launcher-macos", "launcher-windows", "launcher-linux", "launcher"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "matplotlib", specifier = ">=3.10.8" }]
@@ -2070,6 +2078,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mss"
+version = "10.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/ca/49b67437a8c46d9732c9c274d7b1fc0c181cfe290d699a0c5e94701dfe79/mss-10.1.0.tar.gz", hash = "sha256:7182baf7ee16ca569e2804028b6ab9bcbf6be5c46fc2880840f33b513b9cb4f8", size = 84200, upload-time = "2025-08-16T12:11:00.119Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/28/1e3e5cd1d677cca68b26166f704f72e35b1e8b6d5076d8ebeebc4e40a649/mss-10.1.0-py3-none-any.whl", hash = "sha256:9179c110cadfef5dc6dc4a041a0cd161c74c379218648e6640b48c6b5cfe8918", size = 24525, upload-time = "2025-08-16T12:10:59.111Z" },
+]
+
+[[package]]
 name = "multidict"
 version = "6.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2842,6 +2859,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
+name = "pytesseract"
+version = "0.3.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/a6/7d679b83c285974a7cb94d739b461fa7e7a9b17a3abfd7bf6cbc5c2394b0/pytesseract-0.3.13.tar.gz", hash = "sha256:4bf5f880c99406f52a3cfc2633e42d9dc67615e69d8a509d74867d3baddb5db9", size = 17689, upload-time = "2024-08-16T02:33:56.762Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/33/8312d7ce74670c9d39a532b2c246a853861120486be9443eebf048043637/pytesseract-0.3.13-py3-none-any.whl", hash = "sha256:7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34", size = 14705, upload-time = "2024-08-16T02:36:10.09Z" },
 ]
 
 [[package]]

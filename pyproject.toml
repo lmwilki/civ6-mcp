@@ -43,6 +43,11 @@ launcher-windows = [
     "winrt-Windows.Foundation>=2.1",
     "winrt-Windows.Foundation.Collections>=2.1",
 ]
+launcher-linux = [
+    "mss>=9.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0",
+]
 launcher = ["civ6-mcp[launcher-macos]"]  # backward compat alias
 
 [project.urls]
