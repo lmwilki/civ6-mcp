@@ -868,10 +868,10 @@ def _click(x: int, y: int) -> None:
 
     e = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (x, y), 0)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
-    time.sleep(0.15)
+    time.sleep(0.3)
     e = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, (x, y), 0)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
-    time.sleep(0.05)
+    time.sleep(0.1)
     e = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseUp, (x, y), 0)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
 
@@ -1097,8 +1097,10 @@ def _click_text(
         log.warning("OCR: '%s' not found after %ds", target, timeout)
         return False
     text, x, y, w, h = match
+    # x, y are already bounding box center (Vision maps norm_cx/norm_cy)
     log.info("OCR: found '%s' at (%d,%d) — clicking", text, x, y)
     _bring_to_front()
+    time.sleep(0.3)
     _click(x, y)
     time.sleep(post_delay)
     return True
@@ -1267,14 +1269,23 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
         steps.append("Default save list (regular saves)")
 
     # Sort by name so 0A_, 0B_, ... saves appear at the top.
-    # The UI toggles: click "Sort by Last Modified" to open the dropdown,
-    # then "Sort by Name" becomes clickable.
-    log.info("[4/7] Sorting by Name...")
-    if not _click_text("Sort by Name", timeout=3, post_delay=1):
-        # "Sort by Name" not visible — click "Sort by Last Modified" to toggle
-        if _click_text("Sort by Last Modified", timeout=3, post_delay=1):
-            _click_text("Sort by Name", timeout=5, post_delay=1)
-    steps.append("Sorted by Name")
+    # The UI shows the CURRENT sort mode as a label. When "Sort by Last Modified"
+    # is visible, click it to toggle to sort-by-name. When "Sort by Name" is
+    # visible, we're already sorted by name.
+    log.info("[4/7] Ensuring sorted by Name...")
+    match = _wait_for_text("Sort by Last Modified", timeout=3)
+    if match:
+        # Currently sorted by Last Modified — click to switch to Name
+        text, x, y, w, h = match
+        log.info("OCR: clicking 'Sort by Last Modified' to toggle to Name at (%d,%d)", x, y)
+        _bring_to_front()
+        time.sleep(0.3)
+        _click(x, y)
+        time.sleep(1)
+        steps.append("Sorted by Name")
+    else:
+        log.info("Already sorted by Name")
+        steps.append("Already sorted by Name")
 
     log.info("[5/7] Looking for save '%s'...", save_name)
     if not _click_text(save_name, timeout=15, post_delay=2):
