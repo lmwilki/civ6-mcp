@@ -322,6 +322,7 @@ def _civ_mcp_server(
     scenario: Scenario | None = None,
     eval_track: str = "",
     model_id: str = "",
+    resume_save: str | None = None,
 ):
     """Create the civ-mcp MCP server instance (stdio transport).
 
@@ -335,7 +336,8 @@ def _civ_mcp_server(
         env["CIV_MCP_AGENT_MODEL"] = model_id
     if scenario:
         env["CIV_MCP_SCENARIO"] = scenario.scenario_id
-        env["CIV_MCP_SAVE_FILE"] = scenario.save_file.replace(".Civ6Save", "")
+        # resume_save overrides scenario start save for auto-boot
+        env["CIV_MCP_SAVE_FILE"] = resume_save or scenario.save_file.replace(".Civ6Save", "")
         env["CIV_MCP_DIFFICULTY"] = scenario.difficulty
         env["CIV_MCP_MAP_TYPE"] = scenario.map_type
         env["CIV_MCP_MAP_SIZE"] = scenario.map_size
@@ -436,7 +438,7 @@ def civbench_standard(
     # runs share one MCP process, so env vars can't vary per sample — the
     # diary/log entries still carry per-turn civ/game info for identification.
     scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
-    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_standard", model_id=model_id)
+    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_standard", model_id=model_id, resume_save=resume_save)
 
     # Resolve file:// references (Inspect -T passes raw strings)
     if resume_context and resume_context.startswith("file://"):
