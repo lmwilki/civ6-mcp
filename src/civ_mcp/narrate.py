@@ -352,6 +352,8 @@ def narrate_cities(
                 short = dtype.replace("DISTRICT_", "")
                 dist_strs.append(f"{short}({coords})")
             lines.append(f"    Districts: {' '.join(dist_strs)}")
+        if c.buildings:
+            lines.append(f"    Buildings: {', '.join(c.buildings)}")
         if c.pillaged_districts or c.pillaged_buildings:
             pill_names = [d.replace("DISTRICT_", "") for d in c.pillaged_districts]
             pill_bldgs = [b.replace("BUILDING_", "") for b in c.pillaged_buildings]
@@ -814,18 +816,29 @@ def narrate_tech_civics(tc: lq.TechCivicStatus) -> str:
             boost_str = " BOOSTED" if t.boosted else ""
             boost_desc = f" [Boost: {t.boost_desc}]" if t.boost_desc else ""
             unlocks = f" -> {t.unlocks}" if t.unlocks else ""
+            era_str = f" [{t.era.replace('ERA_', '')}]" if t.era else ""
+            prereq_str = f" (needs: {t.prereqs})" if t.prereqs else ""
             flag = " !! GRAB THIS" if t.turns <= 2 else ""
             lines.append(
-                f"  {t.name} ({t.tech_type}) — {t.progress_pct}%, {t.turns} turns{boost_str}{boost_desc}{unlocks}{flag}"
+                f"  {t.name} ({t.tech_type}){era_str} — {t.progress_pct}%, {t.turns} turns{boost_str}{boost_desc}{unlocks}{prereq_str}{flag}"
             )
     if tc.available_civics:
         lines.append("\nAvailable civics:")
         for c in sorted(tc.available_civics, key=lambda x: x.turns):
             boost_str = " BOOSTED" if c.boosted else ""
             boost_desc = f" [Boost: {c.boost_desc}]" if c.boost_desc else ""
+            era_str = f" [{c.era.replace('ERA_', '')}]" if c.era else ""
+            prereq_str = f" (needs: {c.prereqs})" if c.prereqs else ""
             flag = " !! GRAB THIS" if c.turns <= 2 else ""
             lines.append(
-                f"  {c.name} ({c.civic_type}) — {c.progress_pct}%, {c.turns} turns{boost_str}{boost_desc}{flag}"
+                f"  {c.name} ({c.civic_type}){era_str} — {c.progress_pct}%, {c.turns} turns{boost_str}{boost_desc}{prereq_str}{flag}"
+            )
+    if tc.locked_techs:
+        lines.append("\nLocked techs (prerequisites missing):")
+        for lt in tc.locked_techs:
+            era_str = f" [{lt.era.replace('ERA_', '')}]" if lt.era else ""
+            lines.append(
+                f"  {lt.name} ({lt.tech_type}){era_str} — needs: {', '.join(lt.missing_prereqs)}"
             )
     if tc.locked_civics:
         lines.append("\nLocked civics (prerequisites missing):")
@@ -1208,6 +1221,33 @@ def narrate_great_people(gp: list[lq.GreatPersonInfo]) -> str:
             entry += f"\n    Patronize: {' / '.join(costs)}"
         entry += f"\n    (individual_id: {g.individual_id})"
         lines.append(entry)
+    return "\n".join(lines)
+
+
+def narrate_gp_advisor(result: lq.GPAdvisorResult) -> str:
+    district_short = result.target_district.replace("DISTRICT_", "").replace("_", " ").title()
+    class_short = result.gp_class.replace("GREAT_PERSON_CLASS_", "").replace("_", " ").title()
+    lines = [
+        f"Best activation cities for {result.gp_name} ({class_short} -> {district_short}):"
+    ]
+    if result.charges > 0:
+        lines[0] += f" [{result.charges} charge(s)]"
+    if not result.cities:
+        lines.append("  No cities with a completed matching district found.")
+        return "\n".join(lines)
+    # Sort: can_activate first, then by city_yield descending
+    ranked = sorted(
+        result.cities, key=lambda c: (not c.can_activate, -c.city_yield)
+    )
+    for i, c in enumerate(ranked, 1):
+        status = "CAN ACTIVATE" if c.can_activate else f"needs move (dist {c.distance})"
+        yield_str = f", yield {c.city_yield}" if c.city_yield > 0 else ""
+        slots_str = ""
+        if c.slots_free >= 0:
+            slots_str = f", {c.slots_free}/{c.slots_total} great work slots free"
+        lines.append(
+            f"  {i}. {c.city_name} ({c.district_x},{c.district_y}) — {status}{yield_str}{slots_str}"
+        )
     return "\n".join(lines)
 
 

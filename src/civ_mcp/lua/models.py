@@ -419,6 +419,8 @@ class CivicOption:
     turns: int
     boosted: bool
     boost_desc: str  # trigger description, empty if none
+    prereqs: str = ""  # comma-separated prereq civic type names
+    era: str = ""  # e.g. "ERA_MEDIEVAL"
 
 
 @dataclass
@@ -1029,6 +1031,34 @@ class GreatPersonInfo:
     faith_cost: int = 0  # faith patronize cost
     can_recruit: bool = False  # have enough GP points
     individual_id: int = 0  # GameInfo index for recruit/patronize actions
+
+
+@dataclass
+class GPAdvisorCity:
+    """A candidate city for Great Person activation."""
+
+    city_name: str
+    city_id: int
+    district_x: int
+    district_y: int
+    can_activate: bool  # GP can activate here right now
+    distance: int  # hex distance from GP's current position
+    city_yield: int = 0  # city's total yield for the relevant type
+    slots_free: int = -1  # empty great work slots (-1 = N/A)
+    slots_total: int = -1  # total great work slots (-1 = N/A)
+
+
+@dataclass
+class GPAdvisorResult:
+    """Result of GP placement advisor query."""
+
+    gp_name: str
+    gp_class: str
+    target_district: str
+    gp_x: int
+    gp_y: int
+    charges: int
+    cities: list[GPAdvisorCity]
 
 
 @dataclass

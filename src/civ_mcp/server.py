@@ -1897,6 +1897,28 @@ async def get_great_people(ctx: Context) -> str:
 
 
 @mcp.tool()
+async def get_gp_advisor(ctx: Context, unit_index: int) -> str:
+    """Show best cities to activate a Great Person, ranked by suitability.
+
+    Args:
+        unit_index: The Great Person unit's index (from get_units output).
+
+    Lists all cities with the matching district (e.g., campuses for Great Scientists),
+    showing which ones the GP can activate on, distance, city yield, and great work
+    slot availability for cultural GPs.
+    """
+    gs = _get_game(ctx)
+
+    async def _run():
+        result = await gs.get_gp_advisor(unit_index)
+        if result is None:
+            return "Could not get GP advisor info. Is this a Great Person unit?"
+        return nr.narrate_gp_advisor(result)
+
+    return await _logged(ctx, "get_gp_advisor", {"unit": unit_index}, _run)
+
+
+@mcp.tool()
 async def recruit_great_person(ctx: Context, individual_id: int) -> str:
     """Recruit a Great Person using accumulated GP points.
 

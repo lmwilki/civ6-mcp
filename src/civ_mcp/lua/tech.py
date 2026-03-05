@@ -67,6 +67,11 @@ for tech in GameInfo.Technologies() do
         for r in GameInfo.Resources() do
             if r.PrereqTech == tech.TechnologyType then table.insert(unlocks, "Reveals " .. Locale.Lookup(r.Name)) end
         end
+        pcall(function()
+            for proj in GameInfo.Projects() do
+                if proj.PrereqTech == tech.TechnologyType then table.insert(unlocks, "Project: " .. Locale.Lookup(proj.Name)) end
+            end
+        end)
         local unlockStr = table.concat(unlocks, ", "):gsub("|", "/")
         local boostTag = boosted and "BOOSTED" or "UNBOOSTED"
         local prereqStr = ""
@@ -106,8 +111,9 @@ for civic in GameInfo.Civics() do
             end
             if canProgress then
                 local cost = cu:GetCultureCost(civic.Index)
-                -- GameCore has no GetCulturalProgress/GetTurnsLeft per civic
-                -- Estimate turns from cost and culture yield
+                local currentProg = 0
+                pcall(function() currentProg = cu:GetCulturalProgress(civic.Index) end)
+                local pct2 = cost > 0 and math.floor(currentProg * 100 / cost) or 0
                 local cultureYield = Players[id]:GetCulture():GetCultureYield() or 1
                 local turns2 = cultureYield > 0 and math.ceil(cost / cultureYield) or -1
                 local boosted2 = cu:HasBoostBeenTriggered(civic.Index)
@@ -117,7 +123,11 @@ for civic in GameInfo.Civics() do
                     boostDesc2 = Locale.Lookup(b2.TriggerDescription):gsub("|", "/")
                 end
                 local boostTag2 = boosted2 and "BOOSTED" or "UNBOOSTED"
-                print("CIVIC|" .. Locale.Lookup(civic.Name) .. "|" .. civic.CivicType .. "|" .. cost .. "|0|" .. turns2 .. "|" .. boostTag2 .. "|" .. boostDesc2)
+                local civicPrereqStr = ""
+                if prereqs[civic.CivicType] then
+                    civicPrereqStr = table.concat(prereqs[civic.CivicType], ",")
+                end
+                print("CIVIC|" .. Locale.Lookup(civic.Name) .. "|" .. civic.CivicType .. "|" .. cost .. "|" .. pct2 .. "|" .. turns2 .. "|" .. boostTag2 .. "|" .. boostDesc2 .. "|" .. civicPrereqStr .. "|" .. (civic.EraType or ""))
             end
         end
     end
@@ -325,6 +335,8 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
                         turns=int(parts[5]),
                         boosted=parts[6] == "BOOSTED",
                         boost_desc=parts[7],
+                        prereqs=parts[8] if len(parts) > 8 else "",
+                        era=parts[9] if len(parts) > 9 else "",
                     )
                 )
             elif len(parts) >= 3:

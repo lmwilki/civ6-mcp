@@ -1137,6 +1137,11 @@ class GameState:
         lines = await self.conn.execute_write(lua)
         return lq.parse_great_people_response(lines)
 
+    async def get_gp_advisor(self, unit_index: int) -> lq.GPAdvisorResult | None:
+        lua = lq.build_gp_advisor_query(unit_index)
+        lines = await self.conn.execute_write(lua)
+        return lq.parse_gp_advisor_response(lines)
+
     async def recruit_great_person(self, individual_id: int) -> str:
         lua = lq.build_recruit_great_person(individual_id)
         lines = await self.conn.execute_write(lua)
