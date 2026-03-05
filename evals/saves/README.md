@@ -4,48 +4,33 @@ This directory holds Civilization VI save files (`.Civ6Save`) used as starting p
 
 ## Required Saves
 
-Each scenario needs 3-5 saves with different map seeds for statistical coverage. Start with one save per scenario; add more later.
-
 Naming convention: `0{LETTER}_{SCENARIO_NAME}.Civ6Save` — the `0` prefix ensures saves sort to the top of Civ 6's Load Game screen.
 
 ### A: Ground Control
 
 | File | Settings |
 |------|----------|
-| `0A_GROUND_CONTROL.Civ6Save` | Babylon (Hammurabi), Pangaea Standard, Warlord, Quick, 7 opponents |
+| `0A_GROUND_CONTROL.Civ6Save` | Babylon (Hammurabi), Pangaea Standard, Prince, Quick, 7 opponents |
 
+**Victory:** All types enabled
 **Opponents:** Korea (Seondeok), Scotland (Robert the Bruce), Australia (John Curtin), Japan (Hojo Tokimune), Rome (Trajan), Mapuche (Lautaro), Netherlands (Wilhelmina)
 
-### B: Empty Canvas
+### B: Snowflake
 
 | File | Settings |
 |------|----------|
-| `0B_EMPTY_CANVAS.Civ6Save` | Kongo (Mvemba a Nzinga), Pangaea Small, Prince, Quick, 5 opponents |
+| `0B_SNOWFLAKE.Civ6Save` | Korea (Seondeok), Six-Armed Snowflake Small, King, Quick, 5 opponents |
 
-**Opponents:** Greece (Pericles), Brazil (Pedro II), Babylon (Hammurabi), Rome (Trajan), France (Catherine de Medici - Magnificence)
+**Victory:** Domination only (Science, Culture, Religious, Diplomatic disabled)
+**Opponents:** Macedon (Alexander), Aztec (Montezuma), Scythia (Tomyris), Brazil (Pedro II), Kongo (Mvemba a Nzinga)
 
-### C: Deus Vult
-
-| File | Settings |
-|------|----------|
-| `0C_DEUS_VULT.Civ6Save` | Germany (Frederick Barbarossa), Pangaea Small, King, Quick, 5 opponents |
-
-**Opponents:** Russia (Peter), Spain (Philip II), Arabia (Saladin - Vizier), Rome (Trajan), Japan (Hojo Tokimune)
-
-### D: Snowflake
+### C: Cry Havoc
 
 | File | Settings |
 |------|----------|
-| `0D_SNOWFLAKE.Civ6Save` | Korea (Seondeok), Six-Armed Snowflake Small, Emperor, Quick, 5 opponents |
+| `0C_CRY_HAVOC.Civ6Save` | Sumeria (Gilgamesh), Pangaea Tiny, Immortal, Quick, 3 opponents |
 
-**Opponents:** Macedon (Alexander), Zulu (Shaka), Aztec (Montezuma), Persia (Cyrus), Scythia (Tomyris)
-
-### E: Cry Havoc
-
-| File | Settings |
-|------|----------|
-| `0E_CRY_HAVOC.Civ6Save` | Sumeria (Gilgamesh), Pangaea Tiny, Immortal, Quick, 3 opponents |
-
+**Victory:** All types enabled
 **Opponents:** Korea (Seondeok), Brazil (Pedro II), Canada (Wilfrid Laurier)
 
 ## Common Settings (All Scenarios)
@@ -55,25 +40,59 @@ Naming convention: `0{LETTER}_{SCENARIO_NAME}.Civ6Save` — the `0` prefix ensur
 | Game Speed | Quick |
 | Start Era | Ancient |
 | Game Modes | None |
-| DLC | Gathering Storm + all leader packs |
+| DLC | Gathering Storm (no Leader Pass on Linux) |
 | Barbarians | On |
 | City-States | Default for map size |
 | Duplicate Leaders | Off |
-| Victory Conditions | All enabled |
 
 ## Creating Save Files
 
-1. Launch Civ 6 with `EnableTuner = 1` in `AppOptions.txt`
-2. Start a new game with the exact settings above
-3. **Save immediately on Turn 1** (before taking any actions)
-4. Copy the `.Civ6Save` file to this directory with the correct name
-5. Record the map seed and game seed (visible in game setup or save metadata)
+### A: Ground Control
 
-### Save file location (macOS)
+1. Create Game > Single Player
+2. **Leader:** Babylon — Hammurabi
+3. **Difficulty:** Prince
+4. **Game Speed:** Quick
+5. **Map Type:** Pangaea
+6. **Map Size:** Standard (8 players)
+7. **Add opponents** (7 total): Korea (Seondeok), Scotland (Robert the Bruce), Australia (John Curtin), Japan (Hojo Tokimune), Rome (Trajan), Mapuche (Lautaro), Netherlands (Wilhelmina)
+8. **Victory Conditions:** All enabled (default)
+9. Start game. **Save immediately on Turn 1** before any actions.
+10. Copy save to this directory as `0A_GROUND_CONTROL.Civ6Save`
 
-```
-~/Library/Application Support/Sid Meier's Civilization VI/Saves/Single/
-```
+### B: Snowflake
+
+1. Create Game > Single Player
+2. **Leader:** Korea — Seondeok
+3. **Difficulty:** King
+4. **Game Speed:** Quick
+5. **Map Type:** Six-Armed Snowflake
+6. **Map Size:** Small (6 players)
+7. **Add opponents** (5 total): Macedon (Alexander), Aztec (Montezuma), Scythia (Tomyris), Brazil (Pedro II), Kongo (Mvemba a Nzinga)
+8. **Victory Conditions:** DOMINATION ONLY — disable Science, Culture, Religious, Diplomatic, Score
+9. Start game. **Save immediately on Turn 1** before any actions.
+10. Copy save to this directory as `0B_SNOWFLAKE.Civ6Save`
+
+### C: Cry Havoc
+
+1. Create Game > Single Player
+2. **Leader:** Sumeria — Gilgamesh
+3. **Difficulty:** Immortal
+4. **Game Speed:** Quick
+5. **Map Type:** Pangaea
+6. **Map Size:** Tiny (4 players)
+7. **Add opponents** (3 total): Korea (Seondeok), Brazil (Pedro II), Canada (Wilfrid Laurier)
+8. **Victory Conditions:** All enabled (default)
+9. Start game. **Save immediately on Turn 1** before any actions.
+10. Copy save to this directory as `0C_CRY_HAVOC.Civ6Save`
+
+### Save file location
+
+| Platform | Path |
+|----------|------|
+| macOS | `~/Library/Application Support/Sid Meier's Civilization VI/Saves/Single/` |
+| Windows | `%USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\Saves\Single\` |
+| Linux | `~/.local/share/aspyr-media/Sid Meier's Civilization VI/Saves/Single/` |
 
 ### Verification checklist
 
@@ -84,6 +103,7 @@ For each save file:
 - [ ] Quick game speed
 - [ ] Turn 1 (no actions taken)
 - [ ] Gathering Storm rules active
+- [ ] Victory conditions correct (Snowflake = domination only)
 
 ## Running an Eval
 

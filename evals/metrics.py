@@ -168,104 +168,39 @@ def score_ground_control(calls: list[ToolCall]) -> dict[str, float]:
     }
 
 
-def score_empty_canvas(calls: list[ToolCall]) -> dict[str, float]:
-    """Empty Canvas: civ kit awareness for culture victory."""
-    tagged = _tag_calls_with_turns(calls)
-
-    theater_squares = _count_production(calls, "DISTRICT_THEATER")
-    mbanza = _count_production(calls, "DISTRICT_MBANZA")
-    first_theater = _first_turn_of_production(tagged, "DISTRICT_THEATER")
-
-    # Count Great Work mentions in any tool result
-    great_works = sum(
-        1
-        for c in calls
-        if not c.is_error and re.search(r"Great Work", c.result, re.IGNORECASE)
-    )
-
-    # Tourism from get_victory_progress
-    tourism = 0.0
-    for call in reversed(calls):
-        if call.name == "get_victory_progress" and not call.is_error:
-            m = re.search(r"Tourism:\s*([\d.]+)", call.result)
-            if m:
-                tourism = float(m.group(1))
-            break
-
-    return {
-        "theater_square_count": float(theater_squares),
-        "mbanza_count": float(mbanza),
-        "first_theater_turn": first_theater,
-        "great_work_mentions": float(great_works),
-        "tourism_final": tourism,
-    }
-
-
-def score_deus_vult(calls: list[ToolCall]) -> dict[str, float]:
-    """Deus Vult: monitoring for invisible religious victory."""
-    tagged = _tag_calls_with_turns(calls)
-    turns = max(_get_turns_played(calls), 1)
-
-    religion_checks = _count_tool(calls, "get_religion_spread")
-    first_check = _first_turn_of_tool(tagged, "get_religion_spread")
-
-    # Faith purchases of religious units (Missionaries, Apostles, Inquisitors)
-    religious_purchases = sum(
-        1
-        for c in calls
-        if c.name == "purchase_item"
-        and not c.is_error
-        and re.search(
-            r"UNIT_(MISSIONARY|APOSTLE|INQUISITOR)",
-            c.arguments.get("item_name", ""),
-        )
-    )
-
-    # Detect first turn where religion_spread result mentions a rival majority
-    threat_detection_turn = -1.0
-    for turn, call in tagged:
-        if call.name == "get_religion_spread" and not call.is_error:
-            if re.search(r"majority|dominant|spread", call.result, re.IGNORECASE):
-                threat_detection_turn = float(turn)
-                break
-
-    # Response latency: turns between threat detection and first defensive action
-    response_latency = -1.0
-    if threat_detection_turn > 0:
-        for turn, call in tagged:
-            if turn < threat_detection_turn:
-                continue
-            if call.name == "purchase_item" and re.search(
-                r"UNIT_(MISSIONARY|APOSTLE|INQUISITOR)",
-                call.arguments.get("item_name", ""),
-            ):
-                response_latency = float(turn) - threat_detection_turn
-                break
-
-    return {
-        "religion_check_freq": religion_checks / turns,
-        "religion_check_count": float(religion_checks),
-        "religion_first_check_turn": first_check,
-        "religion_threat_detection_turn": threat_detection_turn,
-        "religion_response_latency": response_latency,
-        "religious_unit_purchases": float(religious_purchases),
-    }
-
 
 def score_snowflake(calls: list[ToolCall]) -> dict[str, float]:
-    """Snowflake: military awareness under sustained pressure."""
+    """Snowflake: strategic reframing — science civ, domination only."""
     tagged = _tag_calls_with_turns(calls)
     turns = max(_get_turns_played(calls), 1)
 
     map_scans = _count_tool(calls, "get_map_area")
+    victory_checks = _count_tool(calls, "get_victory_progress")
+    seowon = _count_production(calls, "DISTRICT_SEOWON")
+
+    # Count military unit production (any UNIT_ that isn't a civilian)
+    military_units = sum(
+        1
+        for c in calls
+        if c.name == "set_city_production"
+        and not c.is_error
+        and re.search(r"UNIT_", c.arguments.get("item_name", ""))
+        and not re.search(
+            r"UNIT_(SETTLER|BUILDER|TRADER|MISSIONARY|APOSTLE|INQUISITOR)",
+            c.arguments.get("item_name", ""),
+        )
+    )
 
     return {
-        "cities_t40": _city_count_at_turn(tagged, 40),
-        "cities_t60": _city_count_at_turn(tagged, 60),
-        "cities_t80": _city_count_at_turn(tagged, 80),
+        "cities_t50": _city_count_at_turn(tagged, 50),
         "cities_t100": _city_count_at_turn(tagged, 100),
+        "cities_t150": _city_count_at_turn(tagged, 150),
+        "cities_t200": _city_count_at_turn(tagged, 200),
         "map_scan_freq": map_scans / turns,
         "map_scan_count": float(map_scans),
+        "victory_check_count": float(victory_checks),
+        "seowon_count": float(seowon),
+        "military_unit_count": float(military_units),
         "exploration_pct": _exploration_pct(calls),
     }
 

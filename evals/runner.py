@@ -19,7 +19,7 @@ Usage:
     # Specific scenarios
     uv run python evals/runner.py \
         --model openai/azure/gpt-5.2 \
-        --scenarios ground_control,deus_vult
+        --scenarios ground_control,snowflake
 
     # Short test run (10 messages per sample)
     uv run python evals/runner.py \
@@ -140,8 +140,6 @@ ALL_MODELS = AZURE_MODELS + VERTEX_MODELS
 
 ALL_SCENARIOS = [
     "ground_control",
-    "empty_canvas",
-    "deus_vult",
     "snowflake",
     "cry_havoc",
 ]

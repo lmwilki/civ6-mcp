@@ -1,6 +1,6 @@
 """CivBench scenario definitions.
 
-Five benchmark scenarios ordered by difficulty, each isolating a specific
+Three benchmark scenarios ordered by difficulty, each isolating a specific
 Sensorium Effect blind spot. See docs/paper/scenario-spec.md for rationale.
 
 Each scenario specifies a single starting save file, turn budget, and
@@ -49,7 +49,7 @@ def _register(s: Scenario) -> Scenario:
     return s
 
 
-# --- A: Ground Control (Warlord) -------------------------------------------
+# --- A: Ground Control (Prince) --------------------------------------------
 
 ground_control = _register(
     Scenario(
@@ -57,7 +57,7 @@ ground_control = _register(
         name="Ground Control",
         save_file="0A_GROUND_CONTROL.Civ6Save",
         turn_limit=330,
-        difficulty="Warlord",
+        difficulty="Prince",
         map_type="Pangaea",
         map_size="Standard",
         civilization="Babylon (Hammurabi)",
@@ -79,130 +79,64 @@ ground_control = _register(
             "your progress."
         ),
         description=(
-            "Experimental control. Science is the correct path and Warlord "
-            "removes survival pressure. Tests whether the agent monitors "
+            "Experimental control. Science is the correct path and Prince "
+            "provides a level playing field. Tests whether the agent monitors "
             "the race it thinks it's winning: victory progress checks, "
             "Great Scientist competition, eureka engagement."
         ),
     )
 )
 
-# --- B: Empty Canvas (Prince) ----------------------------------------------
-
-empty_canvas = _register(
-    Scenario(
-        scenario_id="empty_canvas",
-        name="Empty Canvas",
-        save_file="0B_EMPTY_CANVAS.Civ6Save",
-        turn_limit=330,
-        difficulty="Prince",
-        map_type="Pangaea",
-        map_size="Small",
-        civilization="Kongo (Mvemba a Nzinga)",
-        opponents=(
-            "Greece (Pericles)",
-            "Brazil (Pedro II)",
-            "Babylon (Hammurabi)",
-            "Rome (Trajan)",
-            "France (Catherine de Medici - Magnificence)",
-        ),
-        blind_spot="Own civ kit",
-        objective=(
-            "Play as Kongo on a Small Pangaea map. Develop your "
-            "civilisation and work toward the victory condition that best "
-            "suits your unique abilities. Note: Kongo cannot found a "
-            "religion."
-        ),
-        description=(
-            "Tests civ kit awareness. Kongo has zero science bonuses but "
-            "the strongest cultural kit in the game: 2x Great Work slots, "
-            "+50% Great Writer/Artist/Musician/Merchant points, Mbanza "
-            "district. Science victory is possible but actively "
-            "disadvantaged. Cultural victory is overwhelmingly signposted."
-        ),
-    )
-)
-
-# --- C: Deus Vult (King) ---------------------------------------------------
-
-deus_vult = _register(
-    Scenario(
-        scenario_id="deus_vult",
-        name="Deus Vult",
-        save_file="0C_DEUS_VULT.Civ6Save",
-        turn_limit=330,
-        difficulty="King",
-        map_type="Pangaea",
-        map_size="Small",
-        civilization="Germany (Frederick Barbarossa)",
-        opponents=(
-            "Russia (Peter)",
-            "Spain (Philip II)",
-            "Arabia (Saladin - Vizier)",
-            "Rome (Trajan)",
-            "Japan (Hojo Tokimune)",
-        ),
-        blind_spot="Invisible rival victory",
-        objective=(
-            "Play as Germany on a Small Pangaea map. Build a strong "
-            "empire with a focus on industrial and military development. "
-            "Monitor the global situation and respond to threats as they "
-            "emerge."
-        ),
-        description=(
-            "Tests whether the agent sees what it doesn't query. Germany "
-            "has zero religious affinity. Three opponents (Russia, Spain, "
-            "Arabia) are aggressive religious civs that will flood the map "
-            "with missionaries. Religious victory requires majority in ALL "
-            "civs — the agent is a target whether it engages or not. "
-            "Historical call frequency for get_religion_spread: near zero."
-        ),
-    )
-)
-
-# --- D: Snowflake (Emperor) ------------------------------------------------
+# --- B: Snowflake (King, Domination only) ----------------------------------
 
 snowflake = _register(
     Scenario(
         scenario_id="snowflake",
         name="Snowflake",
-        save_file="0D_SNOWFLAKE.Civ6Save",
+        save_file="0B_SNOWFLAKE.Civ6Save",
         turn_limit=330,
-        difficulty="Emperor",
+        difficulty="King",
         map_type="Six-Armed Snowflake",
         map_size="Small",
         civilization="Korea (Seondeok)",
         opponents=(
             "Macedon (Alexander)",
-            "Zulu (Shaka)",
             "Aztec (Montezuma)",
-            "Persia (Cyrus)",
             "Scythia (Tomyris)",
+            "Brazil (Pedro II)",
+            "Kongo (Mvemba a Nzinga)",
         ),
-        blind_spot="Military threats",
+        blind_spot="Strategic reframing",
         objective=(
             "Play as Korea on a Six-Armed Snowflake map. The map generates "
-            "peninsular arms radiating from a central hub — expect "
-            "chokepoints. Build your science engine while maintaining "
-            "adequate defences against aggressive neighbours."
+            "six peninsular arms radiating from a resource-rich central hub. "
+            "Each arm has room for a few cities but late-game strategic "
+            "resources (niter, coal, oil) are concentrated in the center. "
+            "Only domination victory is enabled — all other victory types "
+            "are disabled. Leverage your science advantage to field superior "
+            "military units and conquer."
         ),
         description=(
-            "Deliberately adversarial. All five opponents are "
-            "domination-oriented. Korea is a pure science civ with no "
-            "military bonuses. Emperor gives AI +20% yields and +2 combat "
-            "strength. Tests reactive military decision-making — a missed "
-            "get_map_area scan means an undetected army at the chokepoint."
+            "Tests strategic reframing: a science civ with science victory "
+            "disabled. Korea's Seowon engine still works but must serve "
+            "domination, not a space race. The Snowflake map concentrates "
+            "late-game strategic resources in the center — the agent must "
+            "push through chokepoints to access niter/coal/oil. Three "
+            "opponents (Macedon, Aztec, Scythia) are aggressive and will "
+            "contest the center; two (Brazil, Kongo) are passive targets. "
+            "King difficulty keeps survival manageable so the variable "
+            "under test is strategic adaptation, not raw difficulty."
         ),
     )
 )
 
-# --- E: Cry Havoc (Immortal) -----------------------------------------------
+# --- C: Cry Havoc (Immortal) -----------------------------------------------
 
 cry_havoc = _register(
     Scenario(
         scenario_id="cry_havoc",
         name="Cry Havoc",
-        save_file="0E_CRY_HAVOC.Civ6Save",
+        save_file="0C_CRY_HAVOC.Civ6Save",
         turn_limit=330,
         difficulty="Immortal",
         map_type="Pangaea",

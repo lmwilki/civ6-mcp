@@ -1,6 +1,6 @@
 # Benchmark Scenario Specification
 
-Five scenarios forming an evaluation battery, ordered by difficulty. Each isolates a specific capability the sensorium effect undermines. All use Quick speed (330-turn game length) to keep per-game cost and wall-clock time practical across multi-model comparison.
+Three scenarios forming an evaluation battery, ordered by difficulty. Each isolates a specific capability the sensorium effect undermines. All use Quick speed (330-turn game length) to keep per-game cost and wall-clock time practical across multi-model comparison.
 
 ## Common Settings
 
@@ -9,11 +9,10 @@ Five scenarios forming an evaluation battery, ordered by difficulty. Each isolat
 | Game Speed | Quick |
 | Start Era | Ancient |
 | Game Modes | None |
-| DLC | Gathering Storm + all leader packs |
+| DLC | Gathering Storm (no Leader Pass on Linux) |
 | Barbarians | On |
 | City-States | Default for map size |
 | Duplicate Leaders | Off |
-| Victory Conditions | All enabled |
 | Save Format | T1 save files for exact reproducibility |
 
 Record map seed, game seed, game version, and DLC list for each save. One save per scenario — all models play the exact same map for comparison clarity.
@@ -28,10 +27,11 @@ Record map seed, game seed, game version, and DLC list for each save. One save p
 |-----------|-------|
 | Agent Civ | Babylon (Hammurabi) |
 | Map | Pangaea, Standard |
-| Difficulty | Warlord |
+| Difficulty | Prince |
+| Victory | All types enabled |
 | Opponents | Korea (Seondeok), Scotland (Robert the Bruce), Australia (John Curtin), Japan (Hojo Tokimune), Rome (Trajan), Mapuche (Lautaro), Netherlands (Wilhelmina) |
 
-The experimental control. Babylon is a science civ with a unique mechanic: eurekas grant the full technology instead of a 50% boost. The agent's default preference for science is correct here. Warlord difficulty removes survival pressure entirely — the agent should cruise to a science victory. The variable under test is not whether it wins, but whether it knows it's winning.
+The experimental control. Babylon is a science civ with a unique mechanic: eurekas grant the full technology instead of a 50% boost. The agent's default preference for science is correct here. Prince difficulty provides a level playing field — the agent should pursue a science victory with no AI bonuses or penalties. The variable under test is not whether it wins, but whether it knows it's winning.
 
 Three opponents are genuine science competitors: Korea (Seowon engine), Scotland (science when happy + Great Scientists), Australia (production bonuses for space projects). On Warlord they are slower than the agent, but they still pursue the space race. Netherlands adds balanced trade/science competition. Rome, Mapuche, and Japan provide non-science pressure (expansion, loyalty/combat) without derailing the science race framing.
 
@@ -41,68 +41,36 @@ Babylon's eureka mechanic adds a secondary signal: eurekas reward engagement wit
 
 ---
 
-## Scenario B — "Empty Canvas"
+## Scenario B — "Snowflake"
 
-**Tests:** Does the agent see its own civ kit?
-
-| Parameter | Value |
-|-----------|-------|
-| Agent Civ | Kongo (Mvemba a Nzinga) |
-| Map | Pangaea, Small |
-| Difficulty | Prince |
-| Opponents | Greece (Pericles), Brazil (Pedro II), Babylon (Hammurabi), Rome (Trajan), France (Catherine de Medici - Magnificence) |
-
-Kongo cannot found a religion (hard-blocked). It has zero science bonuses. What it has is the strongest cultural kit in the game: 2x Great Work slots, +50% Great Writer/Artist/Musician/Merchant points, Mbanza unique district available at Guilds civic. Science victory is possible but actively disadvantaged — the agent is playing a generic civ with no bonuses. Cultural victory is overwhelmingly signposted by the kit.
-
-Greece, Brazil, and France compete for Great Writers/Artists/Musicians — the agent faces three cultural rivals on its own turf. Babylon will out-science a Kongo trying to science-tunnel. Rome expands aggressively as baseline pressure. Prince difficulty keeps the environment gentle so the variable under test is kit adaptation, not survival.
-
-**Key metrics:** Theater Squares built, Great Works collected, tourism output at checkpoints, victory type stated in diary, Mbanza utilisation, turns to first Theater Square.
-
----
-
-## Scenario C — "Deus Vult"
-
-**Tests:** Does the agent see what it doesn't query?
-
-| Parameter | Value |
-|-----------|-------|
-| Agent Civ | Germany (Frederick Barbarossa) |
-| Map | Pangaea, Small |
-| Difficulty | King |
-| Opponents | Russia (Peter), Spain (Philip II), Arabia (Saladin - Vizier), Rome (Trajan), Japan (Hojo Tokimune) |
-
-Germany has zero religious affinity. Any religious monitoring is purely proactive. Three opponents are among the most aggressive religious civs in the game: Russia (Lavra faith engine), Spain (Inquisitors remove 100% heresy, combat bonus vs other religions), Arabia (guaranteed Great Prophet, free worship building). On small Pangaea they will flood the map with missionaries and apostles by T50-70.
-
-Religious victory requires majority in ALL civs — the agent is a conversion target whether it engages or not. The data is available via `get_religion_spread`. The playbook says check every 20 turns. Historical call frequency: once in 431 turns (Game 10), zero (Games 11-12).
-
-Rome and Japan are balanced expanders who build large empires — conversion targets for the three religious civs. Neither is religious, so the 3-vs-2 dynamic stays clean.
-
-**Key metrics:** `get_religion_spread` call frequency, turn of first religious threat detection, response latency (turns between detection and first defensive action), agent cities converted to foreign religion, faith spending on Inquisitors/Apostles.
-
----
-
-## Scenario D — "Snowflake"
-
-**Tests:** Does the agent see the army at the gate?
+**Tests:** Can the agent reframe its tools when its default goal is removed?
 
 | Parameter | Value |
 |-----------|-------|
 | Agent Civ | Korea (Seondeok) |
 | Map | Six-Armed Snowflake, Small |
-| Difficulty | Emperor |
-| Opponents | Macedon (Alexander), Zulu (Shaka), Aztec (Montezuma), Persia (Cyrus), Scythia (Tomyris) |
+| Difficulty | King |
+| Victory | **Domination only** (Science, Culture, Religious, Diplomatic disabled) |
+| Opponents | Macedon (Alexander), Aztec (Montezuma), Scythia (Tomyris), Brazil (Pedro II), Kongo (Mvemba a Nzinga) |
 
-A deliberately adversarial scenario. The map generates six peninsular arms radiating from a central hub — isolated early, inevitable collision at chokepoints. All five opponents are domination-oriented. Korea is a pure science civ with no military bonuses. Emperor gives AI +20% yields and +2 combat strength.
+Korea is the purest science civ in the game — Seowon districts, Hwacha unique unit, science-focused leader ability. But science victory is disabled. The agent must recognise this and reframe: science is now a *weapon* (faster military tech), not a victory path.
 
-The scenario targets reactive military decision-making under sustained pressure — a missed `get_map_area` scan means an undetected army at the chokepoint.
+The Six-Armed Snowflake map places each civ on a peninsular arm radiating from a resource-rich central hub (the "Promised Land"). Arms have room for 2-3 cities with mountains (excellent Seowon adjacency) but late-game strategic resources — niter, coal, uranium — are concentrated exclusively in the center. The agent must push through its chokepoint to access these resources.
 
-Recreation of Game 12 at Quick speed. The Standard speed game ran 216 turns before concession.
+Three opponents are aggressive: Macedon (early conquest, anti-wonder), Aztec (eagle warriors, luxury combat bonuses), and Scythia (double cavalry production). They will contest the center. Two opponents are passive: Brazil (culture-focused) and Kongo (culture/great works, cannot found religion). The passive civs are softer targets once the agent controls the center.
 
-**Key metrics:** Cities at T40/T60/T80/T100, settler losses, military strength vs nearest rival at war declaration, cities lost/recaptured, `get_map_area` scan frequency around chokepoints, Seowon/Hwacha utilisation, exploration %.
+The scenario has a natural three-act structure:
+- **Act 1 (T1-50):** Develop the arm. Seowon engine works — mountains are on the arms. Tech faster than everyone. But limited to warriors/slingers without center resources.
+- **Act 2 (T50-120):** Push into the center. Contest Macedon/Aztec/Scythia for iron, niter, horses. Korea's tech lead means fielding crossbowmen while others have warriors.
+- **Act 3 (T120+):** Use tech + resource advantage to push down remaining arms and capture capitals.
+
+King difficulty keeps survival manageable so the variable under test is strategic adaptation, not raw difficulty pressure.
+
+**Key metrics:** Turn agent first acknowledges domination-only in diary, turn of first military unit beyond starting warrior, turn agent first moves toward center, turn agent secures first strategic resource from center, tech lead at T50/T100 (does it have crossbowmen while others have warriors?), cities captured by T100/T150/T200, Seowon count, `get_victory_progress` call frequency.
 
 ---
 
-## Scenario E — "Cry Havoc"
+## Scenario C — "Cry Havoc"
 
 **Tests:** Does the agent see that the rules have changed?
 
@@ -111,6 +79,7 @@ Recreation of Game 12 at Quick speed. The Standard speed game ran 216 turns befo
 | Agent Civ | Sumeria (Gilgamesh) |
 | Map | Pangaea, Tiny (4 players) |
 | Difficulty | Immortal |
+| Victory | All types enabled |
 | Opponents | Korea (Seondeok), Brazil (Pedro II), Canada (Wilfrid Laurier) |
 
 On Immortal the AI gets +40% yields, +3 combat strength, and 2 free Warriors. The agent's default playbook (Scout → Settler → Campus → science snowball) is unviable against AI civilisations with a 40% yield head start that compounds every turn.
@@ -127,11 +96,13 @@ Tiny Pangaea (4 players) ensures the agent finds opponents quickly and that each
 
 ## Summary
 
-| | Ground Control | Empty Canvas | Deus Vult | Snowflake | Cry Havoc |
-|--|---|---|---|---|---|
-| **Civ** | Babylon | Kongo | Germany | Korea | Sumeria |
-| **Map** | Pangaea, Standard | Pangaea, Small | Pangaea, Small | Snowflake, Small | Pangaea, Tiny |
-| **Difficulty** | Warlord | Prince | King | Emperor | Immortal |
-| **Opponents** | Korea/Scotland/Australia/Japan/Rome/Mapuche/Netherlands | Greece/Brazil/Babylon/Rome/France | Russia/Spain/Arabia/Rome/Japan | Macedon/Zulu/Aztec/Persia/Scythia | Korea/Brazil/Canada |
-| **Blind spot** | Tempo awareness | Own civ kit | Invisible rival victory | Military threats | Difficulty context |
-| **Science blocked by** | — (science is correct) | No science bonuses | Religious time pressure | Military destruction | Immortal yield math |
+| | Ground Control | Snowflake | Cry Havoc |
+|--|---|---|---|
+| **Letter** | A | B | C |
+| **Civ** | Babylon | Korea | Sumeria |
+| **Map** | Pangaea, Standard | Snowflake, Small | Pangaea, Tiny |
+| **Difficulty** | Prince | King | Immortal |
+| **Victory** | All | Domination only | All |
+| **Opponents** | Korea/Scotland/Australia/Japan/Rome/Mapuche/Netherlands | Macedon/Aztec/Scythia/Brazil/Kongo | Korea/Brazil/Canada |
+| **Blind spot** | Tempo awareness | Strategic reframing | Difficulty context |
+| **Default path blocked by** | — (science is correct) | Science victory disabled | Immortal yield math |

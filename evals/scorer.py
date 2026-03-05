@@ -377,10 +377,6 @@ def civbench_scorer():
         scenario_metrics: dict[str, float] = {}
         if scenario_id == "ground_control":
             scenario_metrics = metrics.score_ground_control(calls)
-        elif scenario_id == "empty_canvas":
-            scenario_metrics = metrics.score_empty_canvas(calls)
-        elif scenario_id == "deus_vult":
-            scenario_metrics = metrics.score_deus_vult(calls)
         elif scenario_id == "snowflake":
             scenario_metrics = metrics.score_snowflake(calls)
         elif scenario_id == "cry_havoc":

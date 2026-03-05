@@ -23,7 +23,7 @@ Usage:
     # Short test run
     inspect eval evals/civbench.py@civbench_standard \
         --model anthropic/claude-sonnet-4-5-20250929 \
-        -T scenarios=empty_canvas \
+        -T scenarios=snowflake \
         --message-limit 50
 
     # Open track (custom solver)
