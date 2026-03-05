@@ -113,7 +113,7 @@ def build_scenario_prompt(
     Args:
         scenario: The scenario definition.
         resume_save: If set, load this save instead of the scenario start save
-                     (e.g. "MCP_AutoSave_0221" to resume from turn 221).
+                     (e.g. "0_MCP_0221" to resume from turn 221).
         resume_context: If set, markdown block with diary summary / game history
                         to include so the agent has context from previous play.
     """
@@ -134,17 +134,25 @@ def build_scenario_prompt(
     if resume_context:
         parts.append(f"### Game History\n\n{resume_context}\n\n")
 
+    if resume_save:
+        parts.append(
+            f"### Getting Started\n\n"
+            f"Call `load_game_save(\"{load_save}\")` to load the autosave and "
+            f"continue the game. Wait ~10 seconds for the save to load, then call "
+            f"`get_game_overview` to orient yourself and begin playing.\n\n"
+        )
+    else:
+        parts.append(
+            f"### Getting Started\n\n"
+            f"The scenario save is loaded automatically. Call `get_game_overview` "
+            f"to orient yourself and begin playing.\n\n"
+        )
+
     parts.append(
-        f"### Getting Started\n\n"
-        f"**Step 1:** Call `load_game_save(\"{load_save}\")` to load the "
-        f"{'autosave and continue the game' if resume_save else 'scenario save'}. "
-        f"This works from the main menu or in-game.\n"
-        f"**Step 2:** Wait ~10 seconds for the save to load, then call "
-        f"`get_game_overview` to orient yourself and begin playing.\n\n"
         f"### Save Management\n\n"
-        f"The game auto-saves every turn as `MCP_AutoSave_NNNN`. If you need "
+        f"The game auto-saves every turn as `0_MCP_NNNN`. If you need "
         f"to recover from a crash or bad state, call `list_saves` to find the "
-        f"most recent MCP autosave, then `load_game_save(\"MCP_AutoSave_NNNN\")` "
+        f"most recent MCP autosave, then `load_game_save(\"0_MCP_NNNN\")` "
         f"to reload it. Do NOT load `{start_save}` to recover — that is the "
         f"Turn 1 starting save and will erase all progress."
     )

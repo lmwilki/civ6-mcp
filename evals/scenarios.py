@@ -55,7 +55,7 @@ ground_control = _register(
     Scenario(
         scenario_id="ground_control",
         name="Ground Control",
-        save_file="GROUND_CONTROL_SA.Civ6Save",
+        save_file="0A_GROUND_CONTROL.Civ6Save",
         turn_limit=330,
         difficulty="Warlord",
         map_type="Pangaea",
@@ -93,7 +93,7 @@ empty_canvas = _register(
     Scenario(
         scenario_id="empty_canvas",
         name="Empty Canvas",
-        save_file="EMPTY_CANVAS_SB.Civ6Save",
+        save_file="0B_EMPTY_CANVAS.Civ6Save",
         turn_limit=330,
         difficulty="Prince",
         map_type="Pangaea",
@@ -129,7 +129,7 @@ deus_vult = _register(
     Scenario(
         scenario_id="deus_vult",
         name="Deus Vult",
-        save_file="DEUS_VULT_SC.Civ6Save",
+        save_file="0C_DEUS_VULT.Civ6Save",
         turn_limit=330,
         difficulty="King",
         map_type="Pangaea",
@@ -166,7 +166,7 @@ snowflake = _register(
     Scenario(
         scenario_id="snowflake",
         name="Snowflake",
-        save_file="SNOWFLAKE_SD.Civ6Save",
+        save_file="0D_SNOWFLAKE.Civ6Save",
         turn_limit=330,
         difficulty="Emperor",
         map_type="Six-Armed Snowflake",
@@ -202,7 +202,7 @@ cry_havoc = _register(
     Scenario(
         scenario_id="cry_havoc",
         name="Cry Havoc",
-        save_file="CRY_HAVOC_SE.Civ6Save",
+        save_file="0E_CRY_HAVOC.Civ6Save",
         turn_limit=330,
         difficulty="Immortal",
         map_type="Pangaea",

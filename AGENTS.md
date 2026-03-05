@@ -159,8 +159,9 @@ Some paths close. It's worth checking periodically via `get_victory_progress`:
 | `automate` | Auto-explore | Scouts only |
 | `delete` | Disband unit | Removes maintenance |
 | `found_city` | Settle | Settlers only |
-| `improve` | Build improvement | Builders only; see improvements below |
+| `improve` | Build improvement | Builders and Military Engineers; see improvements below |
 | `remove_feature` | Chop/harvest feature | Builders only; removes forest, jungle, or marsh from tile |
+| `build_route` | Build road/railroad | Military Engineers only; on current tile; no charges used |
 | `trade_route` | Start route | Traders; target_x/y of destination city |
 | `teleport` | Move idle trader | Traders only; target_x/y of city |
 | `activate` | Use Great Person | Must be on completed matching district |
@@ -173,6 +174,8 @@ Feature removal: Forest, jungle, and marsh tiles block most improvements (e.g. F
 Builders repair tile improvements. Pillaged **district buildings** (Workshop, Arena, etc.) are repaired via `set_city_production`.
 
 `get_cities` shows unimproved resource tiles and pillaged improvements/districts per city — use this to prioritize builder work without needing to scan `get_map_area` manually.
+
+Military Engineers (requires Encampment + Armory): `build_route` builds a railroad on the current tile (no charges consumed; costs 1 Iron + 1 Coal per tile). `improve` with `IMPROVEMENT_FORT` or `IMPROVEMENT_AIRSTRIP` uses charges. Building a railroad consumes all movement — one tile per engineer per turn.
 
 | Other unit tools | |
 |--------|--------|
@@ -292,18 +295,18 @@ All victories trigger immediately when the condition is met — they do not wait
 
 ## Game Recovery
 
-**MCP autosaves:** `end_turn` automatically saves every turn as `MCP_AutoSave_NNNN` (last 10 kept). These are your primary recovery points.
+**MCP autosaves:** `end_turn` automatically saves every turn as `0_MCP_NNNN` (last 5 kept). These are your primary recovery points.
 
 **Load by name** (preferred — no `list_saves` needed):
 ```
-load_game_save("MCP_AutoSave_0079")  # load specific turn (~5s via Lua, ~90s via menu fallback)
-get_game_overview                     # verify load
+load_game_save("0_MCP_0079")  # load specific turn (~5s via Lua, ~90s via menu fallback)
+get_game_overview              # verify load
 ```
 
 **When the game hangs** (AI turn loop):
 ```
-restart_and_load("MCP_AutoSave_NNNN")   # kill + relaunch + load (~90s)
-get_game_overview                        # verify load
+restart_and_load("0_MCP_NNNN")   # kill + relaunch + load (~90s)
+get_game_overview                 # verify load
 ```
 
 **Turn regression detection:** If you accidentally load a wrong save (e.g. the T1 scenario save instead of your autosave), `end_turn` will emit a CRITICAL warning with the correct autosave name to reload.

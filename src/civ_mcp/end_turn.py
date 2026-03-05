@@ -1112,7 +1112,7 @@ async def execute_end_turn(gs: GameState) -> str:
     # Turn regression detection — catch accidental wrong-save loads
     if turn_after is not None and gs._high_water_turn > 0:
         if turn_after < gs._high_water_turn - 1:
-            latest_autosave = f"MCP_AutoSave_{gs._high_water_turn:04d}"
+            latest_autosave = f"0_MCP_{gs._high_water_turn:04d}"
             log.warning(
                 "Turn regressed from %d to %d — possible wrong save loaded",
                 gs._high_water_turn,
@@ -1156,8 +1156,8 @@ async def execute_end_turn(gs: GameState) -> str:
     # MCP per-turn autosave — fire-and-forget after successful turn advance
     if turn_after is not None:
         try:
-            await save_game(gs.conn, f"MCP_AutoSave_{turn_after:04d}")
-            cleanup_old_autosaves(keep=10)
+            await save_game(gs.conn, f"0_MCP_{turn_after:04d}")
+            cleanup_old_autosaves(keep=5)
         except Exception:
             log.debug("MCP autosave failed for T%s", turn_after, exc_info=True)
 

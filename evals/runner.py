@@ -344,7 +344,7 @@ def main():
     parser.add_argument(
         "--resume-save",
         default=None,
-        help="Resume from an autosave (e.g. MCP_AutoSave_0221)",
+        help="Resume from an autosave (e.g. 0_MCP_0221)",
     )
     parser.add_argument(
         "--list-models",

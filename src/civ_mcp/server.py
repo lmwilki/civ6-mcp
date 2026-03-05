@@ -52,6 +52,54 @@ class AppContext:
     map_capture: MapCapture
 
 
+async def _auto_boot(conn: GameConnection, save_name: str) -> None:
+    """Launch game and load a save before MCP tools become available.
+
+    Called during lifespan when CIV_MCP_SAVE_FILE is set (eval mode).
+    Blocks until the game is loaded and ready for play.
+    """
+    from civ_mcp.game_lifecycle import load_game_save
+
+    # 1. Launch game if not running
+    if not game_launcher.is_game_running():
+        log.info("Auto-boot: launching game...")
+        result = await asyncio.to_thread(game_launcher._launch_game_sync)
+        log.info("Auto-boot: launch result: %s", result)
+
+    # 2. Connect to FireTuner (retry — game takes time to start)
+    for attempt in range(90):
+        try:
+            await conn.connect()
+            log.info("Auto-boot: connected to FireTuner")
+            break
+        except ConnectionError:
+            if attempt % 10 == 0:
+                log.info("Auto-boot: waiting for FireTuner... (%ds)", attempt)
+            await asyncio.sleep(1)
+    else:
+        log.error("Auto-boot: could not connect to FireTuner after 90s")
+        return
+
+    # 3. Load save
+    log.info("Auto-boot: loading save '%s'...", save_name)
+    result = await load_game_save(conn, save_name)
+    log.info("Auto-boot: load result: %s", result)
+
+    # 4. Wait for save to load, then reconnect to discover game Lua states
+    log.info("Auto-boot: waiting for save to load...")
+    await asyncio.sleep(12)
+    for attempt in range(30):
+        try:
+            await conn.reconnect()
+            if conn.gamecore_index is not None:
+                log.info("Auto-boot: game ready (GameCore=%s)", conn.gamecore_index)
+                return
+        except ConnectionError:
+            pass
+        await asyncio.sleep(1)
+    log.warning("Auto-boot: save may not have loaded — GameCore not found")
+
+
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     conn = GameConnection()
@@ -60,6 +108,11 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     map_capture = MapCapture()
     gs = GameState(conn)
     log.info("Game logger session: %s", logger.session_id)
+
+    # Auto-boot: launch game + load save when running as eval
+    save_file = os.environ.get("CIV_MCP_SAVE_FILE")
+    if save_file:
+        await _auto_boot(conn, save_file)
 
     # Spectator-mode background services (camera tracking + popup auto-dismiss)
     camera = CameraController(conn)
@@ -2222,8 +2275,8 @@ async def load_game_save(ctx: Context, save_name: str) -> str:
     """Load a save file by name. No need to call list_saves first.
 
     Args:
-        save_name: Save name without extension (e.g. "MCP_AutoSave_0079",
-                   "GROUND_CONTROL_SA", "AutoSave_0221", "quicksave").
+        save_name: Save name without extension (e.g. "0_MCP_0079",
+                   "0A_GROUND_CONTROL", "AutoSave_0221", "quicksave").
 
     Tries Lua-based loading first (fast, ~5s). If the save isn't found
     via Lua (common for autosaves/quicksaves), falls back to OCR menu

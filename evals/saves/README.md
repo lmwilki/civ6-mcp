@@ -6,13 +6,13 @@ This directory holds Civilization VI save files (`.Civ6Save`) used as starting p
 
 Each scenario needs 3-5 saves with different map seeds for statistical coverage. Start with one save per scenario; add more later.
 
-Naming convention: `{SCENARIO_ID}_S{LETTER}.Civ6Save`
+Naming convention: `0{LETTER}_{SCENARIO_NAME}.Civ6Save` — the `0` prefix ensures saves sort to the top of Civ 6's Load Game screen.
 
 ### A: Ground Control
 
 | File | Settings |
 |------|----------|
-| `GROUND_CONTROL_SA.Civ6Save` | Babylon (Hammurabi), Pangaea Standard, Warlord, Quick, 7 opponents |
+| `0A_GROUND_CONTROL.Civ6Save` | Babylon (Hammurabi), Pangaea Standard, Warlord, Quick, 7 opponents |
 
 **Opponents:** Korea (Seondeok), Scotland (Robert the Bruce), Australia (John Curtin), Japan (Hojo Tokimune), Rome (Trajan), Mapuche (Lautaro), Netherlands (Wilhelmina)
 
@@ -20,7 +20,7 @@ Naming convention: `{SCENARIO_ID}_S{LETTER}.Civ6Save`
 
 | File | Settings |
 |------|----------|
-| `EMPTY_CANVAS_SB.Civ6Save` | Kongo (Mvemba a Nzinga), Pangaea Small, Prince, Quick, 5 opponents |
+| `0B_EMPTY_CANVAS.Civ6Save` | Kongo (Mvemba a Nzinga), Pangaea Small, Prince, Quick, 5 opponents |
 
 **Opponents:** Greece (Pericles), Brazil (Pedro II), Babylon (Hammurabi), Rome (Trajan), France (Catherine de Medici - Magnificence)
 
@@ -28,7 +28,7 @@ Naming convention: `{SCENARIO_ID}_S{LETTER}.Civ6Save`
 
 | File | Settings |
 |------|----------|
-| `DEUS_VULT_SC.Civ6Save` | Germany (Frederick Barbarossa), Pangaea Small, King, Quick, 5 opponents |
+| `0C_DEUS_VULT.Civ6Save` | Germany (Frederick Barbarossa), Pangaea Small, King, Quick, 5 opponents |
 
 **Opponents:** Russia (Peter), Spain (Philip II), Arabia (Saladin - Vizier), Rome (Trajan), Japan (Hojo Tokimune)
 
@@ -36,7 +36,7 @@ Naming convention: `{SCENARIO_ID}_S{LETTER}.Civ6Save`
 
 | File | Settings |
 |------|----------|
-| `SNOWFLAKE_SD.Civ6Save` | Korea (Seondeok), Six-Armed Snowflake Small, Emperor, Quick, 5 opponents |
+| `0D_SNOWFLAKE.Civ6Save` | Korea (Seondeok), Six-Armed Snowflake Small, Emperor, Quick, 5 opponents |
 
 **Opponents:** Macedon (Alexander), Zulu (Shaka), Aztec (Montezuma), Persia (Cyrus), Scythia (Tomyris)
 
@@ -44,7 +44,7 @@ Naming convention: `{SCENARIO_ID}_S{LETTER}.Civ6Save`
 
 | File | Settings |
 |------|----------|
-| `CRY_HAVOC_SE.Civ6Save` | Sumeria (Gilgamesh), Pangaea Tiny, Immortal, Quick, 3 opponents |
+| `0E_CRY_HAVOC.Civ6Save` | Sumeria (Gilgamesh), Pangaea Tiny, Immortal, Quick, 3 opponents |
 
 **Opponents:** Korea (Seondeok), Brazil (Pedro II), Canada (Wilfrid Laurier)
 

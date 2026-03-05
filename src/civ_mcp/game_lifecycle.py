@@ -312,14 +312,14 @@ async def save_game(conn: GameConnection, name: str) -> str:
     return f"Save may have failed: {' '.join(lines)}"
 
 
-def cleanup_old_autosaves(keep: int = 10) -> None:
+def cleanup_old_autosaves(keep: int = 5) -> None:
     """Delete MCP autosaves older than the most recent `keep` saves."""
     import glob
     import os
 
     from .game_launcher import SINGLE_SAVE_DIR
 
-    pattern = os.path.join(SINGLE_SAVE_DIR, "MCP_AutoSave_*.Civ6Save")
+    pattern = os.path.join(SINGLE_SAVE_DIR, "0_MCP_*.Civ6Save")
     saves = glob.glob(pattern)
     if len(saves) <= keep:
         return

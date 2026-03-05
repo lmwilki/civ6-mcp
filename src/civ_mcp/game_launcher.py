@@ -222,6 +222,9 @@ def _click_aspyr_launcher_sync() -> str | None:
     screen with a PLAY button — before the actual game binary starts.
     This function detects that screen via OCR and clicks through it.
 
+    Uses fullscreen OCR directly because the Aspyr launcher window
+    cannot be captured via CGWindowListCreateImage (different process).
+
     Returns None on success, error string on failure.
     """
     if sys.platform != "darwin":
@@ -234,9 +237,24 @@ def _click_aspyr_launcher_sync() -> str | None:
         return "GUI deps not available. Click PLAY on the Aspyr launcher manually."
 
     log.info("Waiting for Aspyr launcher PLAY button...")
-    if _click_text("PLAY", timeout=30, exact=True, post_delay=3):
-        log.info("Clicked PLAY on Aspyr launcher")
-        return None
+    start = time.time()
+    while time.time() - start < 30:
+        # Bring game window to front if it exists
+        win = _find_game_window()
+        if win:
+            _bring_to_front(pid=win.pid)
+            time.sleep(0.3)
+        # Use fullscreen OCR — Aspyr launcher can't be window-captured
+        results = _ocr_fullscreen()
+        match = _find_text(results, "PLAY", exact=True)
+        if match:
+            text, x, y, w, h = match
+            log.info("OCR: found '%s' at (%d,%d) — clicking", text, x, y)
+            _click(x, y)
+            time.sleep(3)
+            log.info("Clicked PLAY on Aspyr launcher")
+            return None
+        time.sleep(3)
 
     # Launcher may not appear if game was already past it
     log.info("Aspyr launcher PLAY button not found — may have been skipped")
@@ -503,6 +521,8 @@ def _capture_window(window_id: int) -> object:
     """Capture a single window as an in-memory image.
 
     Returns a CGImageRef on macOS, PIL Image on Windows.
+    Falls back to screencapture subprocess on macOS 15+ where
+    CGWindowListCreateImage is obsoleted.
     """
     if sys.platform == "win32":
         return _capture_window_win32(window_id)
@@ -514,9 +534,44 @@ def _capture_window(window_id: int) -> object:
         window_id,
         Quartz.kCGWindowImageBoundsIgnoreFraming,
     )
-    if image is None:
-        raise RuntimeError(f"CGWindowListCreateImage failed for window {window_id}")
-    return image
+    if image is not None:
+        return image
+
+    # macOS 15: CGWindowListCreateImage obsoleted — screencapture fallback
+    log.debug("CGWindowListCreateImage returned nil, trying screencapture -l")
+    return _capture_window_screencapture(window_id)
+
+
+def _capture_window_screencapture(window_id: int) -> object:
+    """Capture a window via screencapture subprocess (macOS 15 fallback).
+
+    Uses ScreenCaptureKit internally. Returns a CGImageRef compatible
+    with _ocr_vision().
+    """
+    import tempfile
+
+    import Quartz
+    from Foundation import NSData
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        path = f.name
+    try:
+        subprocess.run(
+            ["screencapture", "-x", "-l", str(window_id), path],
+            check=True, timeout=5, capture_output=True,
+        )
+        data = NSData.dataWithContentsOfFile_(path)
+        if data is None:
+            raise RuntimeError(f"screencapture produced no output for window {window_id}")
+        provider = Quartz.CGDataProviderCreateWithCFData(data)
+        cg_image = Quartz.CGImageCreateWithPNGDataProvider(
+            provider, None, True, Quartz.kCGRenderingIntentDefault
+        )
+        if cg_image is None:
+            raise RuntimeError(f"Failed to create CGImage from screencapture for window {window_id}")
+        return cg_image
+    finally:
+        os.unlink(path)
 
 
 def _capture_window_win32(hwnd: int) -> "PIL.Image.Image":
@@ -763,8 +818,13 @@ def _ocr_fullscreen_win32() -> list[tuple[str, int, int, int, int]]:
 
 
 def _normalize(s: str) -> str:
-    """Normalize text for OCR comparison (underscores ↔ spaces)."""
-    return s.lower().strip().replace("_", " ")
+    """Normalize text for OCR comparison.
+
+    Handles common OCR confusions:
+    - Underscores ↔ spaces (game UI shows underscores, OCR reads spaces)
+    - 0 ↔ O (OCR confuses zero and capital O, especially in save names like 0A_...)
+    """
+    return s.lower().strip().replace("_", " ").replace("0", "o")
 
 
 def _find_text(
@@ -1010,9 +1070,8 @@ def _wait_for_text(
             try:
                 results = _ocr_game_window(win)
             except RuntimeError:
-                log.debug("Window capture failed, retrying...")
-                time.sleep(interval)
-                continue
+                log.debug("Window capture failed, falling back to full-screen OCR")
+                results = _ocr_fullscreen()
 
         match = _find_text(
             results, target, exact=exact, prefer_bottom=prefer_bottom
@@ -1174,8 +1233,17 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     _require_gui_deps()  # Fail fast if deps missing
     steps = []
 
-    # Dismiss crash dialog if present — it overlays the menu and blocks OCR
-    _dismiss_crash_dialog()
+    # Launch the game if it's not running
+    if not is_game_running():
+        log.info("Game not running — launching before OCR navigation")
+        launch_result = _launch_game_sync()
+        log.info("Launch result: %s", launch_result)
+        # After launch, game should be at main menu (Aspyr launcher handled by _launch_game_sync)
+    else:
+        # Dismiss crash dialog if present — it overlays the menu and blocks OCR
+        _dismiss_crash_dialog()
+        # Click through Aspyr launcher if present (macOS shows PLAY button before main menu)
+        _click_aspyr_launcher_sync()
 
     log.info("[1/6] Waiting for main menu (Single Player)...")
     if not _click_text("Single Player", timeout=90, exact=True, post_delay=3):
@@ -1188,22 +1256,32 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     steps.append("Clicked Load Game")
 
     if tab is not None:
-        log.info("[3/6] Clicking '%s' filter...", tab)
+        log.info("[3/7] Clicking '%s' filter...", tab)
         if not _click_text(tab, timeout=10, exact=True, post_delay=2):
             log.info("%s filter not found — may already be active", tab)
             steps.append(f"{tab} filter (may already be active)")
         else:
             steps.append(f"Clicked {tab} filter")
     else:
-        log.info("[3/6] Using default save list (no filter needed)")
+        log.info("[3/7] Using default save list (no filter needed)")
         steps.append("Default save list (regular saves)")
 
-    log.info("[4/6] Looking for save '%s'...", save_name)
+    # Sort by name so 0A_, 0B_, ... saves appear at the top.
+    # The UI toggles: click "Sort by Last Modified" to open the dropdown,
+    # then "Sort by Name" becomes clickable.
+    log.info("[4/7] Sorting by Name...")
+    if not _click_text("Sort by Name", timeout=3, post_delay=1):
+        # "Sort by Name" not visible — click "Sort by Last Modified" to toggle
+        if _click_text("Sort by Last Modified", timeout=3, post_delay=1):
+            _click_text("Sort by Name", timeout=5, post_delay=1)
+    steps.append("Sorted by Name")
+
+    log.info("[5/7] Looking for save '%s'...", save_name)
     if not _click_text(save_name, timeout=15, post_delay=2):
         return f"FAILED: Save '{save_name}' not found. Steps completed: {', '.join(steps)}"
     steps.append(f"Selected save {save_name}")
 
-    log.info("[5/6] Clicking 'Load Game' button (bottom, not title)...")
+    log.info("[6/7] Clicking 'Load Game' button (bottom, not title)...")
     if not _click_text("Load Game", timeout=10, post_delay=2, prefer_bottom=True):
         steps.append("Load Game button not found (may have loaded from double-click)")
     else:
@@ -1271,7 +1349,7 @@ async def load_save_from_menu(save_name: str | None = None) -> str:
 
     Args:
         save_name: Save name without extension (e.g. "AutoSave_0221" or
-            "GROUND_CONTROL_SA"). If None, loads most recent autosave.
+            "0A_GROUND_CONTROL"). If None, loads most recent autosave.
 
     Checks both regular saves and autosaves directories. Uses the
     appropriate tab in the Load Game screen.

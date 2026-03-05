@@ -282,6 +282,7 @@ def _civ_mcp_server(
         env["CIV_MCP_AGENT_MODEL"] = model_id
     if scenario:
         env["CIV_MCP_SCENARIO"] = scenario.scenario_id
+        env["CIV_MCP_SAVE_FILE"] = scenario.save_file.replace(".Civ6Save", "")
         env["CIV_MCP_DIFFICULTY"] = scenario.difficulty
         env["CIV_MCP_MAP_TYPE"] = scenario.map_type
         env["CIV_MCP_MAP_SIZE"] = scenario.map_size

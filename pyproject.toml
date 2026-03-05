@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "mcp>=1.20",
     "fastapi[standard]>=0.128",
+    "anthropic>=0.84.0",
 ]
 
 [project.optional-dependencies]
