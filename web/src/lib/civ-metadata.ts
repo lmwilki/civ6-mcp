@@ -138,6 +138,7 @@ export const GP_COLORS: Record<string, string> = {
 export const VICTORY_TYPES = [
   {
     label: "Science",
+    victoryType: "science",
     key: "sci_vp" as const,
     max: 4,
     color: CIV6_COLORS.science,
@@ -145,6 +146,7 @@ export const VICTORY_TYPES = [
   },
   {
     label: "Diplo",
+    victoryType: "diplomatic",
     key: "diplo_vp" as const,
     max: 20,
     color: CIV6_COLORS.favor,
@@ -152,18 +154,21 @@ export const VICTORY_TYPES = [
   },
   {
     label: "Tourism",
+    victoryType: "culture",
     key: "tourism" as const,
     color: CIV6_COLORS.tourism,
     icon: Luggage,
   },
   {
     label: "Domestic",
+    victoryType: "culture",
     key: "staycationers" as const,
     color: CIV6_COLORS.goldMetal,
     icon: UserRound,
   },
   {
     label: "Religion",
+    victoryType: "religious",
     key: "religion_cities" as const,
     color: CIV6_COLORS.faith,
     icon: Church,

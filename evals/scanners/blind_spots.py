@@ -19,6 +19,8 @@ The agent should periodically check:
 Identify the most critical blind spot — what should the agent have
 monitored but didn't? Consider game context: religious civs nearby
 make religion checks critical, military civs make map scans critical.
+If certain victory types are disabled (stated in the scenario objective),
+do not flag missing checks for those victory types.
 
 Focus on the gap with the highest strategic cost.""",
         answer="string",

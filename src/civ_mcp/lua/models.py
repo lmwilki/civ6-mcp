@@ -195,6 +195,8 @@ class GameOverview:
     game_speed: str = ""  # e.g. "GAMESPEED_QUICK"
     game_speed_name: str = ""  # e.g. "Quick"
     speed_cost_multiplier: int = 100  # 67 for Quick, 100 for Standard, etc.
+    # Victory conditions (empty = all enabled)
+    enabled_victories: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -705,6 +707,8 @@ class VictoryProgress:
     demographics: dict[str, DemographicEntry] = field(default_factory=dict)
     # Space race project detail (our player only)
     space_projects: list[SpaceProject] = field(default_factory=list)
+    # Which victory types are enabled (empty = all enabled / unknown)
+    enabled_victories: set[str] = field(default_factory=set)
 
 
 @dataclass

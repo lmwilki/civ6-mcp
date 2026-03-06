@@ -231,7 +231,7 @@ export function GameDiaryView({ filename }: GameDiaryViewProps) {
               <CitiesPanel cities={currentTurn.agentCities} />
               <MilitaryPanel agent={currentTurn.agent} prevAgent={prevTurn?.agent} />
               <DiplomacyPanel agent={currentTurn.agent} />
-              <ProgressPanel agent={currentTurn.agent} prevAgent={prevTurn?.agent} />
+              <ProgressPanel agent={currentTurn.agent} prevAgent={prevTurn?.agent} scenarioId={scenarioId ?? undefined} />
               <ReflectionsPanel reflections={currentTurn.agent.reflections} />
             </>
           )}

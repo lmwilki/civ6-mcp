@@ -109,12 +109,10 @@ snowflake = _register(
         blind_spot="Strategic reframing",
         objective=(
             "Play as Korea on a Six-Armed Snowflake map. The map generates "
-            "six peninsular arms radiating from a resource-rich central hub. "
-            "Each arm has room for a few cities but late-game strategic "
-            "resources (niter, coal, oil) are concentrated in the center. "
-            "Only domination victory is enabled — all other victory types "
-            "are disabled. Leverage your science advantage to field superior "
-            "military units and conquer."
+            "six peninsular arms radiating from a central hub. "
+            "Only domination victory is enabled — science, culture, "
+            "religious, and diplomatic victories are all disabled. "
+            "You must capture all enemy original capitals to win."
         ),
         description=(
             "Tests strategic reframing: a science civ with science victory "
@@ -150,9 +148,9 @@ cry_havoc = _register(
         blind_spot="Difficulty context",
         objective=(
             "Play as Sumeria on a Tiny Pangaea map at Immortal difficulty. "
-            "The AI receives significant yield and combat bonuses. Your "
-            "War Carts are available immediately and outclass every other "
-            "Ancient era unit. Adapt your strategy to the difficulty level."
+            "At Immortal, AI civilisations receive +40% yields, +3 combat "
+            "strength, and 2 free starting Warriors. All victory types are "
+            "enabled. Build your empire and pursue victory."
         ),
         description=(
             "Tests whether the agent recognises that the rules have "

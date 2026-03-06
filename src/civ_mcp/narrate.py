@@ -53,6 +53,19 @@ def narrate_overview(ov: lq.GameOverview) -> str:
             lines.append(
                 f"Religion: none yet ({remaining}/{ov.religions_max} slots remaining — Great Prophet needed)"
             )
+    if ov.enabled_victories:
+        vname_map = {
+            "VICTORY_TECHNOLOGY": "Science",
+            "VICTORY_CONQUEST": "Domination",
+            "VICTORY_CULTURE": "Culture",
+            "VICTORY_RELIGIOUS": "Religious",
+            "VICTORY_DIPLOMATIC": "Diplomatic",
+        }
+        all_types = ["VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE",
+                      "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"]
+        enabled = [vname_map[v] for v in all_types if v in ov.enabled_victories]
+        disabled = [vname_map[v] for v in all_types if v not in ov.enabled_victories]
+        lines.append(f"Victory: {', '.join(enabled)} only" + (f" (disabled: {', '.join(disabled)})" if disabled else ""))
     if ov.era_name:
         score_status = ""
         if ov.era_score >= ov.era_golden_threshold:
@@ -1497,93 +1510,121 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
     if not vp.players:
         return "No victory data available."
 
-    lines = ["=== VICTORY PROGRESS ===", ""]
+    lines = ["=== VICTORY PROGRESS ==="]
+
+    # Which victory types are enabled? Empty set = all (backwards compat).
+    ev = vp.enabled_victories
+    all_enabled = not ev  # empty = legacy / all enabled
+
+    if not all_enabled:
+        enabled_names = []
+        vname_map = {
+            "VICTORY_TECHNOLOGY": "Science",
+            "VICTORY_CONQUEST": "Domination",
+            "VICTORY_CULTURE": "Culture",
+            "VICTORY_RELIGIOUS": "Religious",
+            "VICTORY_DIPLOMATIC": "Diplomatic",
+        }
+        for vt in ["VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE",
+                    "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"]:
+            if vt in ev:
+                enabled_names.append(vname_map[vt])
+        disabled = [v for k, v in vname_map.items() if k not in ev]
+        lines.append(f"\nEnabled: {', '.join(enabled_names)}")
+        if disabled:
+            lines.append(f"Disabled: {', '.join(disabled)}")
+    lines.append("")
 
     # Find our player (player_id 0 typically, or first non-Unmet)
     us = next((p for p in vp.players if p.name != "Unmet"), None)
 
     # --- Science Victory ---
-    lines.append("SCIENCE VICTORY (launch 4 space projects = 50 VP)")
-    sci_sorted = sorted(
-        vp.players, key=lambda p: (p.science_vp, p.techs_researched), reverse=True
-    )
-    for p in sci_sorted:
-        marker = " <--" if us and p.player_id == us.player_id else ""
-        sp_info = ""
-        if p.spaceports > 0 or p.space_progress:
-            sp_info = f" | {p.spaceports} spaceport(s) [{p.space_progress}]"
-        lines.append(
-            f"  {p.name}: {p.science_vp}/{p.science_vp_needed} VP | {p.techs_researched} techs{sp_info}{marker}"
+    if all_enabled or "VICTORY_TECHNOLOGY" in ev:
+        lines.append("SCIENCE VICTORY (launch 4 space projects = 50 VP)")
+        sci_sorted = sorted(
+            vp.players, key=lambda p: (p.science_vp, p.techs_researched), reverse=True
         )
+        for p in sci_sorted:
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            sp_info = ""
+            if p.spaceports > 0 or p.space_progress:
+                sp_info = f" | {p.spaceports} spaceport(s) [{p.space_progress}]"
+            lines.append(
+                f"  {p.name}: {p.science_vp}/{p.science_vp_needed} VP | {p.techs_researched} techs{sp_info}{marker}"
+            )
 
-    if vp.space_projects:
-        lines.append("")
-        lines.append("  YOUR SPACE PROJECT CHAIN:")
-        for sp in vp.space_projects:
-            icons = {"completed": "[DONE]", "building": "[>>>]", "available": "[READY]", "locked": "[LOCKED]"}
-            icon = icons.get(sp.status, sp.status.upper())
-            detail = f"    {icon} {sp.name}"
-            if sp.status == "building":
-                detail += f" -- {sp.progress_pct}% ({sp.turns_remaining} turns) in {sp.city_name}"
-            if sp.status == "locked":
-                tech_status = "HAVE" if sp.has_tech else "NEED"
-                tech_name = sp.tech_prereq.replace("TECH_", "").replace("_", " ").title()
-                detail += f" -- requires {tech_name} ({tech_status})"
-            if sp.cost > 0 and sp.status != "completed":
-                detail += f" [cost: {sp.cost}]"
-            lines.append(detail)
+        if vp.space_projects:
+            lines.append("")
+            lines.append("  YOUR SPACE PROJECT CHAIN:")
+            for sp in vp.space_projects:
+                icons = {"completed": "[DONE]", "building": "[>>>]", "available": "[READY]", "locked": "[LOCKED]"}
+                icon = icons.get(sp.status, sp.status.upper())
+                detail = f"    {icon} {sp.name}"
+                if sp.status == "building":
+                    detail += f" -- {sp.progress_pct}% ({sp.turns_remaining} turns) in {sp.city_name}"
+                if sp.status == "locked":
+                    tech_status = "HAVE" if sp.has_tech else "NEED"
+                    tech_name = sp.tech_prereq.replace("TECH_", "").replace("_", " ").title()
+                    detail += f" -- requires {tech_name} ({tech_status})"
+                if sp.cost > 0 and sp.status != "completed":
+                    detail += f" [cost: {sp.cost}]"
+                lines.append(detail)
 
     # --- Domination Victory ---
-    lines.append("")
-    lines.append("DOMINATION (own all original capitals)")
-    for p in vp.players:
-        holds = vp.capitals_held.get(p.name, True)
-        status = "holds own capital" if holds else "CAPITAL LOST"
-        marker = " <--" if us and p.player_id == us.player_id else ""
-        lines.append(f"  {p.name}: {status} | military {p.military_strength}{marker}")
+    if all_enabled or "VICTORY_CONQUEST" in ev:
+        lines.append("")
+        lines.append("DOMINATION (own all original capitals)")
+        for p in vp.players:
+            holds = vp.capitals_held.get(p.name, True)
+            status = "holds own capital" if holds else "CAPITAL LOST"
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: {status} | military {p.military_strength}{marker}")
 
     # --- Culture Victory ---
-    lines.append("")
-    lines.append("CULTURE (your tourists > every civ's domestic tourists)")
-    if us:
-        lines.append(f"  Our domestic tourists: {us.staycationers}")
-        for name, our_tourists in vp.our_tourists_from.items():
-            their_dom = vp.their_staycationers.get(name, 0)
-            gap = their_dom - our_tourists
-            status = "DOMINANT" if gap <= 0 else f"need {gap} more"
-            lines.append(f"  vs {name}: {our_tourists}/{their_dom} tourists ({status})")
+    if all_enabled or "VICTORY_CULTURE" in ev:
+        lines.append("")
+        lines.append("CULTURE (your tourists > every civ's domestic tourists)")
+        if us:
+            lines.append(f"  Our domestic tourists: {us.staycationers}")
+            for name, our_tourists in vp.our_tourists_from.items():
+                their_dom = vp.their_staycationers.get(name, 0)
+                gap = their_dom - our_tourists
+                status = "DOMINANT" if gap <= 0 else f"need {gap} more"
+                lines.append(f"  vs {name}: {our_tourists}/{their_dom} tourists ({status})")
 
     # --- Religious Victory ---
-    lines.append("")
-    slots_str = (
-        f" — slots: {vp.religions_founded}/{vp.religions_max}"
-        if vp.religions_max > 0
-        else ""
-    )
-    lines.append(f"RELIGION (your religion majority in all civs{slots_str})")
-    for p in vp.players:
-        rel = vp.religion_majority.get(p.name, "none")
-        rel_short = rel.replace("RELIGION_", "").title() if rel != "none" else "none"
-        founded_name = vp.religion_founded_names.get(p.name)
-        founded = f" (FOUNDED: {founded_name})" if founded_name else ""
-        marker = " <--" if us and p.player_id == us.player_id else ""
-        lines.append(
-            f"  {p.name}: majority={rel_short}{founded} | {p.religion_cities} cities converted{marker}"
+    if all_enabled or "VICTORY_RELIGIOUS" in ev:
+        lines.append("")
+        slots_str = (
+            f" — slots: {vp.religions_founded}/{vp.religions_max}"
+            if vp.religions_max > 0
+            else ""
         )
-    if vp.religions_max > 0 and vp.religions_founded >= vp.religions_max:
-        lines.append(
-            f"  !! All {vp.religions_max} religion slots filled — no more Great Prophets available"
-        )
+        lines.append(f"RELIGION (your religion majority in all civs{slots_str})")
+        for p in vp.players:
+            rel = vp.religion_majority.get(p.name, "none")
+            rel_short = rel.replace("RELIGION_", "").title() if rel != "none" else "none"
+            founded_name = vp.religion_founded_names.get(p.name)
+            founded = f" (FOUNDED: {founded_name})" if founded_name else ""
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(
+                f"  {p.name}: majority={rel_short}{founded} | {p.religion_cities} cities converted{marker}"
+            )
+        if vp.religions_max > 0 and vp.religions_founded >= vp.religions_max:
+            lines.append(
+                f"  !! All {vp.religions_max} religion slots filled — no more Great Prophets available"
+            )
 
     # --- Diplomatic Victory ---
-    lines.append("")
-    lines.append("DIPLOMATIC (20 VP from World Congress)")
-    diplo_sorted = sorted(vp.players, key=lambda p: p.diplomatic_vp, reverse=True)
-    for p in diplo_sorted:
-        marker = " <--" if us and p.player_id == us.player_id else ""
-        lines.append(f"  {p.name}: {p.diplomatic_vp}/20 VP{marker}")
+    if all_enabled or "VICTORY_DIPLOMATIC" in ev:
+        lines.append("")
+        lines.append("DIPLOMATIC (20 VP from World Congress)")
+        diplo_sorted = sorted(vp.players, key=lambda p: p.diplomatic_vp, reverse=True)
+        for p in diplo_sorted:
+            marker = " <--" if us and p.player_id == us.player_id else ""
+            lines.append(f"  {p.name}: {p.diplomatic_vp}/20 VP{marker}")
 
-    # --- Score Victory ---
+    # --- Score Victory (always shown as fallback context) ---
     lines.append("")
     lines.append("SCORE (highest at turn 500)")
     score_sorted = sorted(vp.players, key=lambda p: p.score, reverse=True)
@@ -1631,116 +1672,121 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
         assessments: list[tuple[str, int, str]] = []  # (type, viability 0-100, reason)
 
         # Science: assess by tech count relative to met leaders and science VP progress
-        sci_leader = max(vp.players, key=lambda p: p.techs_researched)
-        sci_gap = sci_leader.techs_researched - us.techs_researched
-        best_label = f"best known: {sci_leader.name} ({sci_leader.techs_researched})"
-        if us.science_vp > 0:
-            assessments.append(
-                (
-                    "Science",
-                    80,
-                    f"Space race started ({us.science_vp}/{us.science_vp_needed} VP)",
-                )
-            )
-        elif sci_gap <= 5:
-            assessments.append(
-                ("Science", 60, f"Near tech lead ({sci_gap} behind {best_label})")
-            )
-        elif sci_gap <= 15:
-            assessments.append(
-                ("Science", 30, f"Behind in tech ({sci_gap} behind {best_label})")
-            )
-        else:
-            assessments.append(
-                ("Science", 10, f"Far behind in tech ({sci_gap} behind {best_label})")
-            )
-
-        # Domination: check our military vs all civs (use demographics Soldiers for full picture)
-        soldiers_demo = vp.demographics.get("Soldiers")
-        our_holds = vp.capitals_held.get(us.name, True)
-        best_mil = (
-            soldiers_demo.best
-            if soldiers_demo
-            else max(p.military_strength for p in vp.players)
-        )
-        if not our_holds:
-            assessments.append(("Domination", 5, "CAPITAL LOST — defensive priority!"))
-        elif us.military_strength >= best_mil * 0.8:
-            rivals_with_caps = sum(
-                1
-                for name, holds in vp.capitals_held.items()
-                if holds and name != us.name
-            )
-            assessments.append(
-                (
-                    "Domination",
-                    40,
-                    f"Strong military ({us.military_strength} vs best {best_mil:.0f}), {rivals_with_caps} known capitals to capture",
-                )
-            )
-        else:
-            assessments.append(
-                (
-                    "Domination",
-                    15,
-                    f"Military too weak ({us.military_strength} vs best {best_mil:.0f})",
-                )
-            )
-
-        # Culture: compare our tourists vs their staycationers
-        if vp.our_tourists_from:
-            culture_gaps = []
-            for name, our_tourists in vp.our_tourists_from.items():
-                their_dom = vp.their_staycationers.get(name, 0)
-                culture_gaps.append(their_dom - our_tourists)
-            max_gap = max(culture_gaps) if culture_gaps else 999
-            if max_gap <= 0:
+        if all_enabled or "VICTORY_TECHNOLOGY" in ev:
+            sci_leader = max(vp.players, key=lambda p: p.techs_researched)
+            sci_gap = sci_leader.techs_researched - us.techs_researched
+            best_label = f"best known: {sci_leader.name} ({sci_leader.techs_researched})"
+            if us.science_vp > 0:
                 assessments.append(
-                    ("Culture", 95, "CULTURALLY DOMINANT over all civs!")
+                    (
+                        "Science",
+                        80,
+                        f"Space race started ({us.science_vp}/{us.science_vp_needed} VP)",
+                    )
                 )
-            elif max_gap <= 10:
+            elif sci_gap <= 5:
                 assessments.append(
-                    ("Culture", 70, f"Close to cultural victory (max gap: {max_gap})")
+                    ("Science", 60, f"Near tech lead ({sci_gap} behind {best_label})")
                 )
-            elif max_gap <= 30:
+            elif sci_gap <= 15:
                 assessments.append(
-                    ("Culture", 40, f"Tourism growing (max gap: {max_gap})")
+                    ("Science", 30, f"Behind in tech ({sci_gap} behind {best_label})")
                 )
             else:
                 assessments.append(
-                    ("Culture", 15, f"Large tourism gap (max gap: {max_gap})")
+                    ("Science", 10, f"Far behind in tech ({sci_gap} behind {best_label})")
                 )
-        else:
-            assessments.append(("Culture", 20, "No tourism data"))
+
+        # Domination: check our military vs all civs (use demographics Soldiers for full picture)
+        if all_enabled or "VICTORY_CONQUEST" in ev:
+            soldiers_demo = vp.demographics.get("Soldiers")
+            our_holds = vp.capitals_held.get(us.name, True)
+            best_mil = (
+                soldiers_demo.best
+                if soldiers_demo
+                else max(p.military_strength for p in vp.players)
+            )
+            if not our_holds:
+                assessments.append(("Domination", 5, "CAPITAL LOST — defensive priority!"))
+            elif us.military_strength >= best_mil * 0.8:
+                rivals_with_caps = sum(
+                    1
+                    for name, holds in vp.capitals_held.items()
+                    if holds and name != us.name
+                )
+                assessments.append(
+                    (
+                        "Domination",
+                        40,
+                        f"Strong military ({us.military_strength} vs best {best_mil:.0f}), {rivals_with_caps} known capitals to capture",
+                    )
+                )
+            else:
+                assessments.append(
+                    (
+                        "Domination",
+                        15,
+                        f"Military too weak ({us.military_strength} vs best {best_mil:.0f})",
+                    )
+                )
+
+        # Culture: compare our tourists vs their staycationers
+        if all_enabled or "VICTORY_CULTURE" in ev:
+            if vp.our_tourists_from:
+                culture_gaps = []
+                for name, our_tourists in vp.our_tourists_from.items():
+                    their_dom = vp.their_staycationers.get(name, 0)
+                    culture_gaps.append(their_dom - our_tourists)
+                max_gap = max(culture_gaps) if culture_gaps else 999
+                if max_gap <= 0:
+                    assessments.append(
+                        ("Culture", 95, "CULTURALLY DOMINANT over all civs!")
+                    )
+                elif max_gap <= 10:
+                    assessments.append(
+                        ("Culture", 70, f"Close to cultural victory (max gap: {max_gap})")
+                    )
+                elif max_gap <= 30:
+                    assessments.append(
+                        ("Culture", 40, f"Tourism growing (max gap: {max_gap})")
+                    )
+                else:
+                    assessments.append(
+                        ("Culture", 15, f"Large tourism gap (max gap: {max_gap})")
+                    )
+            else:
+                assessments.append(("Culture", 20, "No tourism data"))
 
         # Religion: check if we founded one
-        if us.has_religion:
-            total_civs = len([p for p in vp.players if p.name != "Unmet"])
-            our_rel = vp.religion_majority.get(us.name, "none")
-            converted = sum(
-                1 for rel in vp.religion_majority.values() if rel == our_rel
-            )
-            assessments.append(
-                (
-                    "Religion",
-                    min(70, converted * 100 // total_civs),
-                    f"Religion in {converted}/{total_civs} civs",
+        if all_enabled or "VICTORY_RELIGIOUS" in ev:
+            if us.has_religion:
+                total_civs = len([p for p in vp.players if p.name != "Unmet"])
+                our_rel = vp.religion_majority.get(us.name, "none")
+                converted = sum(
+                    1 for rel in vp.religion_majority.values() if rel == our_rel
                 )
-            )
-        else:
-            assessments.append(("Religion", 0, "No founded religion — path closed"))
+                assessments.append(
+                    (
+                        "Religion",
+                        min(70, converted * 100 // total_civs),
+                        f"Religion in {converted}/{total_civs} civs",
+                    )
+                )
+            else:
+                assessments.append(("Religion", 0, "No founded religion — path closed"))
 
         # Diplomatic: steady accumulation
-        if us.diplomatic_vp >= 15:
-            assessments.append(("Diplomatic", 80, f"{us.diplomatic_vp}/20 VP — close!"))
-        elif us.diplomatic_vp >= 8:
-            assessments.append(
-                ("Diplomatic", 50, f"{us.diplomatic_vp}/20 VP — mid-game")
-            )
-        else:
-            assessments.append(
-                ("Diplomatic", 20, f"{us.diplomatic_vp}/20 VP — slow accumulation")
-            )
+        if all_enabled or "VICTORY_DIPLOMATIC" in ev:
+            if us.diplomatic_vp >= 15:
+                assessments.append(("Diplomatic", 80, f"{us.diplomatic_vp}/20 VP — close!"))
+            elif us.diplomatic_vp >= 8:
+                assessments.append(
+                    ("Diplomatic", 50, f"{us.diplomatic_vp}/20 VP — mid-game")
+                )
+            else:
+                assessments.append(
+                    ("Diplomatic", 20, f"{us.diplomatic_vp}/20 VP — slow accumulation")
+                )
 
         # Score: always a fallback — use demographics rank if available
         pop_demo = vp.demographics.get("Population")

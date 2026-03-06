@@ -59,6 +59,14 @@ for relId, count in pairs(relCount) do
         print("REL_THREAT|" .. relOwner[relId] .. "|" .. count .. "|" .. totalMajors)
     end
 end
+local pvtypes = {{"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}}
+for _, vt in ipairs(pvtypes) do
+    local row = GameInfo.Victories[vt]
+    if row then
+        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
+        if ok and en then print("VENABLED|" .. vt) end
+    end
+end
 print("{SENTINEL}")
 """
 
@@ -250,6 +258,14 @@ for i = 0, 62 do
     end
 end
 print("RELSLOTS|" .. nRels .. "|" .. (math.floor(nMajors / 2) + 1))
+local vtypes = {{"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}}
+for _, vt in ipairs(vtypes) do
+    local row = GameInfo.Victories[vt]
+    if row then
+        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
+        if ok and en then print("VENABLED|" .. vt) end
+    end
+end
 print("{SENTINEL}")
 """
 
@@ -266,6 +282,7 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
     religions_max = 0
     demographics: dict[str, DemographicEntry] = {}
     space_projects: list[SpaceProject] = []
+    enabled_victories: set[str] = set()
 
     for line in lines:
         if line.startswith("PLAYER|"):
@@ -352,6 +369,8 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
                     average=float(p[5]),
                     worst=float(p[6]) if len(p) > 6 else float(p[5]),
                 )
+        elif line.startswith("VENABLED|"):
+            enabled_victories.add(line.split("|", 1)[1])
 
     return VictoryProgress(
         players=players,
@@ -364,4 +383,5 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
         religions_max=religions_max,
         demographics=demographics,
         space_projects=space_projects,
+        enabled_victories=enabled_victories,
     )

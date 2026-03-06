@@ -8,6 +8,7 @@ import { CivIcon } from "./civ-icon";
 import { CIV6_COLORS } from "@/lib/civ-colors";
 import { StatValue } from "./stat-value";
 import { GP_COLORS, VICTORY_TYPES } from "@/lib/civ-metadata";
+import { SCENARIOS } from "@/lib/scenarios";
 import {
   FlaskConical,
   BookOpen,
@@ -24,10 +25,15 @@ import {
 interface ProgressPanelProps {
   agent: PlayerRow;
   prevAgent?: PlayerRow;
+  scenarioId?: string;
 }
 
 
-export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
+export function ProgressPanel({ agent, prevAgent, scenarioId }: ProgressPanelProps) {
+  const ev = scenarioId ? SCENARIOS[scenarioId]?.enabledVictories : undefined;
+  const visibleTypes = ev
+    ? VICTORY_TYPES.filter((t) => ev.includes(t.victoryType))
+    : VICTORY_TYPES;
   const hasResearch = agent.current_research !== "NONE";
   const hasCivic = agent.current_civic !== "NONE";
   const hasPolicies = agent.policies.length > 0;
@@ -269,13 +275,14 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
         )}
 
         {/* Victory progress */}
+        {visibleTypes.length > 0 && (
         <div>
           <h4 className="mb-1.5 flex items-center gap-1.5 font-display text-xs font-bold uppercase tracking-[0.08em] text-marble-500">
             <CivIcon icon={Trophy} color={CIV6_COLORS.goldMetal} size="sm" />
             Victory Progress
           </h4>
           <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
-            {VICTORY_TYPES.map(({ label, key, max, color, icon: Icon }) => {
+            {visibleTypes.map(({ label, key, max, color, icon: Icon }) => {
               const val = agent[key];
               return (
                 <div
@@ -297,6 +304,7 @@ export function ProgressPanel({ agent, prevAgent }: ProgressPanelProps) {
             })}
           </div>
         </div>
+        )}
       </div>
     </CollapsiblePanel>
   );

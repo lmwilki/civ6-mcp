@@ -160,6 +160,18 @@ pcall(function()
         print("SPEED|" .. gsRow.GameSpeedType .. "|" .. gsName .. "|" .. gsMult)
     end
 end)
+local vtypes = {{"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}}
+local vEnabled = {{}}
+for _, vt in ipairs(vtypes) do
+    local row = GameInfo.Victories[vt]
+    if row then
+        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
+        if ok and en then table.insert(vEnabled, vt) end
+    end
+end
+if #vEnabled < #vtypes then
+    print("VENABLED|" .. table.concat(vEnabled, ","))
+end
 print("{SENTINEL}")
 """
 
@@ -341,6 +353,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
     game_speed = ""
     game_speed_name = ""
     speed_cost_multiplier = 100
+    enabled_victories: set[str] = set()
     player_id_parsed = int(parts[1])
     for line in lines[1:]:
         if line.startswith("RANK|"):
@@ -396,6 +409,8 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
                     speed_cost_multiplier = int(sp[3])
                 except ValueError:
                     pass
+        elif line.startswith("VENABLED|"):
+            enabled_victories = set(line.split("|", 1)[1].split(","))
         elif line.startswith("UNITBREAKDOWN|"):
             bp = line.split("|")
             if len(bp) >= 3:
@@ -449,6 +464,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         game_speed=game_speed,
         game_speed_name=game_speed_name,
         speed_cost_multiplier=speed_cost_multiplier,
+        enabled_victories=enabled_victories,
     )
 
 

@@ -34,8 +34,14 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
     """Lightweight per-turn check for foreign victory threats."""
     events: list[lq.TurnEvent] = []
     lines = await gs.conn.execute_write(lq.build_victory_proximity_query())
+    enabled: set[str] = set()
+    for line in lines:
+        if line.startswith("VENABLED|"):
+            enabled.add(line.split("|", 1)[1])
     for line in lines:
         if line.startswith("REL_THREAT|"):
+            if enabled and "VICTORY_RELIGIOUS" not in enabled:
+                continue
             parts = line.split("|")
             if len(parts) >= 4:
                 civ_name, rel_name = parts[1], parts[2]
@@ -57,6 +63,8 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
                         )
                     )
         elif line.startswith("DIPLO_THREAT|"):
+            if enabled and "VICTORY_DIPLOMATIC" not in enabled:
+                continue
             parts = line.split("|")
             if len(parts) >= 3:
                 dvp = int(parts[2])
@@ -93,6 +101,8 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
                         )
                     )
         elif line.startswith("SCI_THREAT|"):
+            if enabled and "VICTORY_TECHNOLOGY" not in enabled:
+                continue
             parts = line.split("|")
             if len(parts) >= 4:
                 vp, needed = int(parts[2]), int(parts[3])
