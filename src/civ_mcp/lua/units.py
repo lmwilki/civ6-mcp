@@ -291,12 +291,19 @@ if isRanged then
     local losParams = {{}}
     losParams[UnitOperationTypes.PARAM_X] = {target_x}
     losParams[UnitOperationTypes.PARAM_Y] = {target_y}
-    if not UnitManager.CanStartOperation(unit, UnitOperationTypes.RANGE_ATTACK, nil, losParams) then
-        {_bail_lua(f'"ERR:NO_LOS|Cannot attack target at ({target_x},{target_y}) from (" .. ux .. "," .. uy .. "). Check line of sight or target validity."')}
+    local canRanged = UnitManager.CanStartOperation(unit, UnitOperationTypes.RANGE_ATTACK, nil, losParams)
+    if canRanged then
+        UnitManager.RequestOperation(unit, UnitOperationTypes.RANGE_ATTACK, params)
+        print("OK:RANGE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|pre_hp:" .. enemyHP .. "/" .. enemyMaxHP .. "|your HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
+        print("{SENTINEL}"); return
+    elseif dist <= 1 then
+        -- Ranged failed at melee range: fall through to melee attack below
+        isRanged = false
+    else
+        {_bail_lua(f'"ERR:NO_LOS|Cannot ranged-attack target at ({target_x},{target_y}) from (" .. ux .. "," .. uy .. "). LOS blocked or unit already attacked this turn."')}
     end
-    UnitManager.RequestOperation(unit, UnitOperationTypes.RANGE_ATTACK, params)
-    print("OK:RANGE_ATTACK|target:" .. enemyName .. " at ({target_x},{target_y})|pre_hp:" .. enemyHP .. "/" .. enemyMaxHP .. "|your HP:" .. myHP .. "|range:" .. rng .. " dist:" .. dist)
-elseif isAir then
+end
+if isAir then
     -- Air units (jet bombers, jet fighters, bombers, fighters): use AIR_ATTACK operation.
     -- Combat resolves asynchronously in the UI so post-combat HP reads may be stale.
     local rng = unitInfo and unitInfo.Range or 1

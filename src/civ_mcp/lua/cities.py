@@ -278,11 +278,17 @@ for unit in GameInfo.Units() do
         if unit.UnitType == "UNIT_TRADER" and traderCapped then
             -- skip: game will silently reject (traders >= route capacity)
         else
-            local t = bq:GetTurnsLeft(unit.Hash)
-            local gc = getGoldCost(unit.Hash, true)
-            local adjCost = unit.Cost
-            pcall(function() local c = bq:GetProductionCost(unit.Hash); if c > 0 then adjCost = math.floor(c) end end)
-            print("UNIT|" .. unit.UnitType .. "|" .. adjCost .. "|" .. t .. "|" .. gc)
+            -- CanStartOperation catches missing strategic resources that CanProduce misses
+            local unitCheck = {{}}
+            unitCheck[CityOperationTypes.PARAM_UNIT_TYPE] = unit.Hash
+            local canStart = CityManager.CanStartOperation(pCity, CityOperationTypes.BUILD, unitCheck, true)
+            if canStart then
+                local t = bq:GetTurnsLeft(unit.Hash)
+                local gc = getGoldCost(unit.Hash, true)
+                local adjCost = unit.Cost
+                pcall(function() local c = bq:GetProductionCost(unit.Hash); if c > 0 then adjCost = math.floor(c) end end)
+                print("UNIT|" .. unit.UnitType .. "|" .. adjCost .. "|" .. t .. "|" .. gc)
+            end
         end
     end
 end

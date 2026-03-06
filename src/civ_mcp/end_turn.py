@@ -700,6 +700,9 @@ async def execute_end_turn(gs: GameState) -> str:
                         )
                         if not needs_promo:
                             # Step 2: InGame dismiss — NotificationManager is InGame-only.
+                            # Dismiss BOTH the end-turn blocker AND the regular notification
+                            # (NOTIFICATION_UNIT_PROMOTION_AVAILABLE) which is a separate
+                            # object that regenerates every turn due to stale CanPromote().
                             await gs.conn.execute_write(
                                 f"local me = Game.GetLocalPlayer(); "
                                 f"local list = NotificationManager.GetList(me); "
@@ -711,6 +714,12 @@ async def execute_end_turn(gs: GameState) -> str:
                                 f"      if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_UNIT_PROMOTION then "
                                 f"        pcall(function() NotificationManager.SendActivated(me, nid) end); "
                                 f"        pcall(function() NotificationManager.Dismiss(me, nid) end) "
+                                f"      else "
+                                f"        local tn = ''; "
+                                f"        pcall(function() tn = e:GetTypeName() end); "
+                                f"        if tn == 'NOTIFICATION_UNIT_PROMOTION_AVAILABLE' then "
+                                f"          pcall(function() NotificationManager.Dismiss(me, nid) end) "
+                                f"        end "
                                 f"      end "
                                 f"    end "
                                 f"  end "
