@@ -14,16 +14,16 @@ from civ_mcp.lua.models import CityInfo, ProductionOption
 
 
 def build_cities_query() -> str:
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
-local hashName = {{}}
+local hashName = {}
 for u in GameInfo.Units() do hashName[u.Hash] = u.UnitType end
 for b in GameInfo.Buildings() do hashName[b.Hash] = b.BuildingType end
 for d in GameInfo.Districts() do hashName[d.Hash] = d.DistrictType end
 for p in GameInfo.Projects() do hashName[p.Hash] = p.ProjectType end
-local cityCoords = {{}}
+local cityCoords = {}
 for i, c in Players[me]:GetCities():Members() do
-    local nm = Locale.Lookup(c:GetName())
+    local nm = Locale.Lookup(c:GetName()):gsub("|", "/")
     local bq = c:GetBuildQueue()
     local producing = "nothing"
     local turnsLeft = 0
@@ -55,7 +55,7 @@ for i, c in Players[me]:GetCities():Members() do
             break
         end
     end
-    local cityTargets = {{}}
+    local cityTargets = {}
     if wallMax > 0 then
         local cx, cy = c:GetX(), c:GetY()
         for dy = -3, 3 do for dx = -3, 3 do
@@ -74,8 +74,8 @@ for i, c in Players[me]:GetCities():Members() do
             end
         end end
     end
-    local pillDistricts = {{}}
-    local distLocs = {{}}
+    local pillDistricts = {}
+    local distLocs = {}
     for _, d in c:GetDistricts():Members() do
         local dInfo = GameInfo.Districts[d:GetType()]
         if dInfo and dInfo.DistrictType ~= "DISTRICT_CITY_CENTER" then
@@ -85,8 +85,8 @@ for i, c in Players[me]:GetCities():Members() do
             if dInfo then table.insert(pillDistricts, dInfo.DistrictType) end
         end
     end
-    local pillBuildings = {{}}
-    local allBuildings = {{}}
+    local pillBuildings = {}
+    local allBuildings = {}
     local pBuildings = c:GetBuildings()
     for bldg in GameInfo.Buildings() do
         if pBuildings:HasBuilding(bldg.Index) then
@@ -97,8 +97,8 @@ for i, c in Players[me]:GetCities():Members() do
         end
     end
     -- Scan owned tiles for unimproved resources and pillaged improvements
-    local unimproved = {{}}
-    local pillImprov = {{}}
+    local unimproved = {}
+    local pillImprov = {}
     local cx2, cy2 = c:GetX(), c:GetY()
     for dy = -3, 3 do for dx = -3, 3 do
         local px, py = cx2 + dx, cy2 + dy
@@ -123,7 +123,7 @@ for i, c in Players[me]:GetCities():Members() do
             end
         end
     end end
-    table.insert(cityCoords, {{name=nm, x=c:GetX(), y=c:GetY()}})
+    table.insert(cityCoords, {name=nm, x=c:GetX(), y=c:GetY()})
     local loy, loyMax, loyPT, loyFlip = 100, 100, 0, 0
     local cult = c:GetCulturalIdentity()
     if cult then
@@ -162,7 +162,7 @@ for i = 1, #cityCoords do for j = i + 1, #cityCoords do
     print("DIST|" .. cityCoords[i].name .. "|" .. cityCoords[j].name .. "|" .. d)
 end end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_city_attack(city_id: int, target_x: int, target_y: int) -> str:
@@ -400,9 +400,13 @@ local isCorrupted = bq:GetSize() > 0 and bq:GetCurrentProductionTypeHash() == 0
 if not bq:CanProduce(item.Hash, true) then
     {_bail(f"ERR:CANNOT_PRODUCE|{item_name} cannot be produced in this city")}
 end
-{"" if itype != "BUILDING" or (target_x is not None and target_y is not None) else f'''if item.IsWonder then
+{
+        ""
+        if itype != "BUILDING" or (target_x is not None and target_y is not None)
+        else f'''if item.IsWonder then
     {_bail(f"ERR:MISSING_COORDS|{item_name} is a wonder and requires target_x/target_y for placement. Use get_wonder_advisor(city_id, '{item_name}') to find valid tiles.")}
-end'''}
+end'''
+    }
 -- Trader cap check: game silently rejects when count >= route capacity
 if "{item_name}" == "UNIT_TRADER" then
     local pTrade = Players[me]:GetTrade()
@@ -444,7 +448,9 @@ else
         end
     end
     if #pillaged > 0 then
-        print("MAYBE:PRODUCING|{item_name}|canStart=false|PILLAGED:" .. table.concat(pillaged, ","))
+        print("MAYBE:PRODUCING|{
+        item_name
+    }|canStart=false|PILLAGED:" .. table.concat(pillaged, ","))
     else
         print("MAYBE:PRODUCING|{item_name}|canStart=false")
     end
@@ -651,9 +657,7 @@ def parse_cities_response(lines: list[str]) -> tuple[list[CityInfo], list[str]]:
             if len(p) >= 3:
                 cid = int(p[1])
                 if cid in city_by_id:
-                    city_by_id[cid].buildings = [
-                        b for b in p[2].split(",") if b
-                    ]
+                    city_by_id[cid].buildings = [b for b in p[2].split(",") if b]
             continue
         parts = line.split("|")
         if len(parts) < 14:

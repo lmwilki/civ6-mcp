@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL
+from civ_mcp.lua._helpers import SENTINEL, _int
 from civ_mcp.lua.models import (
     AgentExtras,
     CityRow,
@@ -17,7 +17,7 @@ from civ_mcp.lua.models import (
 
 
 def build_overview_query() -> str:
-    return f"""
+    return """
 local id = Game.GetLocalPlayer()
 local p = Players[id]
 local cfg = PlayerConfigurations[id]
@@ -33,7 +33,7 @@ local civicName = "None"
 if civicIdx >= 0 then civicName = Locale.Lookup(GameInfo.Civics[civicIdx].Name) end
 local nCities = 0; local totalPop = 0; for i, c in p:GetCities():Members() do nCities = nCities + 1; totalPop = totalPop + c:GetPopulation() end
 local nUnits = 0
-local unitCounts = {{}}
+local unitCounts = {}
 local unitMaint = 0
 for i, u in p:GetUnits():Members() do
     nUnits = nUnits + 1
@@ -83,11 +83,11 @@ for i = 0, 62 do
         end
     end
 end
-print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. Locale.Lookup(cfg:GetLeaderName()) .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor .. "|" .. favorPerTurn .. "|" .. totalPop .. "|" .. string.format("%.1f", tr:GetGoldYield()) .. "|" .. string.format("%.1f", tr:GetTotalMaintenance()))
+print(Game.GetCurrentGameTurn() .. "|" .. id .. "|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()):gsub("|", "/") .. "|" .. Locale.Lookup(cfg:GetLeaderName()):gsub("|", "/") .. "|" .. string.format("%.1f", tr:GetGoldBalance()) .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance()) .. "|" .. string.format("%.1f", te:GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield()) .. "|" .. string.format("%.1f", re:GetFaithBalance()) .. "|" .. techName .. "|" .. civicName .. "|" .. nCities .. "|" .. nUnits .. "|" .. myScore .. "|" .. favor .. "|" .. favorPerTurn .. "|" .. totalPop .. "|" .. string.format("%.1f", tr:GetGoldYield()) .. "|" .. string.format("%.1f", tr:GetTotalMaintenance()))
 for i = 0, 62 do
     if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
         local oCfg = PlayerConfigurations[i]
-        print("RANK|" .. i .. "|" .. Locale.Lookup(oCfg:GetCivilizationShortDescription()) .. "|" .. Players[i]:GetScore())
+        print("RANK|" .. i .. "|" .. Locale.Lookup(oCfg:GetCivilizationShortDescription()):gsub("|", "/") .. "|" .. Players[i]:GetScore())
     end
 end
 local pVis = PlayersVisibility[id]
@@ -143,7 +143,7 @@ pcall(function()
     end
 end)
 print("DIFFICULTY|" .. diffName)
-local ubParts = {{}}
+local ubParts = {}
 for name, count in pairs(unitCounts) do
     table.insert(ubParts, name .. ":" .. count)
 end
@@ -160,8 +160,8 @@ pcall(function()
         print("SPEED|" .. gsRow.GameSpeedType .. "|" .. gsName .. "|" .. gsMult)
     end
 end)
-local vtypes = {{"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}}
-local vEnabled = {{}}
+local vtypes = {"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}
+local vEnabled = {}
 for _, vt in ipairs(vtypes) do
     local row = GameInfo.Victories[vt]
     if row then
@@ -173,7 +173,7 @@ if #vEnabled < #vtypes then
     print("VENABLED|" .. table.concat(vEnabled, ","))
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_gameover_check() -> str:
@@ -184,7 +184,7 @@ def build_gameover_check() -> str:
     players), science VP >= needed, domination capitals, and culture tourism.
     Each check is pcall-wrapped so failures don't block detection.
     """
-    return f"""
+    return """
 local egm = ContextPtr:LookUpControl("/InGame/EndGameMenu")
 if not egm or egm:IsHidden() then
     print("GAME_ACTIVE")
@@ -306,7 +306,7 @@ local isDefeat = winTeam >= 0 and Players[me]:GetTeam() ~= winTeam
 local result = isDefeat and "DEFEAT" or "VICTORY"
 print("GAME_OVER|" .. result .. "|" .. winnerName .. "|" .. victoryType .. "|" .. (meAlive and "alive" or "dead") .. "|" .. winnerLeader)
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_gameover_response(lines: list[str]) -> GameOverStatus | None:
@@ -442,7 +442,7 @@ def parse_overview_response(lines: list[str]) -> GameOverview:
         num_units=int(parts[12]),
         score=int(parts[13]) if len(parts) > 13 else 0,
         diplomatic_favor=int(parts[14]) if len(parts) > 14 else 0,
-        favor_per_turn=int(float(parts[15])) if len(parts) > 15 else 0,
+        favor_per_turn=_int(parts[15]) if len(parts) > 15 else 0,
         total_population=int(parts[16]) if len(parts) > 16 else 0,
         gold_income=float(parts[17]) if len(parts) > 17 else 0.0,
         total_maintenance=float(parts[18]) if len(parts) > 18 else 0.0,
@@ -541,18 +541,18 @@ def parse_rival_snapshot_response(lines: list[str]) -> list[RivalSnapshot]:
             RivalSnapshot(
                 id=int(p[1]),
                 name=p[2],
-                score=int(float(p[3])),
-                cities=int(float(p[4])),
-                pop=int(float(p[5])),
+                score=_int(p[3]),
+                cities=_int(p[4]),
+                pop=_int(p[5]),
                 sci=round(float(p[6]), 1),
                 cul=round(float(p[7]), 1),
                 gold=round(float(p[8]), 1),
-                mil=int(float(p[9])),
-                techs=int(float(p[10])),
-                civics=int(float(p[11])),
+                mil=_int(p[9]),
+                techs=_int(p[10]),
+                civics=_int(p[11]),
                 faith=round(float(p[12]), 1),
-                sci_vp=int(float(p[13])),
-                diplo_vp=int(float(p[14])),
+                sci_vp=_int(p[13]),
+                diplo_vp=_int(p[14]),
                 stockpiles=stockpiles,
             )
         )
@@ -1118,7 +1118,7 @@ def _parse_kv_pairs(s: str) -> dict[str, int]:
         if ":" in pair:
             k, v = pair.split(":", 1)
             try:
-                result[k] = int(float(v))
+                result[k] = _int(v)
             except ValueError:
                 pass
     return result
@@ -1142,39 +1142,39 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
                 civ=p[2],
                 leader=p[3],
                 is_agent=False,  # set by server.py based on local player
-                score=int(float(p[4])),
-                cities=int(float(p[5])),
-                pop=int(float(p[6])),
+                score=_int(p[4]),
+                cities=_int(p[5]),
+                pop=_int(p[6]),
                 science=round(float(p[7]), 1),
                 culture=round(float(p[8]), 1),
                 gold=round(float(p[9]), 1),
                 gold_per_turn=round(float(p[10]), 1),
                 faith=round(float(p[11]), 1),
                 faith_per_turn=round(float(p[12]), 1),
-                favor=int(float(p[13])),
-                favor_per_turn=int(float(p[14])),
-                military=int(float(p[15])),
-                techs_completed=int(float(p[16])),
-                civics_completed=int(float(p[17])),
-                districts=int(float(p[18])),
-                wonders=int(float(p[19])),
-                great_works=int(float(p[20])),
-                territory=int(float(p[21])),
-                improvements=int(float(p[22])),
+                favor=_int(p[13]),
+                favor_per_turn=_int(p[14]),
+                military=_int(p[15]),
+                techs_completed=_int(p[16]),
+                civics_completed=_int(p[17]),
+                districts=_int(p[18]),
+                wonders=_int(p[19]),
+                great_works=_int(p[20]),
+                territory=_int(p[21]),
+                improvements=_int(p[22]),
                 government=p[23],
-                tourism=int(float(p[24])),
-                staycationers=int(float(p[25])),
-                religion_cities=int(float(p[26])),
-                sci_vp=int(float(p[27])),
-                diplo_vp=int(float(p[28])),
+                tourism=_int(p[24]),
+                staycationers=_int(p[25]),
+                religion_cities=_int(p[26]),
+                sci_vp=_int(p[27]),
+                diplo_vp=_int(p[28]),
                 era=p[29],
-                era_score=int(float(p[30])),
+                era_score=_int(p[30]),
                 age=p[31],
                 current_research=p[32],
                 current_civic=p[33],
                 pantheon=p[34],
                 religion=p[35],
-                exploration_pct=int(float(p[36])) if len(p) > 36 else 0,
+                exploration_pct=_int(p[36]) if len(p) > 36 else 0,
             )
             players.append(row)
             player_map[pid] = row
@@ -1230,10 +1230,10 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
             if len(p) >= 7:
                 pid = int(p[1])
                 if pid in player_map:
-                    player_map[pid].units_total = int(float(p[2]))
-                    player_map[pid].units_military = int(float(p[3]))
-                    player_map[pid].units_civilian = int(float(p[4]))
-                    player_map[pid].units_support = int(float(p[5]))
+                    player_map[pid].units_total = _int(p[2])
+                    player_map[pid].units_military = _int(p[3])
+                    player_map[pid].units_civilian = _int(p[4])
+                    player_map[pid].units_support = _int(p[5])
                     player_map[pid].unit_composition = _parse_kv_pairs(p[6])
 
         elif line.startswith("PCITY|"):
@@ -1244,7 +1244,7 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
                         pid=int(p[1]),
                         city_id=int(p[2]),
                         city=p[3],
-                        pop=int(float(p[4])),
+                        pop=_int(p[4]),
                         food=round(float(p[5]), 1),
                         production=round(float(p[6]), 1),
                         gold=round(float(p[7]), 1),
@@ -1252,8 +1252,8 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
                         culture=round(float(p[9]), 1),
                         faith=round(float(p[10]), 1),
                         housing=round(float(p[11]), 1),
-                        amenities=int(float(p[12])),
-                        amenities_needed=int(float(p[13])),
+                        amenities=_int(p[12]),
+                        amenities_needed=_int(p[13]),
                         districts=p[14],
                         producing=p[15],
                         loyalty=round(float(p[16]), 1),
@@ -1266,17 +1266,17 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
             p = line.split("|")
             if len(p) >= 6:
                 agent.diplo_states[p[1]] = {
-                    "state": int(float(p[2])),
+                    "state": _int(p[2]),
                     "alliance": p[3] if p[3] != "none" else None,
-                    "alliance_level": int(float(p[4])),
-                    "grievances": int(float(p[5])),
+                    "alliance_level": _int(p[4]),
+                    "grievances": _int(p[5]),
                 }
 
         elif line.startswith("ACS|"):
             p = line.split("|")
             if len(p) >= 4:
-                agent.suzerainties = int(float(p[1]))
-                agent.envoys_available = int(float(p[2]))
+                agent.suzerainties = _int(p[1])
+                agent.envoys_available = _int(p[2])
                 agent.envoys_sent = _parse_kv_pairs(p[3])
 
         elif line.startswith("AGOV|"):
@@ -1294,10 +1294,10 @@ def parse_diary_full_response(lines: list[str]) -> DiarySnapshot:
         elif line.startswith("ATRADE|"):
             p = line.split("|")
             if len(p) >= 5:
-                agent.trade_capacity = int(float(p[1]))
-                agent.trade_active = int(float(p[2]))
-                agent.trade_domestic = int(float(p[3]))
-                agent.trade_international = int(float(p[4]))
+                agent.trade_capacity = _int(p[1])
+                agent.trade_active = _int(p[2])
+                agent.trade_domestic = _int(p[3])
+                agent.trade_international = _int(p[4])
 
         elif line.startswith("AGPPTS|"):
             agent.gp_points = _parse_kv_pairs(line[7:])

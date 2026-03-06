@@ -16,7 +16,7 @@ from civ_mcp.lua.models import (
 
 def build_pantheon_status_query() -> str:
     """Get pantheon status and available beliefs (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pReligion = Players[me]:GetReligion()
 local currentPantheon = pReligion:GetPantheon()
@@ -33,7 +33,7 @@ if hasPantheon then
 end
 print("STATUS|" .. (hasPantheon and "1" or "0") .. "|" .. beliefType .. "|" .. beliefName:gsub("|","/") .. "|" .. string.format("%.1f", faith))
 if not hasPantheon then
-    local taken = {{}}
+    local taken = {}
     for i = 0, 62 do
         if Players[i] and Players[i]:IsAlive() and i ~= me then
             local ok, pan = pcall(function() return Players[i]:GetReligion():GetPantheon() end)
@@ -49,7 +49,7 @@ if not hasPantheon then
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_choose_pantheon(belief_type: str) -> str:
@@ -70,7 +70,7 @@ print("{SENTINEL}")
 
 def build_religion_beliefs_query() -> str:
     """Get religion founding status, available religions, and beliefs by class (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pRel = Players[me]:GetReligion()
 local relCreated = pRel:GetReligionTypeCreated()
@@ -87,7 +87,7 @@ end
 print("STATUS|relCreated=" .. relCreated .. "|pantheon=" .. pantheon .. "|faith=" .. string.format("%.0f", faith))
 
 -- Collect taken beliefs across all players
-local takenBeliefs = {{}}
+local takenBeliefs = {}
 for i = 0, 62 do
     if Players[i] and Players[i]:IsAlive() then
         pcall(function()
@@ -101,7 +101,7 @@ for i = 0, 62 do
 end
 
 -- Collect taken religions
-local takenReligions = {{}}
+local takenReligions = {}
 for i = 0, 62 do
     if Players[i] and Players[i]:IsAlive() then
         pcall(function()
@@ -122,7 +122,7 @@ for row in GameInfo.Religions() do
 end
 
 -- Available beliefs by class (excluding pantheon and taken)
-local classes = {{"BELIEF_CLASS_FOLLOWER", "BELIEF_CLASS_FOUNDER", "BELIEF_CLASS_ENHANCER", "BELIEF_CLASS_WORSHIP"}}
+local classes = {"BELIEF_CLASS_FOLLOWER", "BELIEF_CLASS_FOUNDER", "BELIEF_CLASS_ENHANCER", "BELIEF_CLASS_WORSHIP"}
 for _, cls in ipairs(classes) do
     for belief in GameInfo.Beliefs() do
         if belief.BeliefClassType == cls and not takenBeliefs[belief.Index] then
@@ -133,7 +133,7 @@ for _, cls in ipairs(classes) do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_religion_beliefs_response(lines: list[str]) -> ReligionFoundingStatus:
@@ -231,7 +231,7 @@ local uInfo = GameInfo.Units[unit:GetType()]
 local uName = uInfo and uInfo.UnitType or "UNKNOWN"
 local charges = unit:GetSpreadCharges()
 if charges <= 0 then
-    {_bail('ERR:NO_CHARGES|" .. uName .. " has no spread charges remaining')}
+    {_bail_lua('"ERR:NO_CHARGES|" .. uName .. " has no spread charges remaining"')}
 end
 if unit:GetMovesRemaining() <= 0 then
     {_bail_lua('"ERR:NO_MOVES|" .. uName .. " has no moves remaining — wait until next turn"')}
@@ -243,7 +243,7 @@ params[UnitOperationTypes.PARAM_X] = ux
 params[UnitOperationTypes.PARAM_Y] = uy
 local canStart = UnitManager.CanStartOperation(unit, opRow.Hash, nil, params, true)
 if not canStart then
-    {_bail('ERR:CANNOT_SPREAD|Cannot spread religion here (" .. ux .. "," .. uy .. "). Must be in or adjacent to a city with a different majority religion.')}
+    {_bail_lua('"ERR:CANNOT_SPREAD|Cannot spread religion here (" .. ux .. "," .. uy .. "). Must be in or adjacent to a city with a different majority religion."')}
 end
 UnitManager.RequestOperation(unit, opRow.Hash, params)
 local newCharges = unit:GetSpreadCharges()
@@ -290,7 +290,7 @@ def parse_pantheon_status_response(lines: list[str]) -> PantheonStatus:
 
 def build_religion_status_query() -> str:
     """InGame: per-city religion status for all visible cities."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pVis = PlayersVisibility[me]
 local pDiplo = Players[me]:GetDiplomacy()
@@ -315,7 +315,7 @@ for pid = 0, 62 do
                     local followers = ""
                     local rels = cityRel:GetReligionsInCity()
                     if rels then
-                        local parts = {{}}
+                        local parts = {}
                         for _, r in ipairs(rels) do
                             if r.Religion >= 0 then
                                 local rn = GameInfo.Religions[r.Religion]
@@ -331,7 +331,7 @@ for pid = 0, 62 do
         end
     end
 end
-local relTotals = {{}}
+local relTotals = {}
 local nMajors = 0
 for i = 0, 62 do
     local p = Players[i]
@@ -349,7 +349,7 @@ for rName, count in pairs(relTotals) do
     print("RSUMMARY|" .. rName .. "|" .. count .. "|" .. nMajors)
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_religion_status_response(lines: list[str]) -> ReligionStatus:

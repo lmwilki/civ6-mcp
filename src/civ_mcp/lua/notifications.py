@@ -13,10 +13,10 @@ def build_end_turn_blocking_query() -> str:
     blocking type found.  This lets the caller see everything that needs
     resolving in a single round-trip instead of peeling one blocker at a time.
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local list = NotificationManager.GetList(me)
-local seen = {{}}
+local seen = {}
 local found = 0
 if list then
     for _, nid in ipairs(list) do
@@ -40,20 +40,20 @@ if list then
 end
 if found == 0 then print("NONE") end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_end_turn() -> str:
-    return f"""
+    return """
 UI.RequestAction(ActionTypes.ACTION_ENDTURN)
 print("OK:TURN_ENDED")
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_notifications_query() -> str:
     """Query NotificationManager for active notifications (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local nm = NotificationManager
 local list = nm.GetList(me)
@@ -100,7 +100,7 @@ if list then
 end
 print("TOTAL|" .. total .. "|" .. emitted)
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_notifications_response(lines: list[str]) -> list[GameNotification]:

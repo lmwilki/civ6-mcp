@@ -83,3 +83,103 @@ def _lua_get_city(city_id: int) -> str:
         f"local pCity = CityManager.GetCity(me, {city_id} % 65536) "
         f"if pCity == nil then {_bail('ERR:CITY_NOT_FOUND')} end"
     )
+
+
+# ---------------------------------------------------------------------------
+# Parser helpers — reduce noise in pipe-delimited response parsers
+# ---------------------------------------------------------------------------
+
+
+def _int(s: str) -> int:
+    """Parse a string that may be a float representation to int.
+
+    Lua prints integers as floats (e.g. ``3.0``).  This avoids the
+    ``int(float(x))`` pattern repeated across every parser.
+    """
+    return int(float(s))
+
+
+# ---------------------------------------------------------------------------
+# Shared Lua snippet constants — compose into builders via string concat.
+# These are plain strings (NOT f-strings), so Lua braces are unescaped.
+# Interpolate into f-string builders with {_LUA_RES_VISIBLE} etc.
+# ---------------------------------------------------------------------------
+
+# Resource visibility check — expects ``pTech`` in scope.
+_LUA_RES_VISIBLE = """\
+local function resVisible(resEntry)
+    if not resEntry.PrereqTech then return true end
+    local t = GameInfo.Technologies[resEntry.PrereqTech]
+    return t and pTech:HasTech(t.Index)
+end"""
+
+# Victory-enabled check — prints VENABLED| lines for each enabled victory type.
+# Yield label table + formatters for trade route yield display.
+# fmtY: format array of {YieldIndex, Amount} objects (from GetOutgoingRoutes).
+# fmtFlat/sumFlat: format/sum flat 6-element arrays (from Calculate* APIs).
+# Both share the yN label table.
+_LUA_YIELD_LABELS = 'local yN = {"F","P","G","S","C","A"}'
+
+_LUA_FMT_Y = """\
+local function fmtY(tbl)
+    if not tbl then return "" end
+    local s = ""
+    for _, e in ipairs(tbl) do
+        if e.Amount and e.Amount > 0 then
+            local idx = e.YieldIndex + 1
+            if idx >= 1 and idx <= 6 then
+                local amt = e.Amount
+                if amt == math.floor(amt) then amt = math.floor(amt) end
+                s = s .. yN[idx] .. amt
+            end
+        end
+    end
+    return s
+end"""
+
+_LUA_FMT_FLAT = """\
+local function sumFlat(...)
+    local s = {0,0,0,0,0,0}
+    for _, t in ipairs({...}) do
+        if t then for j = 1, 6 do s[j] = s[j] + (t[j] or 0) end end
+    end
+    return s
+end
+local function fmtFlat(arr)
+    if not arr then return "" end
+    local s = ""
+    for j = 1, 6 do
+        local v = arr[j]
+        if v and v > 0 then
+            if v == math.floor(v) then v = math.floor(v) end
+            s = s .. yN[j] .. v
+        end
+    end
+    return s
+end"""
+
+# XP threshold calculation for unit promotions.
+# Expects ``exp`` (unit:GetExperience()), ``promClass`` (PromotionClass string) in scope.
+# Produces: xpPromoCount, t1, xp, xpNeeded.
+_LUA_XP_THRESHOLD = """\
+local xpPromoCount = 0
+if promClass ~= "" then
+    for p in GameInfo.UnitPromotions() do
+        if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then
+            xpPromoCount = xpPromoCount + 1
+        end
+    end
+end
+local t1 = exp:GetExperienceForNextLevel()
+local xp = exp:GetExperiencePoints()
+local xpNeeded = t1 * (xpPromoCount + 1) * (xpPromoCount + 2) / 2"""
+
+_LUA_VICTORY_ENABLED = """\
+local _vtypes = {"VICTORY_TECHNOLOGY","VICTORY_CULTURE","VICTORY_RELIGIOUS","VICTORY_DIPLOMATIC","VICTORY_CONQUEST"}
+for _, vt in ipairs(_vtypes) do
+    local row = GameInfo.Victories[vt]
+    if row then
+        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
+        if ok and en then print("VENABLED|" .. vt) end
+    end
+end"""

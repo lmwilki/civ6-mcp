@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import (
+    _LUA_RES_VISIBLE,
     SENTINEL,
     _bail,
     _bail_lua,
+    _int,
     _lua_get_city,
     _lua_get_unit,
 )
@@ -28,7 +30,8 @@ from civ_mcp.lua.models import (
 
 # --- Shared Lua fragments for settle-scan scoring (used by two builders) ---
 
-_SETTLE_PREAMBLE = """
+_SETTLE_PREAMBLE = (
+    """
 local allCities = {}
 for i = 0, 62 do
     if Players[i] and Players[i]:IsAlive() then
@@ -41,13 +44,12 @@ for i = 0, 62 do
     end
 end
 local classPrefix = {RESOURCECLASS_STRATEGIC="S", RESOURCECLASS_LUXURY="L", RESOURCECLASS_BONUS="B"}
-local function resVisible(resEntry)
-    if not resEntry.PrereqTech then return true end
-    local t = GameInfo.Technologies[resEntry.PrereqTech]
-    return t and pTech:HasTech(t.Index)
-end
+"""
+    + _LUA_RES_VISIBLE
+    + """
 local candidates = {}
 """
+)
 
 # Scoring body — expects cx, cy, cPlot, vis, me, allCities, classPrefix, resVisible in scope.
 # Appends to `candidates` table.
@@ -148,11 +150,7 @@ local cx, cy, r = {center_x}, {center_y}, {radius}
 local me = Game.GetLocalPlayer()
 local vis = PlayersVisibility[me]
 local pTech = Players[me]:GetTechs()
-local function resVisible(resEntry)
-    if not resEntry.PrereqTech then return true end
-    local t = GameInfo.Technologies[resEntry.PrereqTech]
-    return t and pTech:HasTech(t.Index)
-end
+{_LUA_RES_VISIBLE}
 for dy = -r, r do
     for dx = -r, r do
         local x, y = cx + dx, cy + dy
@@ -270,13 +268,13 @@ print("{SENTINEL}")
 
 def build_strategic_map_query() -> str:
     """GameCore context: fog boundary per city + unclaimed luxury/strategic resources."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local vis = PlayersVisibility[me]
 local pTech = Players[me]:GetTechs()
 local w, h = Map.GetGridSize()
 -- Hex direction offsets (NE, E, SE, SW, W, NW) for offset coords
-local dirs = {{{{0,-1}},{{1,0}},{{0,1}},{{-1,1}},{{-1,0}},{{0,-1}}}}
+local dirs = {{0,-1},{1,0},{0,1},{-1,1},{-1,0},{0,-1}}
 -- Actually use precise ray-cast: step along each cardinal hex direction
 -- For offset coordinates, direction deltas depend on row parity
 -- Simplified: use angular sectors by scanning radius rings
@@ -285,8 +283,8 @@ for _, c in Players[me]:GetCities():Members() do
     local nm = Locale.Lookup(c:GetName())
     -- For 6 directions, scan along a ray and find first unrevealed tile
     -- Directions: N(0,-1), NE(+1,-1), SE(+1,+1), S(0,+1), SW(-1,+1), NW(-1,-1) approx
-    local dirVecs = {{{{0,-1}},{{1,-1}},{{1,1}},{{0,1}},{{-1,1}},{{-1,-1}}}}
-    local fogDists = {{}}
+    local dirVecs = {{0,-1},{1,-1},{1,1},{0,1},{-1,1},{-1,-1}}
+    local fogDists = {}
     for _, dv in ipairs(dirVecs) do
         local fogDist = -1
         for dist = 3, 15 do
@@ -331,7 +329,7 @@ for y = 0, h - 1 do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_strategic_map_response(lines: list[str]) -> StrategicMapData:
@@ -487,11 +485,11 @@ def build_empire_resources_query() -> str:
     NEARBY lines for unclaimed resources within 5 tiles of cities.
     Runs in InGame context for GetResourceStockpileCap/GetResourceAccumulationPerTurn.
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local vis = PlayersVisibility[me]
 local pRes = Players[me]:GetResources()
-local classMap = {{RESOURCECLASS_STRATEGIC="strategic", RESOURCECLASS_LUXURY="luxury", RESOURCECLASS_BONUS="bonus"}}
+local classMap = {RESOURCECLASS_STRATEGIC="strategic", RESOURCECLASS_LUXURY="luxury", RESOURCECLASS_BONUS="bonus"}
 -- Stockpile info for strategic and luxury resources
 for row in GameInfo.Resources() do
     if pRes:IsResourceVisible(row.Index) then
@@ -513,10 +511,10 @@ for row in GameInfo.Resources() do
         end
     end
 end
-local myCities = {{}}
-local seen = {{}}
+local myCities = {}
+local seen = {}
 for _, c in Players[me]:GetCities():Members() do
-    table.insert(myCities, {{name=Locale.Lookup(c:GetName()), x=c:GetX(), y=c:GetY()}})
+    table.insert(myCities, {name=Locale.Lookup(c:GetName()), x=c:GetX(), y=c:GetY()})
 end
 -- Scan all owned tiles
 local mapW, mapH = Map.GetGridSize()
@@ -562,7 +560,7 @@ for _, city in ipairs(myCities) do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_district_advisor_query(city_id: int, district_type: str) -> str:
@@ -868,7 +866,7 @@ def parse_map_response(lines: list[str]) -> list[TileInfo]:
         if len(parts) > 12 and parts[12] != "0,0,0,0,0,0":
             yield_parts = parts[12].split(",")
             if len(yield_parts) == 6:
-                yields = tuple(int(float(y)) for y in yield_parts)
+                yields = tuple(_int(y) for y in yield_parts)
         elif len(parts) > 12 and visibility == "visible":
             # Visible tile with all-zero yields — still valid
             yields = (0, 0, 0, 0, 0, 0)
@@ -978,7 +976,7 @@ def build_stockpile_query() -> str:
 
     Only emits STOCKPILE lines — no tile scanning. Used for turn snapshots.
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pRes = Players[me]:GetResources()
 for row in GameInfo.Resources() do
@@ -993,7 +991,7 @@ for row in GameInfo.Resources() do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_stockpile_response(lines: list[str]) -> list[ResourceStockpile]:
@@ -1173,15 +1171,15 @@ def build_static_map_dump() -> str:
 
     Uses InGame context (execute_write) for broadest API compatibility.
     """
-    return f"""
+    return """
 local w, h = Map.GetGridSize()
 local me = Game.GetLocalPlayer()
 print("SIZE|" .. w .. "|" .. h)
 -- Initialize delta tracking globals
-__civmcp_prev_owners = {{}}
-__civmcp_prev_routes = {{}}
+__civmcp_prev_owners = {}
+__civmcp_prev_routes = {}
 for y = 0, h - 1 do
-    local parts = {{}}
+    local parts = {}
     for x = 0, w - 1 do
         local idx = y * w + x
         local plot = Map.GetPlot(x, y)
@@ -1208,7 +1206,7 @@ for i = 0, 62 do
         end
     end
 end
-local csTypeMap = {{}}
+local csTypeMap = {}
 csTypeMap["LEADER_MINOR_CIV_SCIENTIFIC"] = "Scientific"
 csTypeMap["LEADER_MINOR_CIV_CULTURAL"] = "Cultural"
 csTypeMap["LEADER_MINOR_CIV_MILITARISTIC"] = "Militaristic"
@@ -1235,7 +1233,7 @@ for i = 0, 62 do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_static_map_dump(lines: list[str]) -> StaticMapDump:
@@ -1381,10 +1379,10 @@ def build_revealed_tiles_seed_query() -> str:
     Used once per session to seed the spatial tracker's revealed-tile set.
     Output: ``REVEALED|x1,y1;x2,y2;...`` (semicolon-separated pairs).
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local vis = PlayersVisibility[me]
-local parts = {{}}
+local parts = {}
 for idx = 0, Map.GetPlotCount() - 1 do
     local p = Map.GetPlotByIndex(idx)
     if vis:IsRevealed(p:GetX(), p:GetY()) then
@@ -1393,7 +1391,7 @@ for idx = 0, Map.GetPlotCount() - 1 do
 end
 print("REVEALED|" .. table.concat(parts, ";"))
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def parse_revealed_tiles_seed(lines: list[str]) -> set[tuple[int, int]]:

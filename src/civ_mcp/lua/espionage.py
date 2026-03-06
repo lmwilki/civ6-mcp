@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _lua_get_unit
+from civ_mcp.lua._helpers import SENTINEL, _bail, _bail_lua, _int, _lua_get_unit
 from civ_mcp.lua.models import SpyInfo
 
 # Spy operation hashes — GameInfo.UnitOperations() returns 0 rows so we hardcode these.
@@ -110,7 +110,7 @@ def parse_spies_response(lines: list[str]) -> list[SpyInfo]:
             y = int(parts[3])
             rank = int(parts[4])
             xp = int(parts[5])
-            moves = int(float(parts[6]))
+            moves = _int(parts[6])
             city_name = parts[7]
             city_owner = int(parts[8])
             ops_str = parts[9].strip()
@@ -243,18 +243,18 @@ def build_spy_escape_route() -> str:
         if dist == "DISTRICT_CITY_CENTER":
             # City Center is always available — no HasDistrict check needed
             district_checks.append(
-                f'if not chosen then '
+                f"if not chosen then "
                 f'  chosen = GameInfo.Districts["{dist}"]; '
                 f'  chosenName = "{dist}" '
-                f'end'
+                f"end"
             )
         else:
             district_checks.append(
-                f'if not chosen and city:GetDistricts():HasDistrict('
+                f"if not chosen and city:GetDistricts():HasDistrict("
                 f'GameInfo.Districts["{dist}"].Index, true, true) then '
                 f'  chosen = GameInfo.Districts["{dist}"]; '
                 f'  chosenName = "{dist}" '
-                f'end'
+                f"end"
             )
     checks_lua = " ".join(district_checks)
 

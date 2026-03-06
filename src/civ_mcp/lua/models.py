@@ -280,7 +280,9 @@ class CityInfo:
         default_factory=list
     )  # e.g. ["HORSES@5,10"]
     pillaged_improvements: list[str] = field(default_factory=list)  # e.g. ["MINE@6,11"]
-    buildings: list[str] = field(default_factory=list)  # completed buildings (BUILDING_ prefix stripped)
+    buildings: list[str] = field(
+        default_factory=list
+    )  # completed buildings (BUILDING_ prefix stripped)
 
 
 @dataclass
@@ -320,7 +322,9 @@ class TileInfo:
     owner_name: str | None = (
         None  # resolved name, e.g. "Vatican City" (with :CS suffix for city-states)
     )
-    route_type: int = -1  # -1=none, 0=ancient, 1=medieval, 2=industrial, 3=modern, 4=railroad
+    route_type: int = (
+        -1
+    )  # -1=none, 0=ancient, 1=medieval, 2=industrial, 3=modern, 4=railroad
     movement_cost: int = 1  # base movement cost for land units
 
 

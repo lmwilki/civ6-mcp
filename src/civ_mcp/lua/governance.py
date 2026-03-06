@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from civ_mcp.lua._helpers import (
     SENTINEL,
+    _LUA_XP_THRESHOLD,
     _bail,
     _bail_lua,
+    _int,
     _lua_get_city,
     _lua_get_unit,
     _lua_get_unit_gamecore,
@@ -29,7 +31,7 @@ from civ_mcp.lua.models import (
 
 def build_policies_query() -> str:
     """Read current government, policy slots, and available policies (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pCulture = Players[me]:GetCulture()
 local govIdx = pCulture:GetCurrentGovernment()
@@ -44,7 +46,7 @@ if govIdx and govIdx >= 0 then
 end
 local numSlots = pCulture:GetNumPolicySlots()
 print("GOV|" .. govType .. "|" .. govName:gsub("|","/") .. "|" .. numSlots)
-local slotNames = {{[0]="SLOT_ECONOMIC", [1]="SLOT_MILITARY", [2]="SLOT_DIPLOMATIC", [3]="SLOT_WILDCARD", [4]="SLOT_WILDCARD"}}
+local slotNames = {[0]="SLOT_ECONOMIC", [1]="SLOT_MILITARY", [2]="SLOT_DIPLOMATIC", [3]="SLOT_WILDCARD", [4]="SLOT_WILDCARD"}
 for s = 0, numSlots - 1 do
     local slotType = slotNames[pCulture:GetSlotType(s)] or ("SLOT_" .. pCulture:GetSlotType(s))
     local policyIdx = pCulture:GetSlotPolicy(s)
@@ -78,7 +80,7 @@ for policy in GameInfo.Policies() do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_set_policies(assignments: dict[int, str]) -> str:
@@ -115,7 +117,7 @@ def build_set_policies(assignments: dict[int, str]) -> str:
             f'local pType_{slot_idx} = pe_{slot_idx}.GovernmentSlotType or "unknown"; '
             f"local st_{slot_idx} = pCulture:GetSlotType({slot_idx}); "
             f'local sName_{slot_idx} = slotNames[st_{slot_idx}] or ("type_" .. st_{slot_idx}); '
-            f'{_bail_lua(f""" "ERR:CANNOT_SLOT|{policy_type} (" .. pType_{slot_idx} .. ") rejected for slot {slot_idx} (" .. sName_{slot_idx} .. ")" """)} end; '
+            f"{_bail_lua(f''' "ERR:CANNOT_SLOT|{policy_type} (" .. pType_{slot_idx} .. ") rejected for slot {slot_idx} (" .. sName_{slot_idx} .. ")" ''')} end; "
             # Belt-and-suspenders type string check, now covers Economic/Military/Diplomatic (sType < 3)
             f"local sType_{slot_idx} = pCulture:GetSlotType({slot_idx}); "
             f"local pSlot_{slot_idx} = slotTypeMap[pe_{slot_idx}.GovernmentSlotType] or -1; "
@@ -123,7 +125,7 @@ def build_set_policies(assignments: dict[int, str]) -> str:
             f"  and pe_{slot_idx}.GovernmentSlotType ~= 'SLOT_WILDCARD' then "
             f'local sName = slotNames[sType_{slot_idx}] or "unknown"; '
             f'local pType = pe_{slot_idx}.GovernmentSlotType or "unknown"; '
-            f'{_bail_lua(f""" "ERR:SLOT_MISMATCH|{policy_type} (" .. pType .. ") cannot go in slot {slot_idx} (" .. sName .. ")" """)} end'
+            f"{_bail_lua(f''' "ERR:SLOT_MISMATCH|{policy_type} (" .. pType .. ") cannot go in slot {slot_idx} (" .. sName .. ")" ''')} end"
         )
         add_entries.append(f"addList[{slot_idx}] = pe_{slot_idx}.Hash")
 
@@ -152,14 +154,14 @@ print("{SENTINEL}")
 
 def build_governors_query() -> str:
     """Read governor status, appointed governors, and available types (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pGovs = Players[me]:GetGovernors()
 local pts = pGovs:GetGovernorPoints()
 local spent = pGovs:GetGovernorPointsSpent()
 local canAppoint = pGovs:CanAppoint() and "1" or "0"
 print("STATUS|" .. pts .. "|" .. spent .. "|" .. canAppoint)
-local appointedTypes = {{}}
+local appointedTypes = {}
 for row in GameInfo.Governors() do
     if row.TransitionStrength and row.TransitionStrength > 0 and pGovs:HasGovernor(row.Hash) then
         appointedTypes[row.GovernorType] = true
@@ -198,7 +200,7 @@ for gov in GameInfo.Governors() do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_appoint_governor(governor_type: str) -> str:
@@ -303,20 +305,7 @@ local ut = info and info.UnitType or "UNKNOWN"
 local promClass = info and info.PromotionClass or ""
 print("UNIT|" .. {unit_index} .. "|" .. (unit:GetID() % 65536) .. "|" .. ut)
 local exp = unit:GetExperience()
--- XP-threshold gate: SetPromotion doesn't consume XP/advance level, so
--- GetExperienceForNextLevel() is stuck at T1 (level 1->2 threshold).
--- Correct threshold for (n+1)th promotion = T1 * (n+1) * (n+2) / 2.
-local xpPromoCount = 0
-if promClass ~= "" then
-    for p in GameInfo.UnitPromotions() do
-        if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then
-            xpPromoCount = xpPromoCount + 1
-        end
-    end
-end
-local t1 = exp:GetExperienceForNextLevel()
-local xp = exp:GetExperiencePoints()
-local xpNeeded = t1 * (xpPromoCount + 1) * (xpPromoCount + 2) / 2
+{_LUA_XP_THRESHOLD}
 print("XP|" .. xp .. "|" .. xpNeeded .. "|" .. xpPromoCount)
 if xp < xpNeeded then
     print("{SENTINEL}")
@@ -374,21 +363,10 @@ if promo == nil then {_bail(f"ERR:PROMOTION_NOT_FOUND|{promotion_type}")} end
 local exp = unit:GetExperience()
 if exp == nil then {_bail("ERR:NO_EXPERIENCE|Unit has no experience object")} end
 -- XP-threshold gate: prevent infinite promotions from SetPromotion desync.
--- Count existing promotions, compute correct threshold for next one.
 local ui = GameInfo.Units[unit:GetType()]
 local promClass = ui and ui.PromotionClass or ""
-local promoCount = 0
-if promClass ~= "" then
-    for p in GameInfo.UnitPromotions() do
-        if p.PromotionClass == promClass and exp:HasPromotion(p.Index) then
-            promoCount = promoCount + 1
-        end
-    end
-end
-local t1 = exp:GetExperienceForNextLevel()
-local xp = exp:GetExperiencePoints()
-local needed = t1 * (promoCount + 1) * (promoCount + 2) / 2
-if xp < needed then {_bail_lua('"ERR:INSUFFICIENT_XP|Have " .. xp .. " XP, need " .. needed .. " for promotion " .. (promoCount + 1) .. " (have " .. promoCount .. " already)"')} end
+{_LUA_XP_THRESHOLD}
+if xp < xpNeeded then {_bail_lua('"ERR:INSUFFICIENT_XP|Have " .. xp .. " XP, need " .. xpNeeded .. " for promotion " .. (xpPromoCount + 1) .. " (have " .. xpPromoCount .. " already)"')} end
 local canPromote = false
 pcall(function() canPromote = exp:CanPromote(promo.Index) end)
 if not canPromote then {_bail("ERR:CANNOT_PROMOTE|Unit cannot receive this promotion (wrong class, missing prereq, or insufficient XP)")} end
@@ -416,12 +394,12 @@ print("{SENTINEL}")
 
 def build_city_states_query() -> str:
     """List known city-states with envoy info (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pInfluence = Players[me]:GetInfluence()
 local pDiplo = Players[me]:GetDiplomacy()
 print("TOKENS|" .. pInfluence:GetTokensToGive())
-local csTypeMap = {{}}
+local csTypeMap = {}
 csTypeMap["LEADER_MINOR_CIV_SCIENTIFIC"] = "Scientific"
 csTypeMap["LEADER_MINOR_CIV_CULTURAL"] = "Cultural"
 csTypeMap["LEADER_MINOR_CIV_MILITARISTIC"] = "Militaristic"
@@ -451,7 +429,7 @@ for i = 0, 62 do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_send_envoy(city_state_player_id: int) -> str:
@@ -554,7 +532,7 @@ print("{SENTINEL}")
 
 def build_dedications_query() -> str:
     """Read current era age, available dedications, and active ones."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pEras = Game.GetEras()
 local age = "Normal"
@@ -589,7 +567,7 @@ if choices then
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_choose_dedication(dedication_index: int) -> str:
@@ -611,7 +589,7 @@ print("{SENTINEL}")
 
 def build_available_governments_query() -> str:
     """List unlocked governments with slot info (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pCulture = Players[me]:GetCulture()
 local curGov = pCulture:GetCurrentGovernment()
@@ -619,7 +597,7 @@ for row in GameInfo.Governments() do
     local unlocked = pCulture:IsGovernmentUnlocked(row.Index)
     if unlocked then
         local isCurrent = (row.Index == curGov)
-        local slots = {{}}
+        local slots = {}
         for slotRow in GameInfo.Government_SlotCounts() do
             if slotRow.GovernmentType == row.GovernmentType then
                 for i = 1, slotRow.NumSlots do
@@ -639,7 +617,7 @@ for row in GameInfo.Governments() do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_change_government(gov_type: str) -> str:
@@ -792,8 +770,8 @@ def parse_unit_promotions_response(lines: list[str]) -> UnitPromotionStatus:
         elif line.startswith("XP|"):
             parts = line.split("|")
             if len(parts) >= 4:
-                xp = int(float(parts[1]))
-                xp_needed = int(float(parts[2]))
+                xp = _int(parts[1])
+                xp_needed = _int(parts[2])
                 promotion_count = int(parts[3])
         elif line.startswith("PROMO|"):
             parts = line.split("|")

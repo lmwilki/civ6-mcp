@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL
-from civ_mcp.lua.models import DemographicEntry, SpaceProject, VictoryPlayerProgress, VictoryProgress
+from civ_mcp.lua._helpers import _LUA_VICTORY_ENABLED, SENTINEL, _int
+from civ_mcp.lua.models import (
+    DemographicEntry,
+    SpaceProject,
+    VictoryPlayerProgress,
+    VictoryProgress,
+)
 
 
 def build_victory_proximity_query() -> str:
     """InGame: lightweight check for foreign victory threats. Safe for every turn."""
-    return f"""
+    return (
+        """
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
-local relCount = {{}}
-local relOwner = {{}}
+local relCount = {}
+local relOwner = {}
 local totalMajors = 0
 for i = 0, 62 do
     local p = Players[i]
@@ -59,16 +65,12 @@ for relId, count in pairs(relCount) do
         print("REL_THREAT|" .. relOwner[relId] .. "|" .. count .. "|" .. totalMajors)
     end
 end
-local pvtypes = {{"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}}
-for _, vt in ipairs(pvtypes) do
-    local row = GameInfo.Victories[vt]
-    if row then
-        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
-        if ok and en then print("VENABLED|" .. vt) end
-    end
-end
+"""
+        + _LUA_VICTORY_ENABLED
+        + """
 print("{SENTINEL}")
 """
+    ).replace("{SENTINEL}", SENTINEL)
 
 
 def build_victory_progress_query() -> str:
@@ -258,14 +260,7 @@ for i = 0, 62 do
     end
 end
 print("RELSLOTS|" .. nRels .. "|" .. (math.floor(nMajors / 2) + 1))
-local vtypes = {{"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"}}
-for _, vt in ipairs(vtypes) do
-    local row = GameInfo.Victories[vt]
-    if row then
-        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
-        if ok and en then print("VENABLED|" .. vt) end
-    end
-end
+{_LUA_VICTORY_ENABLED}
 print("{SENTINEL}")
 """
 
@@ -293,18 +288,18 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
                 VictoryPlayerProgress(
                     player_id=int(p[1]),
                     name=p[2],
-                    score=int(float(p[3])),
-                    science_vp=int(float(p[4])),
-                    science_vp_needed=int(float(p[5])),
-                    diplomatic_vp=int(float(p[6])),
-                    tourism=int(float(p[7])),
-                    military_strength=int(float(p[8])),
-                    techs_researched=int(float(p[9])),
-                    civics_completed=int(float(p[10])),
-                    religion_cities=int(float(p[11])),
-                    staycationers=int(float(p[12])),
+                    score=_int(p[3]),
+                    science_vp=_int(p[4]),
+                    science_vp_needed=_int(p[5]),
+                    diplomatic_vp=_int(p[6]),
+                    tourism=_int(p[7]),
+                    military_strength=_int(p[8]),
+                    techs_researched=_int(p[9]),
+                    civics_completed=_int(p[10]),
+                    religion_cities=_int(p[11]),
+                    staycationers=_int(p[12]),
                     has_religion=p[13] == "true",
-                    num_cities=int(float(p[14])) if len(p) > 14 else 0,
+                    num_cities=_int(p[14]) if len(p) > 14 else 0,
                     science_yield=float(p[15]) if len(p) > 15 else 0.0,
                     culture_yield=float(p[16]) if len(p) > 16 else 0.0,
                     gold_yield=float(p[17]) if len(p) > 17 else 0.0,

@@ -13,7 +13,7 @@ from civ_mcp.lua.models import (
 
 
 def build_tech_civics_query() -> str:
-    return f"""
+    return """
 local id = Game.GetLocalPlayer()
 local te = Players[id]:GetTechs()
 local cu = Players[id]:GetCulture()
@@ -33,17 +33,17 @@ if civicIdx >= 0 then
 end
 print("CURRENT|" .. techName .. "|" .. techTurns .. "|" .. civicName .. "|" .. civicTurns)
 -- Build boost lookup
-local boostsByTech = {{}}
-local boostsByCivic = {{}}
+local boostsByTech = {}
+local boostsByCivic = {}
 for b in GameInfo.Boosts() do
     if b.TechnologyType then boostsByTech[b.TechnologyType] = b end
     if b.CivicType then boostsByCivic[b.CivicType] = b end
 end
 -- Build tech prereqs lookup
-local techPrereqs = {{}}
+local techPrereqs = {}
 pcall(function()
     for row in GameInfo.TechnologyPrereqs() do
-        if not techPrereqs[row.Technology] then techPrereqs[row.Technology] = {{}} end
+        if not techPrereqs[row.Technology] then techPrereqs[row.Technology] = {} end
         table.insert(techPrereqs[row.Technology], row.PrereqTech)
     end
 end)
@@ -59,7 +59,7 @@ for tech in GameInfo.Technologies() do
         if b and b.TriggerDescription then
             boostDesc = Locale.Lookup(b.TriggerDescription):gsub("|", "/")
         end
-        local unlocks = {{}}
+        local unlocks = {}
         for u in GameInfo.Units() do if u.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(u.Name)) end end
         for bld in GameInfo.Buildings() do if bld.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(bld.Name)) end end
         for d in GameInfo.Districts() do if d.PrereqTech == tech.TechnologyType then table.insert(unlocks, Locale.Lookup(d.Name)) end end
@@ -91,12 +91,12 @@ for civic in GameInfo.Civics() do
 end
 print("COMPLETED|" .. completedTechs .. "|" .. completedCivics)
 local curEra = Game.GetEras():GetCurrentEra()
-local prereqs = {{}}
+local prereqs = {}
 for row in GameInfo.CivicPrereqs() do
-    if not prereqs[row.Civic] then prereqs[row.Civic] = {{}} end
+    if not prereqs[row.Civic] then prereqs[row.Civic] = {} end
     table.insert(prereqs[row.Civic], row.PrereqCivic)
 end
-local eraLookup = {{}}
+local eraLookup = {}
 for e in GameInfo.Eras() do eraLookup[e.EraType] = e.Index end
 for civic in GameInfo.Civics() do
     if not cu:HasCivic(civic.Index) then
@@ -137,7 +137,7 @@ for civic in GameInfo.Civics() do
     if not cu:HasCivic(civic.Index) then
         local civicEra = eraLookup[civic.EraType] or 99
         if civicEra <= curEra + 1 then
-            local missing = {{}}
+            local missing = {}
             if prereqs[civic.CivicType] then
                 for _, pType in ipairs(prereqs[civic.CivicType]) do
                     local pEntry = GameInfo.Civics[pType]
@@ -157,7 +157,7 @@ for tech in GameInfo.Technologies() do
     if not te:HasTech(tech.Index) and not te:CanResearch(tech.Index) then
         local techEra = eraLookup[tech.EraType] or 99
         if techEra <= curEra + 1 then
-            local missing = {{}}
+            local missing = {}
             if techPrereqs[tech.TechnologyType] then
                 for _, pType in ipairs(techPrereqs[tech.TechnologyType]) do
                     local pEntry = GameInfo.Technologies[pType]
@@ -173,100 +173,130 @@ for tech in GameInfo.Technologies() do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
-def build_set_research(tech_name: str) -> str:
+def _build_set_ingame(
+    name: str,
+    gi_table: str,
+    type_field: str,
+    param: str,
+    operation: str,
+    blocking: str,
+    ok_prefix: str,
+) -> str:
+    """Shared builder for set_research / set_civic via InGame UI."""
+    err_label = "TECH" if "Tech" in gi_table else "CIVIC"
     return f"""
 local id = Game.GetLocalPlayer()
 local idx = nil
-for row in GameInfo.Technologies() do
-    if row.TechnologyType == "{tech_name}" then idx = row.Index; break end
+for row in GameInfo.{gi_table}() do
+    if row.{type_field} == "{name}" then idx = row.Index; break end
 end
-if idx == nil then {_bail(f"ERR:TECH_NOT_FOUND|{tech_name}")} end
+if idx == nil then {_bail(f"ERR:{err_label}_NOT_FOUND|{name}")} end
 local params = {{}}
-params[PlayerOperations.PARAM_TECH_TYPE] = idx
-UI.RequestPlayerOperation(id, PlayerOperations.RESEARCH, params)
+params[PlayerOperations.{param}] = idx
+UI.RequestPlayerOperation(id, PlayerOperations.{operation}, params)
 local list = NotificationManager.GetList(id)
 if list then
     for _, nid in ipairs(list) do
         local e = NotificationManager.Find(id, nid)
         if e and not e:IsDismissed() then
             local bt = e:GetEndTurnBlocking()
-            if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_RESEARCH then
+            if bt and bt == EndTurnBlockingTypes.{blocking} then
                 pcall(function() NotificationManager.SendActivated(id, nid) end)
                 pcall(function() NotificationManager.Dismiss(id, nid) end)
             end
         end
     end
 end
-print("OK:RESEARCHING|{tech_name}")
+print("{ok_prefix}|{name}")
 print("{SENTINEL}")
 """
 
 
+def build_set_research(tech_name: str) -> str:
+    return _build_set_ingame(
+        tech_name,
+        "Technologies",
+        "TechnologyType",
+        "PARAM_TECH_TYPE",
+        "RESEARCH",
+        "ENDTURN_BLOCKING_RESEARCH",
+        "OK:RESEARCHING",
+    )
+
+
 def build_set_civic(civic_name: str) -> str:
+    return _build_set_ingame(
+        civic_name,
+        "Civics",
+        "CivicType",
+        "PARAM_CIVIC_TYPE",
+        "PROGRESS_CIVIC",
+        "ENDTURN_BLOCKING_CIVIC",
+        "OK:PROGRESSING",
+    )
+
+
+def _build_set_gamecore(
+    name: str,
+    gi_table: str,
+    type_field: str,
+    player_method: str,
+    setter: str,
+    getter: str | None,
+    ok_prefix: str,
+) -> str:
+    """Shared builder for set_research / set_civic via GameCore fallback."""
+    err_label = "TECH" if "Tech" in gi_table else "CIVIC"
+    verify = ""
+    if getter:
+        verify = f"""
+local now = Players[id]:{player_method}():{getter}()
+if now == idx then
+    print("{ok_prefix}|{name}")
+else
+    {_bail(f"ERR:RESEARCH_FAILED|GameCore also failed to set {name}")}
+end"""
+    else:
+        verify = f'\nprint("{ok_prefix}|{name}")'
     return f"""
 local id = Game.GetLocalPlayer()
 local idx = nil
-for row in GameInfo.Civics() do
-    if row.CivicType == "{civic_name}" then idx = row.Index; break end
+for row in GameInfo.{gi_table}() do
+    if row.{type_field} == "{name}" then idx = row.Index; break end
 end
-if idx == nil then {_bail(f"ERR:CIVIC_NOT_FOUND|{civic_name}")} end
-local params = {{}}
-params[PlayerOperations.PARAM_CIVIC_TYPE] = idx
-UI.RequestPlayerOperation(id, PlayerOperations.PROGRESS_CIVIC, params)
-local list = NotificationManager.GetList(id)
-if list then
-    for _, nid in ipairs(list) do
-        local e = NotificationManager.Find(id, nid)
-        if e and not e:IsDismissed() then
-            local bt = e:GetEndTurnBlocking()
-            if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_CIVIC then
-                pcall(function() NotificationManager.SendActivated(id, nid) end)
-                pcall(function() NotificationManager.Dismiss(id, nid) end)
-            end
-        end
-    end
-end
-print("OK:PROGRESSING|{civic_name}")
+if idx == nil then {_bail(f"ERR:{err_label}_NOT_FOUND|{name}")} end
+Players[id]:{player_method}():{setter}(idx){verify}
 print("{SENTINEL}")
 """
 
 
 def build_set_research_gamecore(tech_name: str) -> str:
     """Set tech via GameCore — fallback when InGame RequestPlayerOperation silently fails."""
-    return f"""
-local id = Game.GetLocalPlayer()
-local idx = nil
-for row in GameInfo.Technologies() do
-    if row.TechnologyType == "{tech_name}" then idx = row.Index; break end
-end
-if idx == nil then {_bail(f"ERR:TECH_NOT_FOUND|{tech_name}")} end
-Players[id]:GetTechs():SetResearchingTech(idx)
-local now = Players[id]:GetTechs():GetResearchingTech()
-if now == idx then
-    print("OK:RESEARCHING_GAMECORE|{tech_name}")
-else
-    {_bail(f"ERR:RESEARCH_FAILED|GameCore also failed to set {tech_name}")}
-end
-print("{SENTINEL}")
-"""
+    return _build_set_gamecore(
+        tech_name,
+        "Technologies",
+        "TechnologyType",
+        "GetTechs",
+        "SetResearchingTech",
+        "GetResearchingTech",
+        "OK:RESEARCHING_GAMECORE",
+    )
 
 
 def build_set_civic_gamecore(civic_name: str) -> str:
     """Set civic via GameCore — fallback when InGame RequestPlayerOperation silently fails."""
-    return f"""
-local id = Game.GetLocalPlayer()
-local idx = nil
-for row in GameInfo.Civics() do
-    if row.CivicType == "{civic_name}" then idx = row.Index; break end
-end
-if idx == nil then {_bail(f"ERR:CIVIC_NOT_FOUND|{civic_name}")} end
-Players[id]:GetCulture():SetProgressingCivic(idx)
-print("OK:PROGRESSING_GC|{civic_name}")
-print("{SENTINEL}")
-"""
+    return _build_set_gamecore(
+        civic_name,
+        "Civics",
+        "CivicType",
+        "GetCulture",
+        "SetProgressingCivic",
+        None,
+        "OK:PROGRESSING_GC",
+    )
 
 
 def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:

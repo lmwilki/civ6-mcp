@@ -17,12 +17,12 @@ from civ_mcp.lua.models import (
 
 def build_diplomacy_query() -> str:
     """Rich diplomacy query — runs in InGame context for GetDiplomaticAI access."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
 local pVis = PlayersVisibility[me]
-local states = {{"ALLIED","DECLARED_FRIEND","FRIENDLY","NEUTRAL","UNFRIENDLY","DENOUNCED","WAR"}}
-local checkActions = {{"DIPLOACTION_DIPLOMATIC_DELEGATION","DIPLOACTION_DECLARE_FRIENDSHIP","DIPLOACTION_DENOUNCE","DIPLOACTION_RESIDENT_EMBASSY","DIPLOACTION_OPEN_BORDERS","DIPLOACTION_MAKE_ALLIANCE"}}
+local states = {"ALLIED","DECLARED_FRIEND","FRIENDLY","NEUTRAL","UNFRIENDLY","DENOUNCED","WAR"}
+local checkActions = {"DIPLOACTION_DIPLOMATIC_DELEGATION","DIPLOACTION_DECLARE_FRIENDSHIP","DIPLOACTION_DENOUNCE","DIPLOACTION_RESIDENT_EMBASSY","DIPLOACTION_OPEN_BORDERS","DIPLOACTION_MAKE_ALLIANCE"}
 for i = 0, 62 do
     if i ~= me and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() then
         local cfg = PlayerConfigurations[i]
@@ -79,13 +79,13 @@ for i = 0, 62 do
             if stateIdx == 0 then
                 local ok3, aType = pcall(function() return pDiplo:GetAllianceType(i) end)
                 if ok3 and aType and aType >= 0 then
-                    local aNames = {{"RESEARCH","CULTURAL","ECONOMIC","MILITARY","RELIGIOUS"}}
+                    local aNames = {"RESEARCH","CULTURAL","ECONOMIC","MILITARY","RELIGIOUS"}
                     local aLevel = 1
                     pcall(function() aLevel = pDiplo:GetAllianceLevel(i) or 1 end)
                     print("ALLIANCE|" .. i .. "|" .. (aNames[aType+1] or tostring(aType)) .. "|" .. aLevel)
                 end
             end
-            local avail = {{}}
+            local avail = {}
             for _, aName in ipairs(checkActions) do
                 local ok2, valid = pcall(function() return pDiplo:IsDiplomaticActionValid(aName, i, false) end)
                 if ok2 and valid then table.insert(avail, (aName:gsub("DIPLOACTION_", ""))) end
@@ -99,7 +99,7 @@ for i = 0, 62 do
             -- Agendas (visibility-gated: historical always, random only at SECRET+)
             local okAg, agendas = pcall(function() return Players[i]:GetAgendaTypes() end)
             if okAg and agendas then
-                local histSet = {{}}
+                local histSet = {}
                 local leaderType = cfg:GetLeaderTypeName()
                 for ha in GameInfo.HistoricalAgendas() do
                     if ha.LeaderType == leaderType then
@@ -141,7 +141,7 @@ for i = 0, 62 do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_diplomacy_session_query() -> str:
@@ -487,14 +487,13 @@ def build_war_dismiss_view() -> str:
     fires OnDiplomacySessionClosed asynchronously, so the view needs a frame to
     transition from CONVERSATION_MODE to OVERVIEW_MODE first.
     """
-    sentinel = SENTINEL
-    return f"""
+    return """
 LuaEvents.NaturalWonderPopup_Shown()
 LuaEvents.NaturalWonderPopup_Closed()
 pcall(function() Events.HideLeaderScreen() end)
 print("OK:VIEW_DISMISSED")
-print("{sentinel}")
-"""
+print("{SENTINEL}")
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_deal_options_query(other_player_id: int) -> str:
@@ -603,7 +602,7 @@ def parse_deal_options_response(lines: list[str]) -> DealOptions:
 
 def build_pending_deals_query() -> str:
     """Scan all met players for incoming trade deal offers (InGame context)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
 for i = 0, 62 do
@@ -639,7 +638,7 @@ for i = 0, 62 do
                         if subType == DealAgreementTypes.OPEN_BORDERS then itemName = "Open Borders"
                         elseif subType == DealAgreementTypes.JOINT_WAR then itemName = "Joint War"
                         elseif subType == DealAgreementTypes.ALLIANCE then
-                            local aNames = {{"Research","Cultural","Economic","Military","Religious"}}
+                            local aNames = {"Research","Cultural","Economic","Military","Religious"}
                             itemName = (valueType >= 0 and valueType < 5 and aNames[valueType+1] or "Unknown") .. " Alliance"
                         else itemName = "" end
                     elseif iType == DealItemTypes.FAVOR then
@@ -664,7 +663,7 @@ for i = 0, 62 do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_respond_to_deal(other_player_id: int, accept: bool) -> str:

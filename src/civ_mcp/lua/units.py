@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from civ_mcp.lua._helpers import (
+    _LUA_RES_VISIBLE,
     SENTINEL,
     _bail,
     _bail_lua,
@@ -21,7 +22,7 @@ from civ_mcp.lua.models import (
 
 def build_units_query() -> str:
     """InGame context: lists all units with upgrade and builder improvement info."""
-    return f"""
+    return """
 local id = Game.GetLocalPlayer()
 for i, u in Players[id]:GetUnits():Members() do
     local x, y = u:GetX(), u:GetY()
@@ -66,7 +67,7 @@ for i, u in Players[id]:GetUnits():Members() do
         local targets = ""
         if u:GetMovesRemaining() > 0 and (cs > 0 or rs > 0) then
             local rng = (rs > 0) and (entry and entry.Range or 1) or 1
-            local tgtList = {{}}
+            local tgtList = {}
             for dy = -rng, rng do
                 for dx = -rng, rng do
                     local tx, ty = x + dx, y + dy
@@ -117,10 +118,10 @@ for i, u in Players[id]:GetUnits():Members() do
         if ut == "UNIT_BUILDER" and u:GetMovesRemaining() > 0 then
             local plot = Map.GetPlot(x, y)
             if plot and plot:GetOwner() == id then
-                local impList = {{}}
+                local impList = {}
                 for imp in GameInfo.Improvements() do
                     if imp.Buildable and not imp.TraitType then
-                        local bParams = {{}}
+                        local bParams = {}
                         bParams[UnitOperationTypes.PARAM_X] = x
                         bParams[UnitOperationTypes.PARAM_Y] = y
                         bParams[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = imp.Hash
@@ -136,11 +137,11 @@ for i, u in Players[id]:GetUnits():Members() do
         end
         -- Military Engineer advisor (BUILD_ROUTE + fort/airstrip)
         if ut == "UNIT_MILITARY_ENGINEER" and u:GetMovesRemaining() > 0 then
-            local meList = {{}}
+            local meList = {}
             pcall(function()
                 local opRow = GameInfo.UnitOperations["UNITOPERATION_BUILD_ROUTE"]
                 if opRow then
-                    local rp = {{}}
+                    local rp = {}
                     rp[UnitOperationTypes.PARAM_X] = x
                     rp[UnitOperationTypes.PARAM_Y] = y
                     if UnitManager.CanStartOperation(u, opRow.Hash, nil, rp) then
@@ -153,7 +154,7 @@ for i, u in Players[id]:GetUnits():Members() do
                 for imp in GameInfo.Improvements() do
                     if imp.Buildable and not imp.TraitType then
                         pcall(function()
-                            local bp = {{}}
+                            local bp = {}
                             bp[UnitOperationTypes.PARAM_X] = x
                             bp[UnitOperationTypes.PARAM_Y] = y
                             bp[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] = imp.Hash
@@ -170,7 +171,7 @@ for i, u in Players[id]:GetUnits():Members() do
     end
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_move_unit(unit_index: int, target_x: int, target_y: int) -> str:
@@ -619,17 +620,17 @@ def build_threat_scan_query() -> str:
     on tiles the player can currently see (PlayersVisibility:IsVisible).
     Reports owner, HP, combat strength, and distance from nearest friendly position.
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
 local pVis = PlayersVisibility[me]
-local myPos = {{}}
+local myPos = {}
 for _, c in Players[me]:GetCities():Members() do
-    table.insert(myPos, {{c:GetX(), c:GetY()}})
+    table.insert(myPos, {c:GetX(), c:GetY()})
 end
 for _, u in Players[me]:GetUnits():Members() do
     local ux, uy = u:GetX(), u:GetY()
-    if ux ~= -9999 then table.insert(myPos, {{ux, uy}}) end
+    if ux ~= -9999 then table.insert(myPos, {ux, uy}) end
 end
 local found = false
 for pid = 0, 63 do
@@ -673,7 +674,7 @@ for pid = 0, 63 do
 end -- close for pid
 if not found then print("NO_THREATS") end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_fortify_unit(unit_index: int) -> str:
@@ -715,7 +716,7 @@ def build_fortify_remaining_units() -> str:
     Tries to fortify (or heal if damaged) combat units. Non-combat units
     and units that can't fortify are left for skip_remaining_units to handle.
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local fortified = 0
 local healed = 0
@@ -746,12 +747,12 @@ for _, unit in Players[me]:GetUnits():Members() do
 end
 print("OK:FORTIFIED|" .. fortified .. " fortified, " .. healed .. " healing")
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_skip_remaining_units() -> str:
     """Skip all units with moves remaining (GameCore context — FinishMoves for each)."""
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local count = 0
 for _, unit in Players[me]:GetUnits():Members() do
@@ -763,7 +764,7 @@ for _, unit in Players[me]:GetUnits():Members() do
 end
 print("OK:SKIPPED|" .. count .. " units")
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
 def build_automate_explore(unit_index: int) -> str:
@@ -1418,9 +1419,7 @@ def diff_threats(
     return disappeared, new_threats, moved
 
 
-def build_pathing_estimate_query(
-    unit_index: int, target_x: int, target_y: int
-) -> str:
+def build_pathing_estimate_query(unit_index: int, target_x: int, target_y: int) -> str:
     """InGame context: estimate turns for a unit to reach a destination.
 
     Uses UnitManager.GetMoveToPath for the full path and
@@ -1504,11 +1503,7 @@ local cx, cy, r = {now_x}, {now_y}, {radius}
 local me = Game.GetLocalPlayer()
 local vis = PlayersVisibility[me]
 local pTech = Players[me]:GetTechs()
-local function resVis(re)
-    if not re.PrereqTech then return true end
-    local t = GameInfo.Technologies[re.PrereqTech]
-    return t and pTech:HasTech(t.Index)
-end
+{_LUA_RES_VISIBLE}
 for dy = -r, r do
     for dx = -r, r do
         local x, y = cx + dx, cy + dy
@@ -1522,7 +1517,7 @@ for dy = -r, r do
             local ri = plot:GetResourceType()
             if ri >= 0 then
                 local re = GameInfo.Resources[ri]
-                if resVis(re) then
+                if resVisible(re) then
                     resource = re.ResourceType .. ":" .. (re.ResourceClassType or "")
                 end
             end
@@ -1624,25 +1619,25 @@ def build_builder_tasks_query() -> str:
     Uses hardcoded resource mapping and terrain heuristics for improvement recommendations.
     Does NOT use CanStartOperation with remote tiles (corrupts engine state → crash).
     """
-    return f"""
+    return """
 local me = Game.GetLocalPlayer()
 local pCities = Players[me]:GetCities()
 
 -- Gather all builders with charges
-local builders = {{}}
+local builders = {}
 for _, u in Players[me]:GetUnits():Members() do
     local entry = GameInfo.Units[u:GetType()]
     if entry and entry.UnitType == "UNIT_BUILDER" and u:GetBuildCharges() > 0 then
         local bx, by = u:GetX(), u:GetY()
         if bx ~= -9999 then
-            table.insert(builders, {{id=u:GetID(), idx=u:GetID() % 65536, x=bx, y=by, charges=u:GetBuildCharges(), moves=u:GetMovesRemaining()}})
+            table.insert(builders, {id=u:GetID(), idx=u:GetID() % 65536, x=bx, y=by, charges=u:GetBuildCharges(), moves=u:GetMovesRemaining()})
         end
     end
 end
 
 -- Hardcoded resource -> improvement mapping (avoids GameInfo.Improvement_ValidResources()
 -- iterator which can crash the game engine with EXCEPTION_ACCESS_VIOLATION)
-local resImpMap = {{
+local resImpMap = {
     -- Strategic
     RESOURCE_HORSES="IMPROVEMENT_PASTURE", RESOURCE_IRON="IMPROVEMENT_MINE",
     RESOURCE_NITER="IMPROVEMENT_MINE", RESOURCE_COAL="IMPROVEMENT_MINE",
@@ -1674,10 +1669,10 @@ local resImpMap = {{
     RESOURCE_FISH="IMPROVEMENT_FISHING_BOATS", RESOURCE_CRABS="IMPROVEMENT_FISHING_BOATS",
     RESOURCE_PEARLS="IMPROVEMENT_FISHING_BOATS", RESOURCE_TURTLES="IMPROVEMENT_FISHING_BOATS",
     RESOURCE_WHALES="IMPROVEMENT_FISHING_BOATS",
-}}
+}
 
 -- Scan city territory for tasks
-local seen = {{}}
+local seen = {}
 local normalCount = 0
 local maxNormal = 20
 for _, city in pCities:Members() do
@@ -1780,10 +1775,12 @@ for _, b in ipairs(builders) do
     print("BUILDER|" .. b.id .. "|" .. b.idx .. "|" .. b.x .. "," .. b.y .. "|" .. b.charges .. "|" .. string.format("%.1f", b.moves))
 end
 print("{SENTINEL}")
-"""
+""".replace("{SENTINEL}", SENTINEL)
 
 
-def parse_builder_tasks(lines: list[str]) -> tuple[list[BuilderTask], list[BuilderInfo]]:
+def parse_builder_tasks(
+    lines: list[str],
+) -> tuple[list[BuilderTask], list[BuilderInfo]]:
     """Parse TASK| and BUILDER| lines from build_builder_tasks_query."""
     tasks: list[BuilderTask] = []
     builders: list[BuilderInfo] = []

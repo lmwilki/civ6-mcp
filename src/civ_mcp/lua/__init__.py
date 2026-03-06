@@ -59,27 +59,31 @@ from civ_mcp.lua.diplomacy import (  # noqa: F401
     parse_diplomacy_sessions,
     parse_pending_deals_response,
 )
-from civ_mcp.lua.economy import (  # noqa: F401
-    build_activate_great_person,
+from civ_mcp.lua.congress import (  # noqa: F401
     build_congress_submit,
     build_congress_vote,
-    build_gp_advisor_query,
-    build_great_people_query,
-    build_make_trade_route,
-    build_patronize_great_person,
-    build_recruit_great_person,
     build_register_wc_voter,
-    build_reject_great_person,
+    build_world_congress_query,
+    parse_world_congress_response,
+)
+from civ_mcp.lua.economy import (  # noqa: F401
+    build_make_trade_route,
     build_teleport_to_city,
     build_trade_capacity_check,
     build_trade_destinations_query,
     build_trade_routes_query,
-    build_world_congress_query,
-    parse_gp_advisor_response,
-    parse_great_people_response,
     parse_trade_destinations_response,
     parse_trade_routes_response,
-    parse_world_congress_response,
+)
+from civ_mcp.lua.great_people import (  # noqa: F401
+    build_activate_great_person,
+    build_gp_advisor_query,
+    build_great_people_query,
+    build_patronize_great_person,
+    build_recruit_great_person,
+    build_reject_great_person,
+    parse_gp_advisor_response,
+    parse_great_people_response,
 )
 from civ_mcp.lua.governance import (  # noqa: F401
     build_appoint_governor,

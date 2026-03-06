@@ -14,10 +14,9 @@ import asyncio
 import logging
 
 from civ_mcp import tuner_client
+from civ_mcp.lua._helpers import SENTINEL
 
 log = logging.getLogger(__name__)
-
-SENTINEL = "---END---"
 
 
 class LuaError(Exception):
