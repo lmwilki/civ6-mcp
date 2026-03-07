@@ -28,6 +28,7 @@ export const listGames = query({
       mapType: g.mapType ?? null,
       mapSize: g.mapSize ?? null,
       evalTrack: g.evalTrack ?? null,
+      runId: g.runId ?? null,
     }));
   },
 });
