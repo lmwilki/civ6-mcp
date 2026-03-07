@@ -132,43 +132,45 @@ for civic in GameInfo.Civics() do
         end
     end
 end
--- Locked civics: within era+1, have unmet prerequisites
+-- Locked civics: all eras, have unmet prerequisites
 for civic in GameInfo.Civics() do
     if not cu:HasCivic(civic.Index) then
-        local civicEra = eraLookup[civic.EraType] or 99
-        if civicEra <= curEra + 1 then
-            local missing = {}
-            if prereqs[civic.CivicType] then
-                for _, pType in ipairs(prereqs[civic.CivicType]) do
-                    local pEntry = GameInfo.Civics[pType]
-                    if pEntry and not cu:HasCivic(pEntry.Index) then
-                        table.insert(missing, (Locale.Lookup(pEntry.Name):gsub("|", "/")))
-                    end
+        local missing = {}
+        if prereqs[civic.CivicType] then
+            for _, pType in ipairs(prereqs[civic.CivicType]) do
+                local pEntry = GameInfo.Civics[pType]
+                if pEntry and not cu:HasCivic(pEntry.Index) then
+                    table.insert(missing, (Locale.Lookup(pEntry.Name):gsub("|", "/")))
                 end
             end
-            if #missing > 0 then
-                print("LOCKED_CIVIC|" .. Locale.Lookup(civic.Name):gsub("|", "/") .. "|" .. civic.CivicType .. "|" .. table.concat(missing, ","))
-            end
+        end
+        if #missing > 0 then
+            local boostDesc = ""
+            local b = boostsByCivic[civic.CivicType]
+            if b and b.TriggerDescription then boostDesc = Locale.Lookup(b.TriggerDescription):gsub("|", "/") end
+            local boostTag = cu:HasBoostBeenTriggered(civic.Index) and "BOOSTED" or "UNBOOSTED"
+            print("LOCKED_CIVIC|" .. Locale.Lookup(civic.Name):gsub("|", "/") .. "|" .. civic.CivicType .. "|" .. table.concat(missing, ",") .. "|" .. (civic.EraType or "") .. "|" .. boostTag .. "|" .. boostDesc)
         end
     end
 end
--- Locked techs: within era+1, have unmet prerequisites
+-- Locked techs: all eras, have unmet prerequisites
 for tech in GameInfo.Technologies() do
     if not te:HasTech(tech.Index) and not te:CanResearch(tech.Index) then
-        local techEra = eraLookup[tech.EraType] or 99
-        if techEra <= curEra + 1 then
-            local missing = {}
-            if techPrereqs[tech.TechnologyType] then
-                for _, pType in ipairs(techPrereqs[tech.TechnologyType]) do
-                    local pEntry = GameInfo.Technologies[pType]
-                    if pEntry and not te:HasTech(pEntry.Index) then
-                        table.insert(missing, (Locale.Lookup(pEntry.Name):gsub("|", "/")))
-                    end
+        local missing = {}
+        if techPrereqs[tech.TechnologyType] then
+            for _, pType in ipairs(techPrereqs[tech.TechnologyType]) do
+                local pEntry = GameInfo.Technologies[pType]
+                if pEntry and not te:HasTech(pEntry.Index) then
+                    table.insert(missing, (Locale.Lookup(pEntry.Name):gsub("|", "/")))
                 end
             end
-            if #missing > 0 then
-                print("LOCKED_TECH|" .. Locale.Lookup(tech.Name):gsub("|", "/") .. "|" .. tech.TechnologyType .. "|" .. table.concat(missing, ",") .. "|" .. (tech.EraType or ""))
-            end
+        end
+        if #missing > 0 then
+            local boostDesc = ""
+            local b = boostsByTech[tech.TechnologyType]
+            if b and b.TriggerDescription then boostDesc = Locale.Lookup(b.TriggerDescription):gsub("|", "/") end
+            local boostTag = te:HasBoostBeenTriggered(tech.Index) and "BOOSTED" or "UNBOOSTED"
+            print("LOCKED_TECH|" .. Locale.Lookup(tech.Name):gsub("|", "/") .. "|" .. tech.TechnologyType .. "|" .. table.concat(missing, ",") .. "|" .. (tech.EraType or "") .. "|" .. boostTag .. "|" .. boostDesc)
         end
     end
 end
@@ -389,6 +391,9 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
                         name=parts[1],
                         civic_type=parts[2],
                         missing_prereqs=parts[3].split(","),
+                        era=parts[4] if len(parts) > 4 else "",
+                        boosted=parts[5] == "BOOSTED" if len(parts) > 5 else False,
+                        boost_desc=parts[6] if len(parts) > 6 else "",
                     )
                 )
         elif line.startswith("LOCKED_TECH|"):
@@ -400,6 +405,8 @@ def parse_tech_civics_response(lines: list[str]) -> TechCivicStatus:
                         tech_type=parts[2],
                         missing_prereqs=parts[3].split(","),
                         era=parts[4] if len(parts) > 4 else "",
+                        boosted=parts[5] == "BOOSTED" if len(parts) > 5 else False,
+                        boost_desc=parts[6] if len(parts) > 6 else "",
                     )
                 )
 
