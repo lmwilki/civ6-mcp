@@ -762,6 +762,100 @@ export const ingestMapData = mutation({
   },
 });
 
+/** Merge one batch of rows from sourceGameId into targetGameId.
+ *  Re-keys data, skipping duplicates (target wins). Call repeatedly until remaining=0.
+ *  Then delete the source games entry and run backfillStripAndSeries on the target. */
+export const mergeGame = mutation({
+  args: {
+    sourceGameId: v.string(),
+    targetGameId: v.string(),
+    table: v.union(
+      v.literal("playerRows"),
+      v.literal("cityRows"),
+      v.literal("spatialTurns"),
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { sourceGameId, targetGameId, table, limit }) => {
+    const batchSize = limit ?? 200;
+    let merged = 0;
+    let skipped = 0;
+
+    if (table === "playerRows") {
+      const rows = await ctx.db.query("playerRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", sourceGameId))
+        .take(batchSize);
+      for (const row of rows) {
+        const dup = await ctx.db.query("playerRows")
+          .withIndex("by_game_turn_pid", (q) =>
+            q.eq("gameId", targetGameId).eq("turn", row.turn).eq("pid", row.pid))
+          .unique();
+        if (!dup) {
+          const { _id, _creationTime, gameId: _, ...data } = row;
+          await ctx.db.insert("playerRows", { gameId: targetGameId, ...data });
+          merged++;
+        } else {
+          skipped++;
+        }
+        await ctx.db.delete(row._id);
+      }
+      const remaining = await ctx.db.query("playerRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", sourceGameId))
+        .first();
+      return { merged, skipped, remaining: remaining ? true : false };
+
+    } else if (table === "cityRows") {
+      const rows = await ctx.db.query("cityRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", sourceGameId))
+        .take(batchSize);
+      for (const row of rows) {
+        const dup = await ctx.db.query("cityRows")
+          .withIndex("by_game_turn", (q) =>
+            q.eq("gameId", targetGameId).eq("turn", row.turn))
+          .filter((q) => q.eq(q.field("city_id"), row.city_id))
+          .unique();
+        if (!dup) {
+          const { _id, _creationTime, gameId: _, ...data } = row;
+          await ctx.db.insert("cityRows", { gameId: targetGameId, ...data });
+          merged++;
+        } else {
+          skipped++;
+        }
+        await ctx.db.delete(row._id);
+      }
+      const remaining = await ctx.db.query("cityRows")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", sourceGameId))
+        .first();
+      return { merged, skipped, remaining: remaining ? true : false };
+
+    } else if (table === "spatialTurns") {
+      const rows = await ctx.db.query("spatialTurns")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", sourceGameId))
+        .take(batchSize);
+      for (const row of rows) {
+        const dup = await ctx.db.query("spatialTurns")
+          .withIndex("by_game_turn", (q) =>
+            q.eq("gameId", targetGameId).eq("turn", row.turn))
+          .unique();
+        if (!dup) {
+          const { _id, _creationTime, gameId: _, ...data } = row;
+          await ctx.db.insert("spatialTurns", { gameId: targetGameId, ...data });
+          merged++;
+        } else {
+          skipped++;
+        }
+        await ctx.db.delete(row._id);
+      }
+      const remaining = await ctx.db.query("spatialTurns")
+        .withIndex("by_game_turn", (q) => q.eq("gameId", sourceGameId))
+        .first();
+      return { merged, skipped, remaining: remaining ? true : false };
+    }
+
+    return { merged, skipped, remaining: false };
+  },
+});
+
 export const backfillAgentModel = mutation({
   args: { model: v.string() },
   handler: async (ctx, { model }) => {
