@@ -1,39 +1,21 @@
 """Per-game JSONL tool logger for observing MCP tool calls and turn events.
 
-Writes enriched log entries to ~/.civ6-mcp/log_{civ}_{seed}.jsonl, matching
-the diary naming convention. Each entry includes game identity, pre-computed
-category, success flag, and result summary for analytical queries.
+Builds structured log entries and emits them through a TelemetryEmitter.
+The emitter routes entries to LocalSink (always) and optionally CloudSink.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
 import os
 import time
-import uuid
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from civ_mcp.version import GIT_SHA, VERSION
-
-LOG_DIR = Path.home() / ".civ6-mcp"
-
-# Eval metadata fields — read from env vars, written to JSONL entries.
-# Shared with server.py diary writer to keep field lists in sync.
-_EVAL_FIELDS = (
-    "mcp_version", "mcp_git_sha", "scenario_id", "difficulty",
-    "map_type", "map_size", "game_speed", "eval_track",
-)
+if TYPE_CHECKING:
+    from civ_mcp.telemetry import TelemetryEmitter
 
 # Tool classification — matches web client getToolCategory()
 _QUERY_TOOLS = frozenset({"screenshot"})
 _TURN_TOOLS = frozenset({"end_turn"})
-
-
-def log_path(civ: str, seed: int, run_id: str) -> Path:
-    """Per-game log file: log_{civ}_{seed}_{run_id}.jsonl"""
-    return LOG_DIR / f"log_{civ}_{seed}_{run_id}.jsonl"
 
 
 def _classify_tool(tool: str | None) -> str:
@@ -48,37 +30,30 @@ def _classify_tool(tool: str | None) -> str:
 
 
 class GameLogger:
-    """Appends structured JSON lines to a per-game log file.
+    """Builds structured log entries and emits them via TelemetryEmitter.
 
-    Starts unbound (no game identity). Tool calls are buffered in memory
-    until bind_game() is called, which flushes the buffer and opens the
-    per-game file for all subsequent writes.
+    Starts unbound (no game identity). Entries are built with whatever
+    identity is known and emitted immediately — the sink handles
+    buffering and file management.
     """
 
-    def __init__(self) -> None:
-        self.session_id = os.environ.get("CIV_MCP_RUN_ID") or uuid.uuid4().hex[:8]
-        self.mcp_version = VERSION
-        self.mcp_git_sha = GIT_SHA
-        self.scenario_id = os.environ.get("CIV_MCP_SCENARIO", "")
-        self.difficulty = os.environ.get("CIV_MCP_DIFFICULTY", "")
-        self.map_type = os.environ.get("CIV_MCP_MAP_TYPE", "")
-        self.map_size = os.environ.get("CIV_MCP_MAP_SIZE", "")
-        self.game_speed = os.environ.get("CIV_MCP_GAME_SPEED", "")
-        self.eval_track = os.environ.get("CIV_MCP_EVAL_TRACK", "")
-        self._lock = asyncio.Lock()
+    def __init__(self, emitter: TelemetryEmitter) -> None:
+        from civ_mcp.telemetry import EVENT_GAME_OVER, EVENT_TOOL_CALL
+
+        self._emitter = emitter
+        self._event_tool_call = EVENT_TOOL_CALL
+        self._event_game_over = EVENT_GAME_OVER
+        self.session_id = emitter.run_id
         self._turn: int | None = None
-        self._seq: int = 0
         self._game: str | None = None
         self._civ: str | None = None
         self._seed: int | None = None
-        self._path: Path | None = None
-        self._buffer: list[dict[str, Any]] = []
         self._agent_model: str | None = os.environ.get("CIV_MCP_AGENT_MODEL") or None
         self._game_over_logged: bool = False
 
     @property
     def bound(self) -> bool:
-        return self._path is not None
+        return self._game is not None
 
     @property
     def game_id(self) -> str | None:
@@ -91,36 +66,15 @@ class GameLogger:
         self._agent_model = model
 
     def bind_game(self, civ: str, seed: int) -> None:
-        """Bind to a game identity. Flushes any buffered entries to disk."""
+        """Bind to a game identity. Propagates to emitter for sink binding."""
         game_id = f"{civ}_{seed}"
         if self._game == game_id:
             return  # already bound to this game
         self._game_over_logged = False
-
         self._game = game_id
         self._civ = civ
         self._seed = seed
-        self._path = log_path(civ, seed, self.session_id)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Set seq counter from existing file length
-        if self._path.exists():
-            with open(self._path, "rb") as f:
-                self._seq = sum(1 for _ in f)
-        else:
-            self._seq = 0
-
-        # Flush buffered entries with now-known identity
-        if self._buffer:
-            with open(self._path, "a") as f:
-                for entry in self._buffer:
-                    entry["game"] = self._game
-                    entry["civ"] = self._civ
-                    entry["seed"] = self._seed
-                    entry["seq"] = self._seq
-                    self._seq += 1
-                    f.write(json.dumps(entry, separators=(",", ":")) + "\n")
-            self._buffer.clear()
+        self._emitter.bind_game(civ, seed)
 
     def _build_entry(
         self,
@@ -143,7 +97,6 @@ class GameLogger:
             "session": self.session_id,
             "ts": time.time(),
             "turn": self._turn,
-            "seq": self._seq,
             "type": entry_type,
             "tool": tool_name,
             "category": _classify_tool(tool_name),
@@ -154,26 +107,9 @@ class GameLogger:
             "success": success,
             "agent_model": self._agent_model,
         }
-        # Only include non-empty eval metadata to avoid JSONL bloat
-        for key in _EVAL_FIELDS:
-            val = getattr(self, key)
-            if val:
-                entry[key] = val
         if events is not None:
             entry["events"] = events
         return entry
-
-    async def _write(self, entry: dict[str, Any]) -> None:
-        """Write an entry to file or buffer if unbound."""
-        async with self._lock:
-            if self._path is not None:
-                entry["seq"] = self._seq
-                self._seq += 1
-                line = json.dumps(entry, separators=(",", ":")) + "\n"
-                with open(self._path, "a") as f:
-                    f.write(line)
-            else:
-                self._buffer.append(entry)
 
     async def log_tool_call(
         self,
@@ -190,7 +126,7 @@ class GameLogger:
             duration_ms=duration_ms,
             success=not result.startswith(("Error", "ERR")),
         )
-        await self._write(entry)
+        await self._emitter.emit(self._event_tool_call, entry)
 
     async def log_error(self, tool: str, error: str) -> None:
         entry = self._build_entry(
@@ -199,7 +135,7 @@ class GameLogger:
             result=error,
             success=False,
         )
-        await self._write(entry)
+        await self._emitter.emit(self._event_tool_call, entry)
 
     async def log_game_over(
         self,
@@ -230,4 +166,4 @@ class GameLogger:
             "victory_type": victory_type,
             "player_alive": player_alive,
         }
-        await self._write(entry)
+        await self._emitter.emit(self._event_game_over, entry)

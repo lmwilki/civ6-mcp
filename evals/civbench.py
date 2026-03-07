@@ -326,8 +326,8 @@ def _civ_mcp_server(
 ):
     """Create the civ-mcp MCP server instance (stdio transport).
 
-    Passes run_id, scenario metadata, model ID, and eval track as env vars
-    so the MCP server embeds them in diary/log entries for traceability.
+    Passes run_id, eval metadata, and model ID as env vars so the MCP server
+    writes them to the telemetry manifest and diary entries.
     """
     env: dict[str, str] = {}
     if run_id:
@@ -335,15 +335,33 @@ def _civ_mcp_server(
     if model_id:
         env["CIV_MCP_AGENT_MODEL"] = model_id
     if scenario:
-        env["CIV_MCP_SCENARIO"] = scenario.scenario_id
-        # resume_save overrides scenario start save for auto-boot
+        # Auto-boot: resume_save overrides scenario start save
         env["CIV_MCP_SAVE_FILE"] = resume_save or scenario.save_file.replace(".Civ6Save", "")
-        env["CIV_MCP_DIFFICULTY"] = scenario.difficulty
-        env["CIV_MCP_MAP_TYPE"] = scenario.map_type
-        env["CIV_MCP_MAP_SIZE"] = scenario.map_size
-        env["CIV_MCP_GAME_SPEED"] = scenario.game_speed
+    # Package eval metadata as a single JSON blob → written to manifest
+    metadata: dict[str, str] = {}
+    if scenario:
+        metadata["scenario_id"] = scenario.scenario_id
+        metadata["difficulty"] = scenario.difficulty
+        metadata["map_type"] = scenario.map_type
+        metadata["map_size"] = scenario.map_size
+        metadata["game_speed"] = scenario.game_speed
     if eval_track:
-        env["CIV_MCP_EVAL_TRACK"] = eval_track
+        metadata["eval_track"] = eval_track
+    if model_id:
+        metadata["model_id"] = model_id
+    if metadata:
+        env["CIV_MCP_METADATA"] = json.dumps(metadata)
+    # Pass through cloud telemetry bucket if configured
+    cloud_bucket = os.environ.get("CIV_MCP_TELEMETRY_BUCKET", "")
+    if cloud_bucket:
+        env["CIV_MCP_TELEMETRY_BUCKET"] = cloud_bucket
+    # Pass through Azure storage credentials for CloudSink
+    for az_var in ("AZURE_STORAGE_ACCOUNT_NAME", "AZURE_STORAGE_ACCOUNT_KEY",
+                   "AZURE_STORAGE_SAS_TOKEN", "AZURE_STORAGE_ANON",
+                   "AZURE_STORAGE_CONNECTION_STRING"):
+        val = os.environ.get(az_var)
+        if val:
+            env[az_var] = val
     # Pass through display/GUI env vars needed for Linux GUI automation
     # (xdotool, mss screen capture). mcp_server_stdio only inherits a
     # minimal Posix set (HOME, PATH, SHELL, etc.) — DISPLAY is not included.
@@ -354,6 +372,8 @@ def _civ_mcp_server(
     # Include platform-specific launcher deps so the MCP server can do
     # GUI automation (OCR, window focus, clicks) for save loading / recovery.
     extras = []
+    if cloud_bucket:
+        extras.append("cloud")
     if sys.platform == "darwin":
         extras.append("launcher-macos")
     elif sys.platform == "linux":

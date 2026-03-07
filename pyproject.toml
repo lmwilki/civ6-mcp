@@ -32,6 +32,10 @@ scout = [
     "inspect-scout>=0.4",
     "inspect-ai>=0.3.175",
 ]
+cloud = [
+    "fsspec>=2024.6",
+    "adlfs>=2024.7",
+]
 launcher-macos = [
     "pyobjc-framework-Quartz>=11.0",
     "pyobjc-framework-Vision>=11.0",

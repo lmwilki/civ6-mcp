@@ -257,6 +257,13 @@ def run_scenario(
     extra_args: list[str] | None = None,
 ) -> int:
     """Run a single scenario and return the exit code."""
+    # Cloud storage: set INSPECT_LOG_DIR for .eval files if configured
+    cloud_bucket = os.environ.get("CIV_MCP_TELEMETRY_BUCKET", "")
+    if cloud_bucket:
+        # Point Inspect's log dir at the evals/ prefix in the same bucket
+        inspect_log_dir = cloud_bucket.rstrip("/") + "/evals"
+        os.environ.setdefault("INSPECT_LOG_DIR", inspect_log_dir)
+
     # Extract clean model name for diary/log attribution
     # e.g. "openai/azure/gpt-5.2" → "gpt-5.2"
     clean_model = model.rsplit("/", 1)[-1]

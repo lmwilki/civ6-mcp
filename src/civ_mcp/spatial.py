@@ -13,14 +13,12 @@ after unit moves — enabling post-move discovery feedback to the agent.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import re
 import time
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-LOG_DIR = Path.home() / ".civ6-mcp"
+if TYPE_CHECKING:
+    from civ_mcp.telemetry import TelemetryEmitter
 
 # Every narration function formats coordinates as (x,y).
 _COORD_RE = re.compile(r"\((\d+),(\d+)\)")
@@ -131,47 +129,39 @@ def _extract_tiles_from_params(
 
 
 class SpatialTracker:
-    """Records spatial observations from tool calls to a per-game JSONL file.
+    """Records spatial observations from tool calls via TelemetryEmitter.
 
-    Follows the same bind pattern as GameLogger: starts unbound, buffers
-    observations until bind_game() is called, then appends to disk.
+    Emits EVENT_SPATIAL events — the sink handles file I/O and buffering.
+    Also maintains a revealed-tile set for computing visibility diffs.
     """
 
-    def __init__(self) -> None:
-        self._lock = asyncio.Lock()
+    def __init__(self, emitter: TelemetryEmitter) -> None:
+        from civ_mcp.telemetry import EVENT_SPATIAL
+
+        self._emitter = emitter
+        self._event_spatial = EVENT_SPATIAL
         self._turn: int | None = None
         self._game: str | None = None
-        self._path: Path | None = None
-        self._buffer: list[dict[str, Any]] = []
         # Revealed-tile set for visibility diffs
         self._revealed: set[tuple[int, int]] = set()
         self._revealed_seeded: bool = False
 
     @property
     def bound(self) -> bool:
-        return self._path is not None
+        return self._game is not None
 
     def set_turn(self, turn: int) -> None:
         self._turn = turn
 
-    def bind_game(self, civ: str, seed: int, run_id: str) -> None:
-        """Bind to a game identity. Flushes any buffered observations."""
+    def bind_game(self, civ: str, seed: int) -> None:
+        """Bind to a game identity."""
         game_id = f"{civ}_{seed}"
         if self._game == game_id:
             return
         self._game = game_id
-        self._path = LOG_DIR / f"spatial_{civ}_{seed}_{run_id}.jsonl"
-        self._path.parent.mkdir(parents=True, exist_ok=True)
         # Reset revealed set for new game
         self._revealed.clear()
         self._revealed_seeded = False
-
-        if self._buffer:
-            with open(self._path, "a") as f:
-                for entry in self._buffer:
-                    entry["game"] = self._game
-                    f.write(json.dumps(entry, separators=(",", ":")) + "\n")
-            self._buffer.clear()
 
     def seed_revealed(self, tiles: set[tuple[int, int]]) -> None:
         """Bulk-load revealed tiles from a Lua query at game start."""
@@ -223,7 +213,7 @@ class SpatialTracker:
             "ms": duration_ms,
         }
 
-        await self._write(entry)
+        await self._emitter.emit(self._event_spatial, entry)
 
     async def record_discovery(
         self,
@@ -248,13 +238,4 @@ class SpatialTracker:
             "ms": duration_ms,
         }
 
-        await self._write(entry)
-
-    async def _write(self, entry: dict[str, Any]) -> None:
-        """Append an entry to the JSONL file (or buffer if unbound)."""
-        async with self._lock:
-            if self._path is not None:
-                with open(self._path, "a") as f:
-                    f.write(json.dumps(entry, separators=(",", ":")) + "\n")
-            else:
-                self._buffer.append(entry)
+        await self._emitter.emit(self._event_spatial, entry)

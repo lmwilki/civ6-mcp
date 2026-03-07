@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Sync civ-mcp JSONL files to Convex — watch mode or batch upload.
 
-Two modes:
-  --watch (default)  Stream changes in real-time as a game plays.
-  --upload DIR       One-shot batch upload of all files in DIR, then exit.
+Modes:
+  --watch            Stream local file changes in real-time (default).
+  --upload DIR       One-shot batch upload of all local files in DIR.
+  --cloud BUCKET     Batch sync from a cloud bucket (Azure Blob / GCS / S3).
+  --watch --cloud BUCKET  Poll cloud bucket for changes every 30s.
 
 Usage:
-    python scripts/convex_sync.py                          # watch (dev)
-    python scripts/convex_sync.py --prod                   # watch (prod)
-    python scripts/convex_sync.py --upload ./results/      # batch upload (dev)
-    python scripts/convex_sync.py --upload ./results/ --prod
+    python scripts/convex_sync.py                              # watch local (dev)
+    python scripts/convex_sync.py --prod                       # watch local (prod)
+    python scripts/convex_sync.py --upload ./results/          # batch local
+    python scripts/convex_sync.py --cloud az://civbench --prod # batch cloud
+    python scripts/convex_sync.py --watch --cloud az://civbench --prod
 
 Env files are loaded from web/ relative to this script. Environment variables
 CONVEX_URL and CONVEX_DEPLOY_KEY override file values if set.
 
 Optional:
-    CIV6_DIARY_DIR=~/.civ6-mcp   (default, for watch mode)
+    CIV6_DIARY_DIR=~/.civ6-mcp   (default, for local watch mode)
 """
 
 from __future__ import annotations
@@ -182,6 +185,110 @@ def discover_games(directory: Path) -> dict[str, dict[str, Path]]:
         game_id = extract_game_id(name)
         games.setdefault(game_id, {})[ftype] = f
     return games
+
+
+# ---------------------------------------------------------------------------
+# Cloud source (via fsspec)
+# ---------------------------------------------------------------------------
+
+
+def _get_cloud_fs(bucket_url: str) -> tuple[Any, str]:
+    """Create fsspec filesystem from bucket URL.
+
+    Returns (fs, prefix) where prefix is the path portion without scheme.
+    E.g. "az://civbench" → (AzureBlobFileSystem, "civbench").
+    """
+    import fsspec
+
+    scheme = bucket_url.split("://")[0]
+    prefix = bucket_url[len(scheme) + 3 :]
+    fs = fsspec.filesystem(scheme)
+    return fs, prefix
+
+
+def discover_cloud_runs(bucket_url: str) -> list[dict[str, Any]]:
+    """List all runs in a cloud bucket by reading their manifest.json files."""
+    fs, prefix = _get_cloud_fs(bucket_url)
+    try:
+        manifest_paths = fs.glob(f"{prefix}/runs/*/manifest.json")
+    except Exception:
+        log.exception("Failed to list cloud manifests at %s", bucket_url)
+        return []
+
+    manifests = []
+    for mp in manifest_paths:
+        try:
+            data = json.loads(fs.cat_file(mp))
+            manifests.append(data)
+        except Exception:
+            log.warning("Failed to read manifest: %s", mp)
+    return manifests
+
+
+def _cloud_run_is_complete(fs: Any, prefix: str, run_id: str) -> bool:
+    """Check if a cloud run has a game_over entry in its log file."""
+    log_path = f"{prefix}/runs/{run_id}/log.jsonl"
+    try:
+        content = fs.cat_file(log_path).decode("utf-8")
+        for line in content.strip().splitlines():
+            try:
+                entry = json.loads(line)
+                if entry.get("type") == "game_over":
+                    return True
+            except json.JSONDecodeError:
+                continue
+    except FileNotFoundError:
+        pass
+    except Exception:
+        log.warning("Failed to read log for run %s", run_id)
+    return False
+
+
+def _download_cloud_run(
+    fs: Any, prefix: str, run_id: str, manifest: dict[str, Any], dest_dir: Path
+) -> str | None:
+    """Download a cloud run's files to dest_dir with local naming conventions.
+
+    Returns the game_id (e.g. "babylon_-1498189056_abc12345") or None.
+    """
+    civ = manifest.get("civ", "")
+    seed = manifest.get("seed", "")
+
+    if not civ or seed == "":
+        log.warning("Run %s: incomplete manifest (no civ/seed) — skipping", run_id)
+        return None
+
+    game_id = f"{civ}_{seed}_{run_id}"
+
+    # Cloud filename → local filename (matches LocalSink naming)
+    file_map = {
+        "diary.jsonl": f"diary_{game_id}.jsonl",
+        "cities.jsonl": f"diary_{game_id}_cities.jsonl",
+        "log.jsonl": f"log_{game_id}.jsonl",
+        "spatial.jsonl": f"spatial_{game_id}.jsonl",
+        "map_static.json": f"mapstatic_{game_id}.json",
+        "map_turns.jsonl": f"mapturns_{game_id}.jsonl",
+    }
+
+    downloaded = 0
+    for cloud_name, local_name in file_map.items():
+        cloud_path = f"{prefix}/runs/{run_id}/{cloud_name}"
+        local_path = dest_dir / local_name
+        try:
+            data = fs.cat_file(cloud_path)
+            local_path.write_bytes(data)
+            downloaded += 1
+        except FileNotFoundError:
+            pass  # Not all file types exist for every run
+        except Exception:
+            log.warning("Failed to download %s", cloud_path)
+
+    if downloaded == 0:
+        log.warning("Run %s: no data files found in cloud", run_id)
+        return None
+
+    log.debug("Downloaded run %s → %s (%d files)", run_id, game_id, downloaded)
+    return game_id
 
 
 # ---------------------------------------------------------------------------
@@ -762,6 +869,40 @@ async def batch_upload(directory: Path, client: ConvexClient) -> None:
     )
 
 
+async def batch_upload_cloud(bucket_url: str, client: ConvexClient) -> None:
+    """Batch sync all runs from cloud bucket to Convex.
+
+    Downloads cloud files to a temp directory with local naming conventions,
+    then delegates to the existing batch_upload() function.
+    """
+    import tempfile
+
+    manifests = discover_cloud_runs(bucket_url)
+    if not manifests:
+        log.error("No runs found in %s", bucket_url)
+        return
+
+    fs, prefix = _get_cloud_fs(bucket_url)
+
+    # Only sync runs that have a game identity (civ + seed from bind_game)
+    valid = [m for m in manifests if m.get("civ") and m.get("seed") is not None]
+    log.info(
+        "Found %d run(s) in cloud (%d with game identity)",
+        len(manifests), len(valid),
+    )
+
+    with tempfile.TemporaryDirectory(prefix="civbench_") as tmp:
+        tmp_dir = Path(tmp)
+        for manifest in valid:
+            run_id = manifest.get("run_id", "")
+            if not run_id:
+                continue
+            _download_cloud_run(fs, prefix, run_id, manifest, tmp_dir)
+
+        # Reuse existing batch upload on the downloaded files
+        await batch_upload(tmp_dir, client)
+
+
 # ---------------------------------------------------------------------------
 # Watch loop
 # ---------------------------------------------------------------------------
@@ -811,6 +952,79 @@ async def watch_loop(diary_dir: Path, client: ConvexClient) -> None:
         log.info("State saved, exiting")
 
 
+async def watch_loop_cloud(bucket_url: str, client: ConvexClient) -> None:
+    """Poll cloud bucket for new/changed runs and sync to Convex.
+
+    Uses a persistent temp directory so that incremental sync state (line
+    counts, byte offsets) works correctly across poll iterations.
+    """
+    import tempfile
+
+    shutdown = asyncio.Event()
+
+    def on_signal(*_: Any) -> None:
+        log.info("Shutting down...")
+        shutdown.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, on_signal)
+
+    fs, prefix = _get_cloud_fs(bucket_url)
+    state: dict[str, Any] = {"files": {}, "game_last_seen": {}}
+    completed_runs: set[str] = set()
+
+    with tempfile.TemporaryDirectory(prefix="civbench_watch_") as tmp:
+        tmp_dir = Path(tmp)
+
+        while not shutdown.is_set():
+            try:
+                manifests = discover_cloud_runs(bucket_url)
+
+                for manifest in manifests:
+                    run_id = manifest.get("run_id", "")
+                    if not run_id or run_id in completed_runs:
+                        continue
+
+                    game_id = _download_cloud_run(
+                        fs, prefix, run_id, manifest, tmp_dir
+                    )
+                    if not game_id:
+                        continue
+
+                    # Sync using stateful functions (track line counts etc.)
+                    games = discover_games(tmp_dir)
+                    if game_id in games:
+                        for ftype in (
+                            "diary", "cities", "log", "spatial", "mapturns",
+                        ):
+                            if ftype in games[game_id]:
+                                await sync_file(
+                                    games[game_id][ftype], state, client
+                                )
+
+                    # Check completion via game_over entry in log
+                    if _cloud_run_is_complete(fs, prefix, run_id):
+                        await client.mutation(
+                            "ingest:markGameCompleted", {"gameId": game_id}
+                        )
+                        log.info(
+                            "Marked %s as completed (game_over in log)",
+                            game_id,
+                        )
+                        completed_runs.add(run_id)
+            except Exception:
+                log.exception("Error during cloud watch poll")
+
+            # Wait 30s or until shutdown
+            try:
+                await asyncio.wait_for(shutdown.wait(), timeout=30)
+                break
+            except asyncio.TimeoutError:
+                pass
+
+    log.info("Cloud watch loop exiting")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -827,14 +1041,20 @@ async def main() -> None:
     mode.add_argument(
         "--watch",
         action="store_true",
-        default=True,
-        help="Watch directory and stream changes in real-time (default)",
+        help="Watch for changes and stream to Convex (default for local)",
     )
     mode.add_argument(
         "--upload",
         type=str,
         metavar="DIR",
         help="One-shot batch upload of all files in DIR, then exit",
+    )
+    parser.add_argument(
+        "--cloud",
+        type=str,
+        metavar="BUCKET",
+        help="Cloud bucket URL (e.g. az://civbench). "
+             "Batch sync by default; add --watch to poll for changes.",
     )
     args = parser.parse_args()
 
@@ -857,6 +1077,13 @@ async def main() -> None:
                 sys.exit(1)
             log.info("[%s] Batch upload %s → %s", env_label, upload_dir, convex_url)
             await batch_upload(upload_dir, client)
+        elif args.cloud:
+            if args.watch:
+                log.info("[%s] Watching cloud %s → %s", env_label, args.cloud, convex_url)
+                await watch_loop_cloud(args.cloud, client)
+            else:
+                log.info("[%s] Batch cloud %s → %s", env_label, args.cloud, convex_url)
+                await batch_upload_cloud(args.cloud, client)
         else:
             log.info("[%s] Watching %s → %s", env_label, DIARY_DIR, convex_url)
             await watch_loop(DIARY_DIR, client)

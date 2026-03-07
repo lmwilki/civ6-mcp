@@ -9,45 +9,41 @@ Data is consumed by convex_sync.py for the web app strategic map view.
 
 from __future__ import annotations
 
-import json
 import logging
-from dataclasses import asdict
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from civ_mcp import lua as lq
 
 if TYPE_CHECKING:
     from civ_mcp.connection import GameConnection
-
-LOG_DIR = Path.home() / ".civ6-mcp"
+    from civ_mcp.telemetry import TelemetryEmitter
 
 log = logging.getLogger(__name__)
 
 
 class MapCapture:
-    """Captures per-game map state to disk for strategic view replay."""
+    """Captures per-game map state via TelemetryEmitter for strategic view replay."""
 
-    def __init__(self) -> None:
+    def __init__(self, emitter: TelemetryEmitter) -> None:
+        from civ_mcp.telemetry import EVENT_MAP_DELTA, EVENT_MAP_STATIC
+
+        self._emitter = emitter
+        self._event_map_static = EVENT_MAP_STATIC
+        self._event_map_delta = EVENT_MAP_DELTA
         self._game: str | None = None
-        self._static_path: Path | None = None
-        self._turns_path: Path | None = None
         self._has_static: bool = False
 
-    def bind_game(self, civ: str, seed: int, run_id: str) -> None:
-        """Bind to a game identity. Sets file paths."""
+    def bind_game(self, civ: str, seed: int) -> None:
+        """Bind to a game identity."""
         game_id = f"{civ}_{seed}"
         if self._game == game_id:
             return
         self._game = game_id
-        self._static_path = LOG_DIR / f"mapstatic_{civ}_{seed}_{run_id}.json"
-        self._turns_path = LOG_DIR / f"mapturns_{civ}_{seed}_{run_id}.jsonl"
-        self._has_static = self._static_path.exists()
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        self._has_static = False
 
     async def capture(self, conn: GameConnection, turn: int) -> None:
         """Run static dump (if needed) and per-turn delta."""
-        if self._static_path is None:
+        if self._game is None:
             return
 
         if not self._has_static:
@@ -57,7 +53,6 @@ class MapCapture:
 
     async def _capture_static(self, conn: GameConnection, turn: int) -> None:
         """One-time full terrain dump."""
-        assert self._static_path is not None
         try:
             lines = await conn.execute_write(lq.build_static_map_dump())
             dump = lq.parse_static_map_dump(lines)
@@ -93,9 +88,7 @@ class MapCapture:
                 "initialTurn": turn,
             }
 
-            self._static_path.write_text(
-                json.dumps(data, separators=(",", ":"))
-            )
+            await self._emitter.emit(self._event_map_static, data)
             self._has_static = True
             log.info(
                 "Map static dump: %s — %dx%d grid, %d tiles, %d cities, %d players",
@@ -111,7 +104,6 @@ class MapCapture:
 
     async def _capture_delta(self, conn: GameConnection, turn: int) -> None:
         """Per-turn ownership/road delta + city snapshot."""
-        assert self._turns_path is not None
         try:
             lines = await conn.execute_write(lq.build_ownership_delta())
             delta = lq.parse_ownership_delta(lines)
@@ -134,7 +126,6 @@ class MapCapture:
                     for c in delta.cities
                 ]
 
-            with open(self._turns_path, "a") as f:
-                f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            await self._emitter.emit(self._event_map_delta, entry)
         except Exception:
             log.debug("Ownership delta capture failed", exc_info=True)

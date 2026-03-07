@@ -25,18 +25,23 @@ from civ_mcp import game_launcher
 from civ_mcp import narrate as nr
 from civ_mcp.connection import GameConnection, LuaError
 from civ_mcp.diary import (
-    cities_diary_path as _cities_diary_path,
     diary_path as _diary_path,
     format_diary_entry as _format_diary_entry,
     merge_agent_reflections as _merge_agent_reflections,
     read_diary_entries as _read_diary_entries,
-    write_diary_entry as _write_diary_entry,
 )
 from civ_mcp.game_state import GameState
-from civ_mcp.logger import GameLogger, _EVAL_FIELDS
+from civ_mcp.logger import GameLogger
 from civ_mcp.map_capture import MapCapture
 from civ_mcp.spatial import SpatialTracker
 from civ_mcp.spectator import CameraController, PopupWatcher
+from civ_mcp.telemetry import (
+    EVENT_CITY_ROW,
+    EVENT_DIARY_ROW,
+    CloudSink,
+    LocalSink,
+    TelemetryEmitter,
+)
 from civ_mcp.web_api import create_app
 
 log = logging.getLogger(__name__)
@@ -103,9 +108,18 @@ async def _auto_boot(conn: GameConnection, save_name: str) -> None:
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     conn = GameConnection()
-    logger = GameLogger()
-    spatial = SpatialTracker()
-    map_capture = MapCapture()
+
+    # Telemetry emitter — routes events to local JSONL + optional cloud sink
+    emitter = TelemetryEmitter()
+    emitter.add_sink(LocalSink())
+    cloud_bucket = os.environ.get("CIV_MCP_TELEMETRY_BUCKET")
+    if cloud_bucket:
+        emitter.add_sink(CloudSink(cloud_bucket))
+    emitter.start()
+
+    logger = GameLogger(emitter)
+    spatial = SpatialTracker(emitter)
+    map_capture = MapCapture(emitter)
     gs = GameState(conn)
     log.info("Game logger session: %s", logger.session_id)
 
@@ -137,6 +151,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
             map_capture=map_capture,
         )
     finally:
+        await emitter.close()
         await camera.stop()
         await popup_watcher.stop()
         uvi_server.should_exit = True
@@ -250,7 +265,7 @@ async def get_game_overview(ctx: Context) -> str:
         try:
             civ, seed = await gs.get_game_identity()
             logger.bind_game(civ, seed)
-            spatial.bind_game(civ, seed, logger.session_id)
+            spatial.bind_game(civ, seed)
             gs.spatial = spatial
         except Exception:
             pass
@@ -1564,12 +1579,14 @@ async def end_turn(
         # same-turn retries and turn-advanced-during-blocker cases.
         try:
             path = _diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
-            merged = _merge_agent_reflections(path, gs._diary_written_turn, reflections)
-            if merged:
+            merged_row = _merge_agent_reflections(path, gs._diary_written_turn, reflections)
+            if merged_row:
                 log.info(
                     "Diary: merged retry reflections into turn %s",
                     gs._diary_written_turn,
                 )
+                # Re-emit merged row so CloudSink gets the updated reflections
+                await _emitter.emit(EVENT_DIARY_ROW, merged_row)
         except Exception:
             log.warning("Diary: failed to merge reflections", exc_info=True)
     elif (
@@ -1594,9 +1611,8 @@ async def end_turn(
             except Exception:
                 pass
             try:
-                path = _diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
-                cities_path = _cities_diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
-                # Write one row per player
+                _emitter = _get_logger(ctx)._emitter
+                # Write one row per player (emitter routes to sinks)
                 for pr in _diary_snapshot.players:
                     row = asdict(pr)
                     row["v"] = 1
@@ -1623,20 +1639,18 @@ async def end_turn(
                         row["agent_client"] = agent_client
                         row["agent_client_ver"] = agent_client_ver
                         row["agent_model"] = env_model
-                        # Eval metadata from logger (only non-empty)
-                        _logger = _get_logger(ctx)
-                        for _ef in _EVAL_FIELDS:
-                            _ev = getattr(_logger, _ef, "")
-                            if _ev:
-                                row[_ef] = _ev
-                    _write_diary_entry(path, row)
+                        # Eval metadata from emitter (only non-empty)
+                        for _mk, _mv in _emitter.metadata.items():
+                            if _mv:
+                                row[_mk] = _mv
+                    await _emitter.emit(EVENT_DIARY_ROW, row)
                 # Write one row per city
                 for cr in _diary_snapshot.cities:
                     row = asdict(cr)
                     row["v"] = 1
                     row["turn"] = _diary_turn
                     row["game"] = game_id
-                    _write_diary_entry(cities_path, row)
+                    await _emitter.emit(EVENT_CITY_ROW, row)
                 gs._diary_written_turn = _diary_turn
             except Exception:
                 log.warning("Diary: failed to write entry", exc_info=True)
@@ -1661,7 +1675,7 @@ async def end_turn(
         if _diary_civ_type and _diary_seed:
             try:
                 mc = _get_map_capture(ctx)
-                mc.bind_game(_diary_civ_type, _diary_seed, _diary_run_id)
+                mc.bind_game(_diary_civ_type, _diary_seed)
                 capture_turn = new_turn if m else _diary_turn
                 await mc.capture(gs.conn, capture_turn)
             except Exception:

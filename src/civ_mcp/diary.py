@@ -17,26 +17,17 @@ def diary_path(civ: str, seed: int, run_id: str) -> Path:
     return DIARY_DIR / f"diary_{civ}_{seed}_{run_id}.jsonl"
 
 
-def cities_diary_path(civ: str, seed: int, run_id: str) -> Path:
-    """Per-game cities diary file: diary_{civ}_{seed}_{run_id}_cities.jsonl"""
-    return DIARY_DIR / f"diary_{civ}_{seed}_{run_id}_cities.jsonl"
-
-
-def write_diary_entry(path: Path, entry: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a") as f:
-        f.write(json.dumps(entry, separators=(",", ":")) + "\n")
-
-
-def merge_agent_reflections(path: Path, turn: int, new_reflections: dict) -> bool:
+def merge_agent_reflections(
+    path: Path, turn: int, new_reflections: dict
+) -> dict | None:
     """Merge new reflections into the most recent agent row for this turn.
 
     Finds the last is_agent=True row matching the given turn, appends each
     non-empty reflection field with ' | ' separator, and rewrites the file.
-    Returns True if a row was found and merged, False otherwise.
+    Returns the merged row dict if successful, None otherwise.
     """
     if not path.exists():
-        return False
+        return None
     lines = path.read_text().strip().splitlines()
     target_idx = None
     for i in range(len(lines) - 1, -1, -1):
@@ -48,7 +39,7 @@ def merge_agent_reflections(path: Path, turn: int, new_reflections: dict) -> boo
         except json.JSONDecodeError:
             continue
     if target_idx is None:
-        return False
+        return None
 
     row = json.loads(lines[target_idx])
     existing = row.get("reflections") or {}
@@ -62,7 +53,7 @@ def merge_agent_reflections(path: Path, turn: int, new_reflections: dict) -> boo
 
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
-    return True
+    return row
 
 
 def read_diary_entries(path: Path) -> list[dict]:
