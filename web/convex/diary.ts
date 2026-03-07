@@ -17,7 +17,6 @@ export const listGames = query({
       label: g.civ,
       count: g.turnCount,
       hasCities: g.hasCities,
-      hasLogs: g.hasLogs,
       status: g.status,
       leader: g.leader,
       lastUpdated: g.lastUpdated,
@@ -107,6 +106,7 @@ export const getGameSummary = query({
       mapSize: game.mapSize ?? null,
       gameSpeed: game.gameSpeed ?? null,
       evalTrack: game.evalTrack ?? null,
+      runId: game.runId ?? null,
     };
   },
 });

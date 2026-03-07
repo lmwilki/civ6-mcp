@@ -227,7 +227,7 @@ function GamesPageInner() {
             Games
           </h2>
           <p className="mt-1 text-base text-marble-500">
-            Turn-by-turn diaries, agent reflections, and tool call logs.
+            Turn-by-turn diaries, agent reflections, and strategic maps.
           </p>
 
           {games.length === 0 ? (

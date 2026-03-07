@@ -103,8 +103,9 @@ export const ingestPlayerRows = mutation({
     leader: v.string(),
     seed: v.string(),
     rows: v.array(v.any()),
+    runId: v.optional(v.string()),
   },
-  handler: async (ctx, { gameId, civ, leader, seed, rows }) => {
+  handler: async (ctx, { gameId, civ, leader, seed, rows, runId }) => {
     for (const row of rows) {
       // Backfill fields added after early game data was recorded
       if (row.exploration_pct === undefined) row.exploration_pct = 0;
@@ -157,6 +158,7 @@ export const ingestPlayerRows = mutation({
       // Diary has canonical display names (e.g. "Babylon" vs log's "babylon_stk")
       if (leader) patch.leader = leader;
       if (civ) patch.civ = civ;
+      if (runId) patch.runId = runId;
       // Denormalized fields
       if (agentRow) {
         if (agentRow.agent_model) patch.agentModel = agentRow.agent_model;
@@ -187,8 +189,8 @@ export const ingestPlayerRows = mutation({
         lastUpdated: Date.now(),
         turnCount: maxTurn,
         hasCities: false,
-        hasLogs: false,
         ...evalMeta,
+        ...(runId ? { runId } : {}),
         ...(agentRow?.agent_model ? { agentModel: agentRow.agent_model } : {}),
         ...(typeof agentRow?.score === "number" ? { agentScore: agentRow.score } : {}),
         ...(latestRows.length >= 2
@@ -241,148 +243,6 @@ export const ingestCityRows = mutation({
       await ctx.db.patch(game._id, {
         hasCities: true,
         lastUpdated: Date.now(),
-      });
-    }
-  },
-});
-
-export const ingestLogEntries = mutation({
-  args: {
-    gameId: v.string(),
-    civ: v.string(),
-    seed: v.string(),
-    entries: v.array(v.any()),
-  },
-  handler: async (ctx, { gameId, civ, seed, entries }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let gameOverOutcome: any = null;
-
-    // Extract eval metadata from first entry
-    const logEvalMeta = entries.length > 0 ? extractEvalMeta(entries[0]) : {};
-
-    for (const entry of entries) {
-      // Detect game_over entries before stripping for logEntries insert
-      if (entry.type === "game_over" && entry.outcome) {
-        gameOverOutcome = entry;
-      }
-
-      // Strip outcome field — logEntries schema doesn't include it
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { outcome: _outcome, ...logEntry } = entry;
-
-      // Dedup by (gameId, line)
-      const existing = await ctx.db
-        .query("logEntries")
-        .withIndex("by_game_line", (q) =>
-          q.eq("gameId", gameId).eq("line", logEntry.line),
-        )
-        .unique();
-      if (!existing) {
-        await ctx.db.insert("logEntries", { gameId, ...logEntry });
-      }
-    }
-
-    // Upsert games entry
-    const game = await ctx.db
-      .query("games")
-      .withIndex("by_gameId", (q) => q.eq("gameId", gameId))
-      .unique();
-
-    // Compute logSummary from this batch
-    const batchTurns = entries
-      .map((e: { turn: number | null }) => e.turn)
-      .filter((t: number | null): t is number => t != null);
-    const batchTs = entries.map((e: { ts: number }) => e.ts);
-    const batchSessions = [...new Set(entries.map((e: { session: string }) => e.session))];
-    const batchMaxLine = Math.max(...entries.map((e: { line: number }) => e.line));
-
-    if (game) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const patch: Record<string, any> = {
-        hasLogs: true,
-        lastUpdated: Date.now(),
-        ...logEvalMeta,
-      };
-
-      // Merge logSummary with existing
-      const prev = game.logSummary;
-      const allSessions = prev
-        ? [...new Set([...prev.sessions, ...batchSessions])]
-        : batchSessions;
-      patch.logSummary = {
-        count: prev ? Math.max(prev.count, batchMaxLine) : batchMaxLine,
-        firstTs: prev ? Math.min(prev.firstTs, ...batchTs) : Math.min(...batchTs),
-        lastTs: Math.max(prev?.lastTs ?? 0, ...batchTs),
-        minTurn:
-          batchTurns.length > 0
-            ? prev?.minTurn != null
-              ? Math.min(prev.minTurn, ...batchTurns)
-              : Math.min(...batchTurns)
-            : prev?.minTurn ?? null,
-        maxTurn:
-          batchTurns.length > 0
-            ? prev?.maxTurn != null
-              ? Math.max(prev.maxTurn, ...batchTurns)
-              : Math.max(...batchTurns)
-            : prev?.maxTurn ?? null,
-        sessions: allSessions,
-      };
-
-      if (gameOverOutcome) {
-        const o = gameOverOutcome.outcome;
-        patch.status = "completed";
-        const outcomeTurn = gameOverOutcome.turn ?? 0;
-        patch.outcome = {
-          result: o.is_defeat ? ("defeat" as const) : ("victory" as const),
-          winnerCiv: o.winner_civ ?? "Unknown",
-          winnerLeader: o.winner_leader ?? "Unknown",
-          victoryType: o.victory_type ?? "Unknown",
-          turn: outcomeTurn,
-          playerAlive: o.player_alive ?? true,
-        };
-        if (outcomeTurn > 0) {
-          patch.lastTurn = Math.max(game.lastTurn, outcomeTurn);
-          patch.turnCount = Math.max(game.turnCount, outcomeTurn);
-        }
-      }
-      await ctx.db.patch(game._id, patch);
-    } else {
-      const outcomeTurn = gameOverOutcome?.turn ?? 0;
-      await ctx.db.insert("games", {
-        gameId,
-        civ,
-        leader: "",
-        seed,
-        status: gameOverOutcome ? "completed" : "live",
-        lastTurn: outcomeTurn,
-        lastUpdated: Date.now(),
-        turnCount: outcomeTurn,
-        hasCities: false,
-        hasLogs: true,
-        ...logEvalMeta,
-        logSummary: {
-          count: batchMaxLine,
-          firstTs: Math.min(...batchTs),
-          lastTs: Math.max(...batchTs),
-          minTurn: batchTurns.length > 0 ? Math.min(...batchTurns) : null,
-          maxTurn: batchTurns.length > 0 ? Math.max(...batchTurns) : null,
-          sessions: batchSessions,
-        },
-        ...(gameOverOutcome
-          ? {
-              outcome: {
-                result: gameOverOutcome.outcome.is_defeat
-                  ? ("defeat" as const)
-                  : ("victory" as const),
-                winnerCiv: gameOverOutcome.outcome.winner_civ ?? "Unknown",
-                winnerLeader:
-                  gameOverOutcome.outcome.winner_leader ?? "Unknown",
-                victoryType: gameOverOutcome.outcome.victory_type ?? "Unknown",
-                turn: outcomeTurn,
-                playerAlive: gameOverOutcome.outcome.player_alive ?? true,
-              },
-            }
-          : {}),
       });
     }
   },
@@ -445,7 +305,6 @@ export const deleteGameBatch = mutation({
     table: v.union(
       v.literal("playerRows"),
       v.literal("cityRows"),
-      v.literal("logEntries"),
       v.literal("spatialTurns"),
       v.literal("spatialMaps"),
       v.literal("mapData"),
@@ -478,11 +337,6 @@ export const deleteGameBatch = mutation({
     } else if (table === "cityRows") {
       const rows = await ctx.db.query("cityRows")
         .withIndex("by_game_turn", (q) => q.eq("gameId", gameId)).take(batchSize);
-      for (const r of rows) await ctx.db.delete(r._id);
-      deleted = rows.length;
-    } else if (table === "logEntries") {
-      const rows = await ctx.db.query("logEntries")
-        .withIndex("by_game_line", (q) => q.eq("gameId", gameId)).take(batchSize);
       for (const r of rows) await ctx.db.delete(r._id);
       deleted = rows.length;
     } else if (table === "spatialTurns") {
@@ -534,38 +388,6 @@ export const backfillDenormalized = mutation({
       if (agentRow) {
         if (agentRow.agent_model) patch.agentModel = agentRow.agent_model;
         if (typeof agentRow.score === "number") patch.agentScore = agentRow.score;
-      }
-
-      // Backfill logSummary from logEntries
-      if (game.hasLogs) {
-        const first = await ctx.db
-          .query("logEntries")
-          .withIndex("by_game_line", (q) => q.eq("gameId", game.gameId))
-          .first();
-        const last = await ctx.db
-          .query("logEntries")
-          .withIndex("by_game_line", (q) => q.eq("gameId", game.gameId))
-          .order("desc")
-          .first();
-        // Collect unique sessions from a sample
-        const sample = await ctx.db
-          .query("logEntries")
-          .withIndex("by_game_line", (q) => q.eq("gameId", game.gameId))
-          .take(200);
-        const sessions = [...new Set(sample.map((e) => e.session))];
-        const turns = sample
-          .map((e) => e.turn)
-          .filter((t): t is number => t != null);
-        if (first && last) {
-          patch.logSummary = {
-            count: last.line,
-            firstTs: first.ts,
-            lastTs: last.ts,
-            minTurn: turns.length > 0 ? Math.min(...turns) : null,
-            maxTurn: turns.length > 0 ? Math.max(...turns) : null,
-            sessions,
-          };
-        }
       }
 
       if (Object.keys(patch).length > 0) {

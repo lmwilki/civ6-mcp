@@ -137,13 +137,11 @@ def save_state(state: dict[str, Any]) -> None:
 
 
 def classify_file(name: str) -> str | None:
-    """Return file type: 'diary', 'cities', 'log', 'spatial', 'mapturns', or None."""
+    """Return file type: 'diary', 'cities', 'spatial', 'mapturns', or None."""
     if name.startswith("diary_") and name.endswith("_cities.jsonl"):
         return "cities"
     if name.startswith("diary_") and name.endswith(".jsonl"):
         return "diary"
-    if name.startswith("log_") and name.endswith(".jsonl"):
-        return "log"
     if name.startswith("spatial_") and name.endswith(".jsonl"):
         return "spatial"
     if name.startswith("mapturns_") and name.endswith(".jsonl"):
@@ -156,7 +154,7 @@ def extract_game_id(name: str) -> str:
     name = (
         name.removesuffix("_cities.jsonl").removesuffix(".jsonl").removesuffix(".json")
     )
-    for prefix in ("diary_", "log_", "spatial_", "mapstatic_", "mapturns_"):
+    for prefix in ("diary_", "spatial_", "mapstatic_", "mapturns_"):
         if name.startswith(prefix):
             name = name[len(prefix) :]
     return name
@@ -266,7 +264,6 @@ def _download_cloud_run(
     file_map = {
         "diary.jsonl": f"diary_{game_id}.jsonl",
         "cities.jsonl": f"diary_{game_id}_cities.jsonl",
-        "log.jsonl": f"log_{game_id}.jsonl",
         "spatial.jsonl": f"spatial_{game_id}.jsonl",
         "map_static.json": f"mapstatic_{game_id}.json",
         "map_turns.jsonl": f"mapturns_{game_id}.jsonl",
@@ -388,19 +385,25 @@ async def sync_diary(
     game_field = agent_row.get("game", "")
     seed = game_field.rsplit("_", 1)[-1] if "_" in game_field else ""
 
+    # Extract run_id from game_id (format: civ_seed_runid)
+    # Run IDs are hex/alphanumeric; seeds are numeric (possibly negative)
+    parts = game_id.rsplit("_", 1)
+    candidate = parts[-1] if len(parts) > 1 else ""
+    run_id = candidate if candidate and not candidate.lstrip("-").isdigit() else None
+
     # Batch and send
     for i in range(0, len(rows_to_upsert), BATCH_SIZE):
         batch = rows_to_upsert[i : i + BATCH_SIZE]
-        await client.mutation(
-            "ingest:ingestPlayerRows",
-            {
-                "gameId": game_id,
-                "civ": civ,
-                "leader": leader,
-                "seed": seed,
-                "rows": batch,
-            },
-        )
+        args: dict[str, Any] = {
+            "gameId": game_id,
+            "civ": civ,
+            "leader": leader,
+            "seed": seed,
+            "rows": batch,
+        }
+        if run_id:
+            args["runId"] = run_id
+        await client.mutation("ingest:ingestPlayerRows", args)
 
     log.info(
         "diary %s: synced %d rows (total %d lines)", game_id, len(rows_to_upsert), total
@@ -444,55 +447,6 @@ async def sync_cities(
 
     log.info("cities %s: synced %d new rows", game_id, len(rows))
     file_state["line_count"] = total
-    state["files"][name] = file_state
-    state["game_last_seen"][game_id] = time.time()
-
-
-async def sync_log(path: Path, game_id: str, state: dict, client: ConvexClient) -> None:
-    """Sync a log JSONL file. Append-only — use byte offset."""
-    name = path.name
-    file_state = state["files"].get(name, {"byte_offset": 0, "line_count": 0})
-
-    file_size = path.stat().st_size
-    old_offset = file_state.get("byte_offset", 0)
-
-    if file_size <= old_offset:
-        return
-
-    with open(path, "rb") as f:
-        f.seek(old_offset)
-        new_bytes = f.read()
-
-    new_text = new_bytes.decode("utf-8", errors="replace")
-    new_lines = new_text.strip().splitlines()
-    line_num = file_state.get("line_count", 0)
-
-    entries = []
-    for line in new_lines:
-        try:
-            entry = json.loads(line)
-            line_num += 1
-            entry["line"] = line_num
-            entries.append(entry)
-        except json.JSONDecodeError:
-            continue
-
-    if not entries:
-        return
-
-    civ = entries[0].get("civ", "")
-    seed = str(entries[0].get("seed", ""))
-
-    for i in range(0, len(entries), BATCH_SIZE * 2):
-        batch = entries[i : i + BATCH_SIZE * 2]
-        await client.mutation(
-            "ingest:ingestLogEntries",
-            {"gameId": game_id, "civ": civ, "seed": seed, "entries": batch},
-        )
-
-    log.info("log %s: synced %d new entries", game_id, len(entries))
-    file_state["byte_offset"] = file_size
-    file_state["line_count"] = line_num
     state["files"][name] = file_state
     state["game_last_seen"][game_id] = time.time()
 
@@ -831,8 +785,6 @@ async def sync_file(path: Path, state: dict, client: ConvexClient) -> None:
             await sync_diary(path, game_id, state, client)
         elif ftype == "cities":
             await sync_cities(path, game_id, state, client)
-        elif ftype == "log":
-            await sync_log(path, game_id, state, client)
         elif ftype == "spatial":
             await sync_spatial(path, game_id, state, client)
         elif ftype == "mapturns":
@@ -882,7 +834,7 @@ async def batch_upload(directory: Path, client: ConvexClient) -> None:
         log.info("--- %s ---", gid)
 
         # Process diary first (creates the games row in Convex)
-        for ftype in ("diary", "cities", "log", "spatial", "mapturns"):
+        for ftype in ("diary", "cities", "spatial", "mapturns"):
             if ftype in files:
                 await sync_file(files[ftype], state, client)
 
@@ -958,7 +910,6 @@ async def watch_loop(diary_dir: Path, client: ConvexClient) -> None:
         # Initial sync: process all existing files
         for pattern in (
             "diary_*.jsonl",
-            "log_*.jsonl",
             "spatial_*.jsonl",
             "mapturns_*.jsonl",
         ):
@@ -1032,7 +983,6 @@ async def watch_loop_cloud(bucket_url: str, client: ConvexClient) -> None:
                         for ftype in (
                             "diary",
                             "cities",
-                            "log",
                             "spatial",
                             "mapturns",
                         ):

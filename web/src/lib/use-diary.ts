@@ -180,6 +180,7 @@ function useDiarySummaryFs(filename: string | null): DiarySummary {
     mapSize: null,
     gameSpeed: null,
     evalTrack: null,
+    runId: null,
   };
 }
 

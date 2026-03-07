@@ -4,7 +4,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { computeElo, type GameResult, type Participant } from "@/lib/elo";
 import type { PlayerRow } from "@/lib/diary-types";
-import { getDiaryDir, readJsonl } from "../log/shared";
+import { getDiaryDir, readJsonl } from "../shared";
 
 interface LogGameOver {
   type: string;

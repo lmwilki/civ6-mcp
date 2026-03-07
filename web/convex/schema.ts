@@ -13,7 +13,6 @@ export default defineSchema({
     lastUpdated: v.number(),
     turnCount: v.number(),
     hasCities: v.boolean(),
-    hasLogs: v.boolean(),
     hasSpatial: v.optional(v.boolean()),
     hasMap: v.optional(v.boolean()),
     agentModelOverride: v.optional(v.string()),
@@ -38,17 +37,8 @@ export default defineSchema({
         players: v.any(), // { [pid]: { civ, leader, is_agent, metrics: { score: number[], ... } } }
       }),
     ),
-    // Denormalized from logEntries (set at ingest time)
-    logSummary: v.optional(
-      v.object({
-        count: v.number(),
-        firstTs: v.number(),
-        lastTs: v.number(),
-        minTurn: v.union(v.number(), v.null()),
-        maxTurn: v.union(v.number(), v.null()),
-        sessions: v.array(v.string()),
-      }),
-    ),
+    // Run ID for constructing Azure blob download URLs
+    runId: v.optional(v.string()),
     // Eval metadata (set at ingest time from diary/log entries)
     mcpVersion: v.optional(v.string()),
     mcpGitSha: v.optional(v.string()),
@@ -184,40 +174,6 @@ export default defineSchema({
     loyalty: v.number(),
     loyalty_per_turn: v.number(),
   }).index("by_game_turn", ["gameId", "turn"]),
-
-  // One doc per tool call log line — mirrors LogEntry from types.ts
-  logEntries: defineTable({
-    gameId: v.string(),
-    line: v.number(),
-    game: v.string(),
-    civ: v.string(),
-    seed: v.number(),
-    session: v.string(),
-    ts: v.number(),
-    turn: v.union(v.number(), v.null()),
-    seq: v.number(),
-    type: v.string(),
-    tool: v.string(),
-    category: v.string(),
-    params: v.union(v.any(), v.null()),
-    result_summary: v.union(v.string(), v.null()),
-    result: v.union(v.string(), v.null()),
-    duration_ms: v.union(v.number(), v.null()),
-    success: v.boolean(),
-    events: v.optional(v.any()),
-    agent_model: v.optional(v.union(v.string(), v.null())),
-    // Eval metadata
-    mcp_version: v.optional(v.string()),
-    mcp_git_sha: v.optional(v.string()),
-    scenario_id: v.optional(v.string()),
-    difficulty: v.optional(v.string()),
-    map_type: v.optional(v.string()),
-    map_size: v.optional(v.string()),
-    game_speed: v.optional(v.string()),
-    eval_track: v.optional(v.string()),
-  })
-    .index("by_game_line", ["gameId", "line"])
-    .index("by_game_session", ["gameId", "session"]),
 
   // One doc per turn — pre-aggregated spatial attention data
   spatialTurns: defineTable({

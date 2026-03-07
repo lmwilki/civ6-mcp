@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, readdir, stat } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { getDiaryDir } from "../log/shared";
+import { getDiaryDir } from "../shared";
 
 /** List available diary files (excludes _cities companion files) */
 async function listDiaries(dir: string) {
