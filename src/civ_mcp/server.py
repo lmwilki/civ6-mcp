@@ -90,9 +90,18 @@ async def _auto_boot(conn: GameConnection, save_name: str) -> None:
     result = await load_game_save(conn, save_name)
     log.info("Auto-boot: load result: %s", result)
 
-    # 4. Wait for save to load, then reconnect to discover game Lua states
+    # 4. Wait for save to load, click through leader intro, then reconnect
     log.info("Auto-boot: waiting for save to load...")
-    await asyncio.sleep(12)
+    # Click CONTINUE GAME on the leader intro screen (OCR poll).
+    # The save takes 10-30s to load; poll the whole time.
+    clicked = await asyncio.to_thread(
+        lambda: game_launcher._click_text("CONTINUE", timeout=60, post_delay=1),
+    )
+    if clicked:
+        log.info("Auto-boot: clicked CONTINUE GAME")
+    else:
+        log.info("Auto-boot: no CONTINUE screen detected (may have loaded directly)")
+    await asyncio.sleep(3)
     for attempt in range(30):
         try:
             await conn.reconnect()

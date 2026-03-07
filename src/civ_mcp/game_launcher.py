@@ -997,6 +997,26 @@ def _ocr_game_window(win: WindowInfo) -> list[tuple[str, int, int, int, int]]:
         pil_image = _capture_window_linux(win.window_id)
         return _ocr_tesseract(pil_image, win.x, win.y, win.w, win.h)
     cg_image = _capture_window(win.window_id)
+    # On macOS 15+, CGWindowListCreateImage returns nil and we fall back
+    # to `screencapture -l` which captures the FULL window (title bar +
+    # content + shadow).  The window bounds from Quartz (win.*) also
+    # include title bar and shadow, so the mapping is 1:1.
+    #
+    # On older macOS, kCGWindowImageBoundsIgnoreFraming captures content
+    # only — but the bounds still include framing. Detect this by
+    # comparing the capture's aspect ratio to the window bounds.
+    import Quartz
+
+    img_px_w = Quartz.CGImageGetWidth(cg_image)
+    img_px_h = Quartz.CGImageGetHeight(cg_image)
+    if win.w and win.h and img_px_w and img_px_h:
+        scale = img_px_w / win.w
+        img_pt_h = img_px_h / scale
+        # If capture is significantly shorter than window bounds, the
+        # title bar / shadow was excluded — offset accordingly.
+        gap = win.h - img_pt_h
+        if gap > 5:
+            return _ocr_vision(cg_image, win.x, win.y + gap, win.w, int(img_pt_h))
     return _ocr_vision(cg_image, win.x, win.y, win.w, win.h)
 
 
@@ -1381,15 +1401,18 @@ def _wait_for_text(
     """
     _require_gui_deps()
     start = time.time()
+    focused = False
     while time.time() - start < timeout:
         win = _find_game_window()
         if win is None:
-            # No game window yet (Aspyr launcher phase) — full-screen fallback
             log.debug("No game window found, using full-screen OCR")
             results = _ocr_fullscreen()
+            focused = False
         else:
-            _bring_to_front(pid=win.pid)
-            time.sleep(0.3)
+            if not focused:
+                _bring_to_front(pid=win.pid)
+                time.sleep(0.3)
+                focused = True
             try:
                 results = _ocr_game_window(win)
             except RuntimeError:
@@ -1413,8 +1436,15 @@ def _click_text(
     post_delay: float = 1,
     prefer_bottom: bool = False,
     min_y_fraction: float = 0.0,
+    y_offset: int = 0,
 ) -> bool:
-    """Find text via OCR and click it. Returns success."""
+    """Find text via OCR and click it. Returns success.
+
+    Args:
+        y_offset: Pixels to shift the click vertically from bbox center.
+            Positive = down, negative = up.  Useful when menu items are
+            tightly packed and OCR bbox centers can land between items.
+    """
     match = _wait_for_text(
         target, timeout=timeout, exact=exact, prefer_bottom=prefer_bottom,
         min_y_fraction=min_y_fraction,
@@ -1423,11 +1453,11 @@ def _click_text(
         log.warning("OCR: '%s' not found after %ds", target, timeout)
         return False
     text, x, y, w, h = match
-    # x, y are already bounding box center (Vision maps norm_cx/norm_cy)
-    log.info("OCR: found '%s' at (%d,%d) — clicking", text, x, y)
+    click_y = y + y_offset
+    log.info("OCR: found '%s' at (%d,%d) [%dx%d] — clicking (%d,%d)", text, x, y, w, h, x, click_y)
     _bring_to_front()
     time.sleep(0.3)
-    _click(x, y)
+    _click(x, click_y)
     time.sleep(post_delay)
     return True
 
@@ -1573,13 +1603,13 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
         # Click through Aspyr launcher if present (macOS shows PLAY button before main menu)
         _click_aspyr_launcher_sync()
 
-    log.info("[1/6] Waiting for main menu (Single Player)...")
-    if not _click_text("Single Player", timeout=90, exact=True, post_delay=1.5):
+    log.info("[1/7] Waiting for main menu (Single Player)...")
+    if not _click_text("Single Player", timeout=90, exact=True, post_delay=0.5):
         return "FAILED: Could not find 'Single Player' on main menu. Is the game at the main menu?"
     steps.append("Clicked Single Player")
 
-    log.info("[2/6] Clicking 'Load Game'...")
-    if not _click_text("Load Game", timeout=15, exact=True, post_delay=1.5):
+    log.info("[2/7] Clicking 'Load Game'...")
+    if not _click_text("Load Game", timeout=5, exact=True, post_delay=0.5):
         return "FAILED: Could not find 'Load Game' button."
     steps.append("Clicked Load Game")
 
