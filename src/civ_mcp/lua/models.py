@@ -388,6 +388,9 @@ class LockedCivic:
     name: str
     civic_type: str
     missing_prereqs: list[str]  # localized names of unmet prerequisites
+    era: str = ""  # e.g. "ERA_MODERN"
+    boosted: bool = False
+    boost_desc: str = ""  # trigger description
 
 
 @dataclass
@@ -396,6 +399,8 @@ class LockedTech:
     tech_type: str
     missing_prereqs: list[str]  # localized names of unmet prerequisites
     era: str = ""  # e.g. "ERA_MODERN"
+    boosted: bool = False
+    boost_desc: str = ""  # trigger description
 
 
 @dataclass
@@ -755,6 +760,14 @@ class PendingDeal:
 
 
 @dataclass
+class TradeableCity:
+    city_id: int
+    name: str
+    population: int
+    is_capital: bool
+
+
+@dataclass
 class DealOptions:
     """What's available to trade with a civilization."""
 
@@ -770,9 +783,30 @@ class DealOptions:
     our_strategics: list[str] = field(default_factory=list)
     their_luxuries: list[str] = field(default_factory=list)
     their_strategics: list[str] = field(default_factory=list)
+    our_cities: list[TradeableCity] = field(default_factory=list)
+    their_cities: list[TradeableCity] = field(default_factory=list)
     has_open_borders: bool = False
     alliance_eligible: bool = False
     current_alliance: str | None = None
+
+
+@dataclass
+class TestTradeItem:
+    side: str  # "US" or "THEM"
+    item_type: str  # GOLD, RESOURCE, AGREEMENT, FAVOR, CITY, GREAT_WORK
+    amount: int
+    duration: int
+    value_id: str  # e.g. "YIELD_GOLD", "RESOURCE_HORSES"
+    subtype_id: str  # e.g. "DIPLOACTION_OPEN_BORDERS"
+
+
+@dataclass
+class TestTradeResult:
+    other_player_id: int
+    other_civ_name: str
+    proposed: list[TestTradeItem] = field(default_factory=list)
+    counter: list[TestTradeItem] = field(default_factory=list)
+    rejected: bool = False
 
 
 @dataclass
@@ -814,6 +848,10 @@ class GovernorInfo:
     governor_type: str
     name: str
     title: str
+    description: str = ""
+    base_ability: str = ""  # name of the base (level 0) promotion
+    base_ability_desc: str = ""  # description of the base promotion
+    promotions: list["GovernorPromotion"] = field(default_factory=list)
 
 
 @dataclass
@@ -823,6 +861,8 @@ class GovernorPromotion:
     promotion_type: str
     name: str
     description: str
+    level: int = 0  # 0 = base ability, 1-3 = promotion tiers
+    column: int = 0  # position in the promotion tree
 
 
 @dataclass

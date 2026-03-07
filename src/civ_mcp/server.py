@@ -1054,6 +1054,7 @@ async def propose_trade(
     request_favor: int = 0,
     request_open_borders: bool = False,
     joint_war_target: int = 0,
+    mode: str = "send",
 ) -> str:
     """Propose a trade deal to another civilization.
 
@@ -1070,10 +1071,11 @@ async def propose_trade(
         request_favor: Diplomatic favor to request from them
         request_open_borders: True to request their open borders
         joint_war_target: Player ID of a third civ to declare joint war against
+        mode: "send" to commit the deal, "test" to preview AI's counter-offer without committing
 
     Examples: Gift 100 gold: offer_gold=100. Trade silk for 3 gpt: offer_resources="RESOURCE_SILK", request_gold_per_turn=3.
     Mutual open borders: offer_open_borders=True, request_open_borders=True.
-    Trade favor for gold: offer_favor=20, request_gold=100.
+    Test a deal first: mode="test" to see what the AI thinks is fair, then mode="send" to commit.
     """
     gs = _get_game(ctx)
 
@@ -1114,6 +1116,18 @@ async def propose_trade(
 
     if not offer_items and not request_items:
         return "Error: must specify at least one offer or request item"
+
+    if mode == "test":
+        return await _logged(
+            ctx,
+            "test_trade",
+            {
+                "other_player_id": other_player_id,
+                "offer_items": offer_items,
+                "request_items": request_items,
+            },
+            lambda: gs.test_trade(other_player_id, offer_items, request_items),
+        )
 
     return await _logged(
         ctx,

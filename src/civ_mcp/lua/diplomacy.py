@@ -11,6 +11,9 @@ from civ_mcp.lua.models import (
     DiplomacyModifier,
     DiplomacySession,
     PendingDeal,
+    TestTradeItem,
+    TestTradeResult,
+    TradeableCity,
     VisibleCity,
 )
 
@@ -545,6 +548,20 @@ if stateIdx == 0 then
     end
 end
 print("ALLIANCE|" .. (allianceEligible and "1" or "0") .. "|" .. currentAlliance)
+for _, city in Players[me]:GetCities():Members() do
+    local cName = Locale.Lookup(city:GetName()):gsub("|", "/")
+    local cid = city:GetID()
+    local pop = city:GetPopulation()
+    local isCapital = city:IsCapital() and "1" or "0"
+    print("CITY|OURS|" .. cid .. "|" .. cName .. "|" .. pop .. "|" .. isCapital)
+end
+for _, city in Players[target]:GetCities():Members() do
+    local cName = Locale.Lookup(city:GetName()):gsub("|", "/")
+    local cid = city:GetID()
+    local pop = city:GetPopulation()
+    local isCapital = city:IsCapital() and "1" or "0"
+    print("CITY|THEIRS|" .. cid .. "|" .. cName .. "|" .. pop .. "|" .. isCapital)
+end
 print("{SENTINEL}")
 """
 
@@ -597,6 +614,19 @@ def parse_deal_options_response(lines: list[str]) -> DealOptions:
                 opts.alliance_eligible = parts[1] == "1"
                 if parts[2]:
                     opts.current_alliance = parts[2]
+        elif line.startswith("CITY|"):
+            parts = line.split("|")
+            if len(parts) >= 6:
+                city = TradeableCity(
+                    city_id=int(parts[2]),
+                    name=parts[3],
+                    population=int(parts[4]),
+                    is_capital=parts[5] == "1",
+                )
+                if parts[1] == "OURS":
+                    opts.our_cities.append(city)
+                else:
+                    opts.their_cities.append(city)
     return opts
 
 
@@ -719,6 +749,12 @@ def _lua_deal_item(from_var: str, item: dict) -> str:
             f"do local ai = deal:AddItemOfType(DealItemTypes.AGREEMENTS, {from_var}) "
             f"if ai then ai:SetSubType(DealAgreementTypes.{subtype}) end end"
         )
+    elif t == "CITY":
+        city_id = item["city_id"]
+        return (
+            f"do local ci = deal:AddItemOfType(DealItemTypes.CITIES, {from_var}) "
+            f"if ci then ci:SetValueType({city_id}) end end"
+        )
     else:
         return f"-- unsupported deal item type: {t}"
 
@@ -732,7 +768,7 @@ def build_propose_trade(
 
     offer_items: items we give to them (from us).
     request_items: items we want from them.
-    Each item dict: {type: GOLD|RESOURCE|FAVOR|AGREEMENT, amount: int, name: str, duration: int, subtype: str}
+    Each item dict: {type: GOLD|RESOURCE|FAVOR|AGREEMENT|CITY, amount: int, name: str, duration: int, subtype: str, city_id: int}
     """
     offer_lua = " ".join(_lua_deal_item("me", item) for item in offer_items)
     request_lua = " ".join(_lua_deal_item("target", item) for item in request_items)
@@ -770,6 +806,127 @@ end
 print("OK:" .. result .. "|Trade " .. result:lower() .. " with " .. name)
 print("{SENTINEL}")
 """
+
+
+def build_test_trade(
+    other_player_id: int,
+    offer_items: list[dict],
+    request_items: list[dict],
+) -> str:
+    """Test a trade deal via EQUALIZE — returns what the AI thinks is fair (InGame).
+
+    Same item format as build_propose_trade. Does NOT commit the deal.
+    """
+    offer_lua = " ".join(_lua_deal_item("me", item) for item in offer_items)
+    request_lua = " ".join(_lua_deal_item("target", item) for item in request_items)
+
+    return f"""
+local me = Game.GetLocalPlayer()
+local target = {other_player_id}
+local pDiplo = Players[me]:GetDiplomacy()
+if not pDiplo:HasMet(target) then {_bail("ERR:NOT_MET|Have not met player " + str(other_player_id))} end
+if pDiplo:IsAtWarWith(target) then {_bail("ERR:AT_WAR|Cannot trade while at war")} end
+local name = Locale.Lookup(PlayerConfigurations[target]:GetCivilizationShortDescription())
+print("CIV|" .. target .. "|" .. name:gsub("|","/"))
+pcall(function()
+    local sid = DiplomacyManager.FindOpenSessionID(me, target)
+    if sid and sid >= 0 then DiplomacyManager.CloseSession(sid) end
+end)
+DiplomacyManager.RequestSession(me, target, "MAKE_DEAL")
+DealManager.ClearWorkingDeal(DealDirection.OUTGOING, me, target)
+local deal = DealManager.GetWorkingDeal(DealDirection.OUTGOING, me, target)
+if not deal then {_bail("ERR:NO_DEAL_OBJECT|Failed to get working deal")} end
+{offer_lua}
+{request_lua}
+print("PROPOSED_ITEMS")
+for item in deal:Items() do
+    local fromTag = item:GetFromPlayerID() == me and "US" or "THEM"
+    local itype = item:GetType()
+    local typeName = "UNKNOWN"
+    local ok3, vid = pcall(function() return item:GetValueTypeID() end); vid = (ok3 and vid) and tostring(vid) or ""
+    local ok4, sid2 = pcall(function() return item:GetSubTypeID() end); sid2 = (ok4 and sid2) and tostring(sid2) or ""
+    local amount = item:GetAmount() or 0
+    local duration = item:GetDuration() or 0
+    if itype == DealItemTypes.GOLD then typeName = "GOLD"
+    elseif itype == DealItemTypes.RESOURCES then typeName = "RESOURCE"
+    elseif itype == DealItemTypes.AGREEMENTS then typeName = "AGREEMENT"
+    elseif itype == DealItemTypes.FAVOR then typeName = "FAVOR"
+    elseif itype == DealItemTypes.CITIES then typeName = "CITY"
+    elseif itype == DealItemTypes.GREATWORK then typeName = "GREAT_WORK"
+    end
+    print("ITEM|" .. fromTag .. "|" .. typeName .. "|" .. amount .. "|" .. duration .. "|" .. vid .. "|" .. sid2)
+end
+DealManager.SendWorkingDeal(DealProposalAction.EQUALIZE, me, target)
+local inDeal = DealManager.GetWorkingDeal(DealDirection.INCOMING, me, target)
+if inDeal and inDeal:GetItemCount() and inDeal:GetItemCount() > 0 then
+    print("AI_COUNTER")
+    for item in inDeal:Items() do
+        local fromTag = item:GetFromPlayerID() == me and "US" or "THEM"
+        local itype = item:GetType()
+        local typeName = "UNKNOWN"
+        local ok3, vid = pcall(function() return item:GetValueTypeID() end); vid = (ok3 and vid) and tostring(vid) or ""
+        local ok4, sid2 = pcall(function() return item:GetSubTypeID() end); sid2 = (ok4 and sid2) and tostring(sid2) or ""
+        local amount = item:GetAmount() or 0
+        local duration = item:GetDuration() or 0
+        if itype == DealItemTypes.GOLD then typeName = "GOLD"
+        elseif itype == DealItemTypes.RESOURCES then typeName = "RESOURCE"
+        elseif itype == DealItemTypes.AGREEMENTS then typeName = "AGREEMENT"
+        elseif itype == DealItemTypes.FAVOR then typeName = "FAVOR"
+        elseif itype == DealItemTypes.CITIES then typeName = "CITY"
+        elseif itype == DealItemTypes.GREATWORK then typeName = "GREAT_WORK"
+        end
+        print("ITEM|" .. fromTag .. "|" .. typeName .. "|" .. amount .. "|" .. duration .. "|" .. vid .. "|" .. sid2)
+    end
+else
+    print("AI_COUNTER")
+    print("REJECTED")
+end
+pcall(function()
+    local sid = DiplomacyManager.FindOpenSessionID(me, target)
+    if sid and sid >= 0 then DiplomacyManager.CloseSession(sid) end
+end)
+print("{SENTINEL}")
+"""
+
+
+def parse_test_trade_response(lines: list[str]) -> TestTradeResult:
+    """Parse the test trade response."""
+    result = TestTradeResult(
+        other_player_id=0,
+        other_civ_name="",
+        proposed=[],
+        counter=[],
+        rejected=False,
+    )
+    section = ""
+    for line in lines:
+        if line.startswith("CIV|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                result.other_player_id = int(parts[1])
+                result.other_civ_name = parts[2]
+        elif line == "PROPOSED_ITEMS":
+            section = "proposed"
+        elif line == "AI_COUNTER":
+            section = "counter"
+        elif line == "REJECTED":
+            result.rejected = True
+        elif line.startswith("ITEM|") and section:
+            parts = line.split("|")
+            if len(parts) >= 7:
+                item = TestTradeItem(
+                    side=parts[1],
+                    item_type=parts[2],
+                    amount=int(parts[3]),
+                    duration=int(parts[4]),
+                    value_id=parts[5],
+                    subtype_id=parts[6],
+                )
+                if section == "proposed":
+                    result.proposed.append(item)
+                else:
+                    result.counter.append(item)
+    return result
 
 
 def build_form_alliance(other_player_id: int, alliance_type: str) -> str:
