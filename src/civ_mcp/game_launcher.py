@@ -1627,35 +1627,18 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     else:
         steps.append("Clicked Load Game button")
 
-    # [6/6] Wait for save to load, then check for leader screen.
+    # [7/7] Wait for save to load, then click through the leader intro screen.
     #
-    # CRITICAL: Do NOT use PrintWindow or SetForegroundWindow during the
-    # save loading phase.  PrintWindow(PW_RENDERFULLCONTENT) forces DX12
-    # to render to an offscreen bitmap, which crashes the game's renderer
-    # when it's in the middle of initializing the game world (tearing down
-    # menu UI, loading assets, building the map).  The thread-attach trick
-    # in _bring_to_front_win32 also destabilizes the game by injecting
-    # window messages into the loading message pump.
+    # NOTE (Windows): PrintWindow + SetForegroundWindow during the DX12
+    # loading phase can crash the renderer.  macOS (Quartz) and Linux (mss)
+    # are safe to poll during loading since they don't inject window messages.
     #
-    # Instead: passively wait for the loading phase to complete (checking
-    # only that the game process is alive), THEN do OCR for CONTINUE.
+    # Poll continuously for CONTINUE with a 90s budget — covers slow
+    # first-time loads with shader compilation.  OCR just won't find the
+    # text during the loading bar phase (safe no-op).
 
-    log.info("[7/7] Passive wait for save to load (no window capture)...")
-    _LOAD_PASSIVE_WAIT = 20  # seconds — enough for most saves to load
-    for elapsed in range(1, _LOAD_PASSIVE_WAIT + 1):
-        time.sleep(1)
-        if not is_game_running():
-            _dismiss_crash_dialog()
-            log.warning("Game process died during save loading (after %ds)", elapsed)
-            return (
-                f"FAILED: Game crashed during save loading after {elapsed}s. "
-                f"Steps: {', '.join(steps)}"
-            )
-        if elapsed % 5 == 0:
-            log.info("  ... %ds/%ds", elapsed, _LOAD_PASSIVE_WAIT)
-
-    log.info("Passive wait complete. Checking for leader screen...")
-    match = _wait_for_text("CONTINUE", timeout=15, interval=5)
+    log.info("[7/7] Waiting for save to load and CONTINUE GAME screen...")
+    match = _wait_for_text("CONTINUE", timeout=90, interval=2.5)
     if match:
         text, x, y, w, h = match
         log.info("Found '%s' at (%d,%d) — clicking", text, x, y)
