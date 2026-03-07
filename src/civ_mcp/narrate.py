@@ -13,7 +13,9 @@ def narrate_overview(ov: lq.GameOverview) -> str:
     speed_str = ""
     if ov.game_speed_name:
         if ov.speed_cost_multiplier != 100:
-            speed_str = f" | {ov.game_speed_name} speed ({ov.speed_cost_multiplier}% costs)"
+            speed_str = (
+                f" | {ov.game_speed_name} speed ({ov.speed_cost_multiplier}% costs)"
+            )
         else:
             speed_str = f" | {ov.game_speed_name} speed"
     lines = []
@@ -21,14 +23,25 @@ def narrate_overview(ov: lq.GameOverview) -> str:
         [
             f"Turn {ov.turn}{f'/{ov.max_turns}' if ov.max_turns else ''} | {ov.civ_name} ({ov.leader_name}) | Score: {ov.score}{diff_str}{speed_str}",
             f"Gold: {ov.gold:.0f} ({ov.gold_per_turn:+.0f}/turn)"
-            + (f" | Income: {ov.gold_income:.0f} | Maintenance: -{ov.total_maintenance:.0f} (units: {ov.unit_maintenance})"
-               if ov.gold_income > 0 or ov.total_maintenance > 0 else "")
+            + (
+                f" | Income: {ov.gold_income:.0f} | Maintenance: -{ov.total_maintenance:.0f} (units: {ov.unit_maintenance})"
+                if ov.gold_income > 0 or ov.total_maintenance > 0
+                else ""
+            )
             + f" | Science: {ov.science_yield:.1f} | Culture: {ov.culture_yield:.1f} | Faith: {ov.faith:.0f} | Favor: {ov.diplomatic_favor} ({ov.favor_per_turn:+d}/turn)",
             f"Research: {ov.current_research} | Civic: {ov.current_civic}",
             f"Cities: {ov.num_cities} | Population: {ov.total_population} | Units: {ov.num_units}"
-            + (" — " + ", ".join(f"{count} {name}" for name, count in
-                sorted(ov.unit_breakdown.items(), key=lambda x: x[1], reverse=True))
-               if ov.unit_breakdown else ""),
+            + (
+                " — "
+                + ", ".join(
+                    f"{count} {name}"
+                    for name, count in sorted(
+                        ov.unit_breakdown.items(), key=lambda x: x[1], reverse=True
+                    )
+                )
+                if ov.unit_breakdown
+                else ""
+            ),
         ]
     )
     if ov.total_land > 0:
@@ -61,11 +74,19 @@ def narrate_overview(ov: lq.GameOverview) -> str:
             "VICTORY_RELIGIOUS": "Religious",
             "VICTORY_DIPLOMATIC": "Diplomatic",
         }
-        all_types = ["VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE",
-                      "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"]
+        all_types = [
+            "VICTORY_TECHNOLOGY",
+            "VICTORY_CONQUEST",
+            "VICTORY_CULTURE",
+            "VICTORY_RELIGIOUS",
+            "VICTORY_DIPLOMATIC",
+        ]
         enabled = [vname_map[v] for v in all_types if v in ov.enabled_victories]
         disabled = [vname_map[v] for v in all_types if v not in ov.enabled_victories]
-        lines.append(f"Victory: {', '.join(enabled)} only" + (f" (disabled: {', '.join(disabled)})" if disabled else ""))
+        lines.append(
+            f"Victory: {', '.join(enabled)} only"
+            + (f" (disabled: {', '.join(disabled)})" if disabled else "")
+        )
     if ov.era_name:
         score_status = ""
         if ov.era_score >= ov.era_golden_threshold:
@@ -229,7 +250,11 @@ def narrate_builder_tasks(
         return "\n".join(lines)
 
     # Group by priority
-    by_priority: dict[str, list[lq.BuilderTask]] = {"urgent": [], "high": [], "normal": []}
+    by_priority: dict[str, list[lq.BuilderTask]] = {
+        "urgent": [],
+        "high": [],
+        "normal": [],
+    }
     for t in tasks:
         by_priority.setdefault(t.priority, []).append(t)
 
@@ -846,19 +871,47 @@ def narrate_tech_civics(tc: lq.TechCivicStatus) -> str:
             lines.append(
                 f"  {c.name} ({c.civic_type}){era_str} — {c.progress_pct}%, {c.turns} turns{boost_str}{boost_desc}{prereq_str}{flag}"
             )
+    era_order = [
+        "ERA_ANCIENT",
+        "ERA_CLASSICAL",
+        "ERA_MEDIEVAL",
+        "ERA_RENAISSANCE",
+        "ERA_INDUSTRIAL",
+        "ERA_MODERN",
+        "ERA_ATOMIC",
+        "ERA_INFORMATION",
+        "ERA_FUTURE",
+    ]
+    era_rank = {e: i for i, e in enumerate(era_order)}
+
     if tc.locked_techs:
         lines.append("\nLocked techs (prerequisites missing):")
+        by_era: dict[str, list[str]] = {}
         for lt in tc.locked_techs:
-            era_str = f" [{lt.era.replace('ERA_', '')}]" if lt.era else ""
-            lines.append(
-                f"  {lt.name} ({lt.tech_type}){era_str} — needs: {', '.join(lt.missing_prereqs)}"
-            )
+            era = lt.era or "UNKNOWN"
+            boost = " BOOSTED" if lt.boosted else ""
+            boost_desc = f" [Boost: {lt.boost_desc}]" if lt.boost_desc else ""
+            line = f"  {lt.name} ({lt.tech_type}) — needs: {', '.join(lt.missing_prereqs)}{boost}{boost_desc}"
+            by_era.setdefault(era, []).append(line)
+        for era in sorted(by_era, key=lambda e: era_rank.get(e, 99)):
+            label = era.replace("ERA_", "")
+            lines.append(f"  -- {label} --")
+            lines.extend(by_era[era])
+
     if tc.locked_civics:
         lines.append("\nLocked civics (prerequisites missing):")
+        by_era_c: dict[str, list[str]] = {}
         for lc in tc.locked_civics:
-            lines.append(
-                f"  {lc.name} ({lc.civic_type}) — needs: {', '.join(lc.missing_prereqs)}"
-            )
+            era = lc.era or "UNKNOWN"
+            boost = " BOOSTED" if lc.boosted else ""
+            boost_desc = f" [Boost: {lc.boost_desc}]" if lc.boost_desc else ""
+            line = f"  {lc.name} ({lc.civic_type}) — needs: {', '.join(lc.missing_prereqs)}{boost}{boost_desc}"
+            by_era_c.setdefault(era, []).append(line)
+        for era in sorted(by_era_c, key=lambda e: era_rank.get(e, 99)):
+            label = era.replace("ERA_", "")
+            lines.append(f"  -- {label} --")
+            lines.extend(by_era_c[era])
+
     return "\n".join(lines)
 
 
@@ -934,6 +987,16 @@ def narrate_deal_options(opts: lq.DealOptions) -> str:
             lines.append(f"  Luxuries: {', '.join(opts.their_luxuries)}")
         if opts.their_strategics:
             lines.append(f"  Strategics: {', '.join(opts.their_strategics)}")
+    if opts.our_cities:
+        lines.append(f"\nOur cities ({len(opts.our_cities)}):")
+        for c in opts.our_cities:
+            cap = " (CAPITAL)" if c.is_capital else ""
+            lines.append(f"  {c.name} (id={c.city_id}, pop {c.population}){cap}")
+    if opts.their_cities:
+        lines.append(f"\nTheir cities ({len(opts.their_cities)}):")
+        for c in opts.their_cities:
+            cap = " (CAPITAL)" if c.is_capital else ""
+            lines.append(f"  {c.name} (id={c.city_id}, pop {c.population}){cap}")
     lines.append(f"\nAgreements:")
     ob_status = "active" if opts.has_open_borders else "not active (available)"
     lines.append(f"  Open borders: {ob_status}")
@@ -947,6 +1010,80 @@ def narrate_deal_options(opts: lq.DealOptions) -> str:
         lines.append(
             f"  Alliance: not eligible (requires declared friendship + Diplomatic Service civic)"
         )
+    return "\n".join(lines)
+
+
+def _describe_trade_item(item: lq.TestTradeItem) -> str:
+    """Human-readable description of a trade deal item."""
+    if item.item_type == "GOLD":
+        if item.duration > 0:
+            return f"{item.amount} gold/turn ({item.duration} turns)"
+        return f"{item.amount} gold"
+    elif item.item_type == "RESOURCE":
+        name = item.value_id.replace("RESOURCE_", "").replace("_", " ").title()
+        dur = f" ({item.duration} turns)" if item.duration > 0 else ""
+        amt = f" x{item.amount}" if item.amount > 1 else ""
+        return f"{name}{amt}{dur}"
+    elif item.item_type == "AGREEMENT":
+        sub = item.subtype_id.replace("DIPLOACTION_", "").replace("_", " ").title()
+        return sub
+    elif item.item_type == "FAVOR":
+        return f"{item.amount} diplomatic favor"
+    elif item.item_type == "CITY":
+        return f"City (id={item.value_id})"
+    return f"{item.item_type} ({item.amount})"
+
+
+def narrate_test_trade(result: lq.TestTradeResult) -> str:
+    lines = [
+        f"Trade test with {result.other_civ_name} (player {result.other_player_id}):"
+    ]
+
+    our_proposed = [i for i in result.proposed if i.side == "US"]
+    their_proposed = [i for i in result.proposed if i.side == "THEM"]
+    lines.append("\nYour proposal:")
+    if our_proposed:
+        lines.append(
+            "  We offer: " + ", ".join(_describe_trade_item(i) for i in our_proposed)
+        )
+    if their_proposed:
+        lines.append(
+            "  We request: "
+            + ", ".join(_describe_trade_item(i) for i in their_proposed)
+        )
+
+    if result.rejected:
+        lines.append("\nAI response: REJECTED — will not trade at all")
+    else:
+        our_counter = [i for i in result.counter if i.side == "US"]
+        their_counter = [i for i in result.counter if i.side == "THEM"]
+        # Check if counter matches proposal
+        proposed_key = sorted(
+            (i.side, i.item_type, i.amount, i.duration) for i in result.proposed
+        )
+        counter_key = sorted(
+            (i.side, i.item_type, i.amount, i.duration) for i in result.counter
+        )
+        if proposed_key == counter_key:
+            lines.append(
+                "\nAI response: ACCEPTABLE — this deal would be accepted as-is"
+            )
+        else:
+            lines.append("\nAI counter-offer (what they consider fair):")
+            if our_counter:
+                lines.append(
+                    "  We give: "
+                    + ", ".join(_describe_trade_item(i) for i in our_counter)
+                )
+            if their_counter:
+                lines.append(
+                    "  They give: "
+                    + ", ".join(_describe_trade_item(i) for i in their_counter)
+                )
+            lines.append(
+                "\nAdjust your proposal to match or exceed the counter-offer, then use mode='send' to commit."
+            )
+
     return "\n".join(lines)
 
 
@@ -1021,6 +1158,15 @@ def narrate_governors(gov: lq.GovernorStatus) -> str:
         lines.append(f"\nAvailable to appoint ({len(gov.available_to_appoint)}):")
         for g in gov.available_to_appoint:
             lines.append(f"  {g.name} — {g.title} ({g.governor_type})")
+            if g.description:
+                lines.append(f"    {g.description}")
+            if g.base_ability:
+                lines.append(f"    Base: {g.base_ability} — {g.base_ability_desc}")
+            if g.promotions:
+                for p in sorted(g.promotions, key=lambda x: (x.level, x.column)):
+                    lines.append(
+                        f"    L{p.level}: {p.name} ({p.promotion_type}) — {p.description}"
+                    )
 
     lines.append(
         "\nUse appoint_governor/assign_governor/promote_governor(governor_type, promotion_type)."
@@ -1238,8 +1384,12 @@ def narrate_great_people(gp: list[lq.GreatPersonInfo]) -> str:
 
 
 def narrate_gp_advisor(result: lq.GPAdvisorResult) -> str:
-    district_short = result.target_district.replace("DISTRICT_", "").replace("_", " ").title()
-    class_short = result.gp_class.replace("GREAT_PERSON_CLASS_", "").replace("_", " ").title()
+    district_short = (
+        result.target_district.replace("DISTRICT_", "").replace("_", " ").title()
+    )
+    class_short = (
+        result.gp_class.replace("GREAT_PERSON_CLASS_", "").replace("_", " ").title()
+    )
     lines = [
         f"Best activation cities for {result.gp_name} ({class_short} -> {district_short}):"
     ]
@@ -1249,9 +1399,7 @@ def narrate_gp_advisor(result: lq.GPAdvisorResult) -> str:
         lines.append("  No cities with a completed matching district found.")
         return "\n".join(lines)
     # Sort: can_activate first, then by city_yield descending
-    ranked = sorted(
-        result.cities, key=lambda c: (not c.can_activate, -c.city_yield)
-    )
+    ranked = sorted(result.cities, key=lambda c: (not c.can_activate, -c.city_yield))
     for i, c in enumerate(ranked, 1):
         status = "CAN ACTIVATE" if c.can_activate else f"needs move (dist {c.distance})"
         yield_str = f", yield {c.city_yield}" if c.city_yield > 0 else ""
@@ -1525,8 +1673,13 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
             "VICTORY_RELIGIOUS": "Religious",
             "VICTORY_DIPLOMATIC": "Diplomatic",
         }
-        for vt in ["VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE",
-                    "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC"]:
+        for vt in [
+            "VICTORY_TECHNOLOGY",
+            "VICTORY_CONQUEST",
+            "VICTORY_CULTURE",
+            "VICTORY_RELIGIOUS",
+            "VICTORY_DIPLOMATIC",
+        ]:
             if vt in ev:
                 enabled_names.append(vname_map[vt])
         disabled = [v for k, v in vname_map.items() if k not in ev]
@@ -1557,14 +1710,21 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
             lines.append("")
             lines.append("  YOUR SPACE PROJECT CHAIN:")
             for sp in vp.space_projects:
-                icons = {"completed": "[DONE]", "building": "[>>>]", "available": "[READY]", "locked": "[LOCKED]"}
+                icons = {
+                    "completed": "[DONE]",
+                    "building": "[>>>]",
+                    "available": "[READY]",
+                    "locked": "[LOCKED]",
+                }
                 icon = icons.get(sp.status, sp.status.upper())
                 detail = f"    {icon} {sp.name}"
                 if sp.status == "building":
                     detail += f" -- {sp.progress_pct}% ({sp.turns_remaining} turns) in {sp.city_name}"
                 if sp.status == "locked":
                     tech_status = "HAVE" if sp.has_tech else "NEED"
-                    tech_name = sp.tech_prereq.replace("TECH_", "").replace("_", " ").title()
+                    tech_name = (
+                        sp.tech_prereq.replace("TECH_", "").replace("_", " ").title()
+                    )
                     detail += f" -- requires {tech_name} ({tech_status})"
                 if sp.cost > 0 and sp.status != "completed":
                     detail += f" [cost: {sp.cost}]"
@@ -1578,7 +1738,9 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
             holds = vp.capitals_held.get(p.name, True)
             status = "holds own capital" if holds else "CAPITAL LOST"
             marker = " <--" if us and p.player_id == us.player_id else ""
-            lines.append(f"  {p.name}: {status} | military {p.military_strength}{marker}")
+            lines.append(
+                f"  {p.name}: {status} | military {p.military_strength}{marker}"
+            )
 
     # --- Culture Victory ---
     if all_enabled or "VICTORY_CULTURE" in ev:
@@ -1590,7 +1752,9 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
                 their_dom = vp.their_staycationers.get(name, 0)
                 gap = their_dom - our_tourists
                 status = "DOMINANT" if gap <= 0 else f"need {gap} more"
-                lines.append(f"  vs {name}: {our_tourists}/{their_dom} tourists ({status})")
+                lines.append(
+                    f"  vs {name}: {our_tourists}/{their_dom} tourists ({status})"
+                )
 
     # --- Religious Victory ---
     if all_enabled or "VICTORY_RELIGIOUS" in ev:
@@ -1603,7 +1767,9 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
         lines.append(f"RELIGION (your religion majority in all civs{slots_str})")
         for p in vp.players:
             rel = vp.religion_majority.get(p.name, "none")
-            rel_short = rel.replace("RELIGION_", "").title() if rel != "none" else "none"
+            rel_short = (
+                rel.replace("RELIGION_", "").title() if rel != "none" else "none"
+            )
             founded_name = vp.religion_founded_names.get(p.name)
             founded = f" (FOUNDED: {founded_name})" if founded_name else ""
             marker = " <--" if us and p.player_id == us.player_id else ""
@@ -1675,7 +1841,9 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
         if all_enabled or "VICTORY_TECHNOLOGY" in ev:
             sci_leader = max(vp.players, key=lambda p: p.techs_researched)
             sci_gap = sci_leader.techs_researched - us.techs_researched
-            best_label = f"best known: {sci_leader.name} ({sci_leader.techs_researched})"
+            best_label = (
+                f"best known: {sci_leader.name} ({sci_leader.techs_researched})"
+            )
             if us.science_vp > 0:
                 assessments.append(
                     (
@@ -1694,7 +1862,11 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
                 )
             else:
                 assessments.append(
-                    ("Science", 10, f"Far behind in tech ({sci_gap} behind {best_label})")
+                    (
+                        "Science",
+                        10,
+                        f"Far behind in tech ({sci_gap} behind {best_label})",
+                    )
                 )
 
         # Domination: check our military vs all civs (use demographics Soldiers for full picture)
@@ -1707,7 +1879,9 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
                 else max(p.military_strength for p in vp.players)
             )
             if not our_holds:
-                assessments.append(("Domination", 5, "CAPITAL LOST — defensive priority!"))
+                assessments.append(
+                    ("Domination", 5, "CAPITAL LOST — defensive priority!")
+                )
             elif us.military_strength >= best_mil * 0.8:
                 rivals_with_caps = sum(
                     1
@@ -1744,7 +1918,11 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
                     )
                 elif max_gap <= 10:
                     assessments.append(
-                        ("Culture", 70, f"Close to cultural victory (max gap: {max_gap})")
+                        (
+                            "Culture",
+                            70,
+                            f"Close to cultural victory (max gap: {max_gap})",
+                        )
                     )
                 elif max_gap <= 30:
                     assessments.append(
@@ -1778,7 +1956,9 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
         # Diplomatic: steady accumulation
         if all_enabled or "VICTORY_DIPLOMATIC" in ev:
             if us.diplomatic_vp >= 15:
-                assessments.append(("Diplomatic", 80, f"{us.diplomatic_vp}/20 VP — close!"))
+                assessments.append(
+                    ("Diplomatic", 80, f"{us.diplomatic_vp}/20 VP — close!")
+                )
             elif us.diplomatic_vp >= 8:
                 assessments.append(
                     ("Diplomatic", 50, f"{us.diplomatic_vp}/20 VP — mid-game")
@@ -1846,8 +2026,9 @@ def narrate_notifications(notifs: list[lq.GameNotification]) -> str:
             lines.append("")
         lines.append(f"== Notifications ({len(info_notifs)}) ==")
         for n in info_notifs:
+            hint = f"  -> {n.resolution_hint}" if n.resolution_hint else ""
             loc = f" at ({n.x},{n.y})" if n.x >= 0 else ""
-            lines.append(f"  - {n.message}{loc}")
+            lines.append(f"  - {n.message}{loc}{hint}")
 
     return "\n".join(lines)
 
