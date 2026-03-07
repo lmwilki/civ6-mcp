@@ -1,0 +1,47 @@
+---
+title: Web API
+description: REST endpoints for the game state dashboard
+---
+
+The MCP server runs an embedded FastAPI server on port **8000** that exposes read-only game state for the web dashboard. It shares the same `GameConnection` as the MCP tools — no separate process needed.
+
+When the MCP server is running, interactive API docs (Swagger UI) are available at [http://localhost:8000/docs](http://localhost:8000/docs).
+
+---
+
+## Endpoints
+
+All endpoints are `GET` requests returning JSON. CORS is restricted to `localhost:3001` (the dashboard dev server).
+
+| Endpoint | Parameters | Description |
+|----------|------------|-------------|
+| `/api/overview` | — | Full game overview: score, yields, era, victory progress, per-player rankings |
+| `/api/units` | — | All player units with position, type, HP, movement, available actions |
+| `/api/cities` | — | All cities with yields, population, production, growth, districts |
+| `/api/map` | `x`, `y`, `radius` (1–5) | Tile data in a hex radius: terrain, features, resources, improvements, units |
+| `/api/resources` | — | Strategic and luxury resource stockpiles, owned resources, nearby unimproved resources |
+| `/api/tech` | — | Tech and civic tree progress: completed, in-progress, available |
+| `/api/diplomacy` | — | Diplomatic relationships, modifiers, available actions per civilization |
+
+---
+
+## Error responses
+
+| Status | Meaning |
+|--------|---------|
+| **503** | Game not connected — FireTuner TCP connection is down |
+| **502** | Lua error — the game returned an error from the Lua query |
+
+---
+
+## Example
+
+```bash
+# Get game overview
+curl http://localhost:8000/api/overview
+
+# Get map tiles around coordinate (31, 15) with radius 3
+curl "http://localhost:8000/api/map?x=31&y=15&radius=3"
+```
+
+The response format mirrors the MCP tool responses — dataclasses serialized to nested JSON objects.

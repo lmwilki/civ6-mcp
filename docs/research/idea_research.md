@@ -1,5 +1,7 @@
 # Civ 6 MCP Agent: Technical Architecture
 
+> **Status: Archived** — Pre-implementation research (2025). The system as built is documented in [architecture-diagrams.md](../architecture-diagrams.md).
+
 ## The Idea
 
 Build an MCP server that allows an LLM agent (Claude, GPT-4, etc.) to play Civilization 6 — reading full game state each turn, reasoning about strategy, and issuing commands back into the game. No one has done this. Here's how it could work.

@@ -1,5 +1,7 @@
 # Cross-Game Strategic Analysis (Games 1-4)
 
+> **Note:** Covers games 1–4 only (of 12 played). See the [devlog index](devlog/) for the full game list and individual post-mortems.
+
 Meta-analysis of 4 games played by an LLM agent via the Civ 6 MCP harness. Purpose: identify recurring strategic weaknesses to refine the agent playbook (CLAUDE.md).
 
 ## Games Played

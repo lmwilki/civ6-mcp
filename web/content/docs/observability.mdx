@@ -1,0 +1,95 @@
+---
+title: Observability
+description: Diary, tool logging, and spatial attention tracking
+---
+
+The MCP server records three parallel data streams during gameplay, all written as JSONL (one JSON object per line). Together they capture *what the game looked like*, *what the agent did*, and *where the agent looked*.
+
+```
+~/.civ6-mcp/
+  diary_{civ}_{seed}_{run_id}.jsonl       # per-turn game state + agent reflections
+  diary_{civ}_{seed}_{run_id}_cities.jsonl # per-turn per-city detail
+  log_{civ}_{seed}_{run_id}.jsonl          # every tool call with timing
+  spatial_{civ}_{seed}_{run_id}.jsonl      # tile-level attention tracking
+```
+
+---
+
+## Diary
+
+The diary is the agent's persistent memory. It captures a full game-state snapshot plus the agent's own reflections once per turn, written just before the turn advances.
+
+**Per-player row** (one per alive civilization per turn):
+score, population, cities, yields (science, culture, gold, faith, favor), military strength, tech/civic progress, districts, wonders, territory, government, era, religion, victory progress, resource stockpiles — 95+ fields total.
+
+**Agent row** (additional fields for the local player):
+diplomatic states, city-state envoys, governors, trade routes, great person points, and five reflection fields.
+
+### Reflections
+
+The agent writes five required fields on every `end_turn`:
+
+| Field | Purpose |
+|-------|---------|
+| `tactical` | What happened this turn — specific units, tiles, outcomes |
+| `strategic` | Standing vs rivals — yields, city count, victory viability |
+| `tooling` | Tool issues observed, or "No issues" |
+| `planning` | Concrete actions for the next 5–10 turns |
+| `hypothesis` | Predictions — attack timing, milestones, risks |
+
+The `get_diary` tool reads these back for context reconstruction when the agent's context window compacts or a game is resumed.
+
+---
+
+## Tool Log
+
+Every MCP tool call is logged with full timing, parameters, and results — the authoritative record of what the agent did.
+
+Each entry includes: tool name, category (query/action/turn), input parameters, narrated result, success/failure, wall-clock duration, turn number, and session ID.
+
+```json
+{
+  "turn": 145,
+  "tool": "get_units",
+  "category": "query",
+  "duration_ms": 342,
+  "success": true,
+  "result_summary": "4 units:\n  Crossbowman..."
+}
+```
+
+Typical size: 10–50 MB per full game (the `result` field with complete narrated text dominates).
+
+---
+
+## Spatial Attention Tracker
+
+Research instrumentation that records which map tiles the agent observes through each tool call. This exists to measure the sensorium effect — the gap between what a human passively sees and what the agent explicitly queries.
+
+Each observation is classified by how the agent came to see those tiles:
+
+| Type | Example tools | Meaning |
+|------|--------------|---------|
+| `deliberate_scan` | `get_map_area`, `get_settle_advisor` | Agent chose to look at a specific area |
+| `deliberate_action` | `unit_action`, `set_city_production` | Agent acted on a specific tile |
+| `survey` | `get_strategic_map`, `get_empire_resources` | Broad scan across the map |
+| `peripheral` | `get_units`, `get_cities`, `get_trade_routes` | Coordinates seen as a side effect |
+| `reactive` | `get_notifications` | Coordinates from game-pushed alerts |
+
+Typical size: ~1 MB per full game (2–5% of the tool log).
+
+---
+
+## File sizes (400 turns, standard map)
+
+| File | Typical size |
+|------|-------------|
+| Diary | 2–5 MB |
+| City diary | 1–3 MB |
+| Tool log | 10–50 MB |
+| Spatial log | 0.5–1.5 MB |
+| **Total per game** | **~15–60 MB** |
+
+---
+
+For implementation details including the shared buffer pattern, game identity resolution, and hook architecture, see the [complete observability document](https://github.com/lmwilki/civ6-mcp/blob/main/docs/observability.md).

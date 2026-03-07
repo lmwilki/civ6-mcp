@@ -1,0 +1,90 @@
+---
+title: Architecture
+description: How an LLM agent plays Civilization VI through the MCP server
+---
+
+The system has five layers. The agent makes tool calls through the Model Context Protocol. The MCP server translates those into Lua scripts executed inside the game engine via the FireTuner debug interface, then parses the output back into tool responses.
+
+```
+AI Agent ↔ MCP Protocol ↔ civ6-mcp server ↔ FireTuner (TCP :4318) ↔ Civ VI Lua Engine
+```
+
+The agent **never sees pixels**. Everything it knows about the game comes from text returned by tool calls. A human player passively absorbs dozens of signals per second — minimap, score ticker, unit health bars, fog boundaries. The agent must explicitly query for each one. This is the *sensorium effect*.
+
+---
+
+## The five layers
+
+| Layer | File | Role |
+|-------|------|------|
+| **MCP Tools** | `server.py` | 76 tool definitions — the agent's API surface |
+| **Game State** | `game_state.py` | Orchestrates build → execute → parse → narrate |
+| **Lua Queries** | `lua/*.py` | Generates Lua source, parses pipe-delimited output |
+| **Connection** | `connection.py` | Binary framing, TCP transport, sentinel collection |
+| **Game Engine** | Civ VI | FireTuner executes Lua, returns `print()` output |
+
+Every tool call follows a four-step pattern:
+
+1. **Build** — Generate a Lua script that queries or modifies game state, outputting pipe-delimited fields via `print()` and terminating with `---END---`
+2. **Execute** — Send the Lua over TCP in a binary frame (4B length + 4B tag + null-terminated payload) to FireTuner on port 4318
+3. **Parse** — Split pipe-delimited output lines into Python dataclasses (`UnitInfo`, `CityInfo`, `TileInfo`, etc.)
+4. **Narrate** — Convert dataclasses into LLM-optimized text (e.g. `Warrior #65536 at (31,15) HP:100/100 moves:2 [FORTIFIED]`)
+
+---
+
+## Tool categories
+
+The 76 tools break into three categories:
+
+- **Query tools** (34) — Read-only. Game state without side effects: units, cities, map tiles, diplomacy, tech trees, victory progress
+- **Action tools** (34) — Modify game state: move units, set production, diplomacy, trade deals. Every action validates preconditions before executing
+- **System tools** (8) — Game lifecycle: end turn, save/load, crash recovery via OCR-based menu navigation
+
+---
+
+## The two Lua worlds
+
+Civ 6 exposes **two separate Lua execution contexts** with different APIs. This is the most important architectural detail.
+
+**GameCore** — Direct simulation access. Read anything (units, cities, map, tech). Can write some things (kill unit, set promotion, finish moves). Bypasses the game's rule-checking layer.
+
+**InGame** — The UI command layer. What the game's own buttons use. `RequestOperation()` checks movement points, stacking rules, pathfinding. `CityManager` validates production prerequisites. `DiplomacyManager` handles full session protocol. Everything goes through game validation.
+
+The connection layer dispatches via three methods:
+- `execute_read()` → GameCore (queries)
+- `execute_write()` → InGame (actions)
+- `execute_in_state(N)` → specific state by index (popup dismissal)
+
+**Why both are needed:** Some InGame APIs are broken (`SKIP_TURN` is `nil`, `PROMOTE` silently fails). Some queries only exist in InGame (diplomacy modifiers, policy slots). Some operations only work in GameCore (finishing moves, setting promotions). The codebase uses whichever context actually works for each operation.
+
+**Critical gotcha:** Most game database lookups use `.Hash` (stable integer). Governors and promotions use `.Index` (sequential). Passing a Hash where Index is expected crashes the C++ layer.
+
+---
+
+## Information parity
+
+The tool suite is designed to provide **text equivalents for every visual affordance** a human player relies on:
+
+| Human sees | Agent calls |
+|-----------|-------------|
+| Fog of war on minimap | `get_game_overview` → `exploration_pct: 32%` |
+| Hex tiles with terrain and units | `get_map_area` → tile-by-tile breakdown with threat markers |
+| City banner (pop, production, growth) | `get_cities` → yields, production queue, growth timer |
+| Score ticker | `get_game_overview` → per-player rankings |
+| Combat preview popup | `attack` action → pre-combat estimate with all modifiers |
+| Notification panel | `end_turn` → turn events, threat scan, victory alerts |
+
+**Proactive alerts** close part of the polling gap. Even if the agent forgets to check victory progress, `end_turn` runs a proximity scan every turn and warns if any rival is close to winning.
+
+---
+
+## Key constraints
+
+- **Single TCP connection** — one Lua execution at a time, all tool calls are synchronous round-trips
+- **No game modification** — stock FireTuner protocol only, no mods or DLL injection
+- **Stateless tools** — no server-side strategy; all strategic continuity lives in the agent's context window and diary
+- **Game rules enforced** — all actions go through InGame validation, the agent cannot cheat
+
+---
+
+For the full technical reference including the end-turn state machine, popup dismiss algorithm, wire protocol details, and narration layer, see the [complete architecture document](https://github.com/lmwilki/civ6-mcp/blob/main/docs/architecture-diagrams.md).
