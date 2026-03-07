@@ -153,7 +153,9 @@ def classify_file(name: str) -> str | None:
 
 def extract_game_id(name: str) -> str:
     """Extract game ID from filename: diary_india_123.jsonl → india_123"""
-    name = name.removesuffix("_cities.jsonl").removesuffix(".jsonl").removesuffix(".json")
+    name = (
+        name.removesuffix("_cities.jsonl").removesuffix(".jsonl").removesuffix(".json")
+    )
     for prefix in ("diary_", "log_", "spatial_", "mapstatic_", "mapturns_"):
         if name.startswith(prefix):
             name = name[len(prefix) :]
@@ -582,7 +584,12 @@ async def sync_spatial(
             {"gameId": game_id, "rows": batch},
         )
 
-    log.info("spatial %s: synced %d new turn aggregates (%d total)", game_id, len(new_rows), len(rows))
+    log.info(
+        "spatial %s: synced %d new turn aggregates (%d total)",
+        game_id,
+        len(new_rows),
+        len(rows),
+    )
     file_state["line_count"] = total
     file_state["last_turn"] = max(r["turn"] for r in new_rows)
     state["files"][name] = file_state
@@ -617,8 +624,13 @@ async def sync_spatial_map(
             key = (tile[0], tile[1])
             if key not in tile_data:
                 tile_data[key] = {
-                    "ds": 0, "da": 0, "sv": 0, "pe": 0, "re": 0,
-                    "ft": turn, "lt": turn,
+                    "ds": 0,
+                    "da": 0,
+                    "sv": 0,
+                    "pe": 0,
+                    "re": 0,
+                    "ft": turn,
+                    "lt": turn,
                 }
             td = tile_data[key]
             if short:
@@ -638,7 +650,20 @@ async def sync_spatial_map(
     flat: list[int] = []
     for (x, y), td in tile_data.items():
         total = td["ds"] + td["da"] + td["sv"] + td["pe"] + td["re"]
-        flat.extend([x, y, total, td["ds"], td["da"], td["sv"], td["pe"], td["re"], td["ft"], td["lt"]])
+        flat.extend(
+            [
+                x,
+                y,
+                total,
+                td["ds"],
+                td["da"],
+                td["sv"],
+                td["pe"],
+                td["re"],
+                td["ft"],
+                td["lt"],
+            ]
+        )
 
     await client.mutation(
         "ingest:ingestSpatialMap",
@@ -654,7 +679,12 @@ async def sync_spatial_map(
     )
     log.info(
         "spatial map %s: %d tiles, bounds (%d,%d)-(%d,%d)",
-        game_id, len(tile_data), min_x, min_y, max_x, max_y,
+        game_id,
+        len(tile_data),
+        min_x,
+        min_y,
+        max_x,
+        max_y,
     )
 
 
@@ -865,7 +895,8 @@ async def batch_upload(directory: Path, client: ConvexClient) -> None:
     total_elapsed = time.time() - total_start
     log.info(
         "=== Batch upload complete: %d game(s) in %.1fs ===",
-        games_uploaded, total_elapsed,
+        games_uploaded,
+        total_elapsed,
     )
 
 
@@ -888,7 +919,8 @@ async def batch_upload_cloud(bucket_url: str, client: ConvexClient) -> None:
     valid = [m for m in manifests if m.get("civ") and m.get("seed") is not None]
     log.info(
         "Found %d run(s) in cloud (%d with game identity)",
-        len(manifests), len(valid),
+        len(manifests),
+        len(valid),
     )
 
     with tempfile.TemporaryDirectory(prefix="civbench_") as tmp:
@@ -924,7 +956,12 @@ async def watch_loop(diary_dir: Path, client: ConvexClient) -> None:
 
     try:
         # Initial sync: process all existing files
-        for pattern in ("diary_*.jsonl", "log_*.jsonl", "spatial_*.jsonl", "mapturns_*.jsonl"):
+        for pattern in (
+            "diary_*.jsonl",
+            "log_*.jsonl",
+            "spatial_*.jsonl",
+            "mapturns_*.jsonl",
+        ):
             for filepath in sorted(glob(str(diary_dir / pattern))):
                 await sync_file(Path(filepath), state, client)
         save_state(state)
@@ -985,9 +1022,7 @@ async def watch_loop_cloud(bucket_url: str, client: ConvexClient) -> None:
                     if not run_id or run_id in completed_runs:
                         continue
 
-                    game_id = _download_cloud_run(
-                        fs, prefix, run_id, manifest, tmp_dir
-                    )
+                    game_id = _download_cloud_run(fs, prefix, run_id, manifest, tmp_dir)
                     if not game_id:
                         continue
 
@@ -995,12 +1030,14 @@ async def watch_loop_cloud(bucket_url: str, client: ConvexClient) -> None:
                     games = discover_games(tmp_dir)
                     if game_id in games:
                         for ftype in (
-                            "diary", "cities", "log", "spatial", "mapturns",
+                            "diary",
+                            "cities",
+                            "log",
+                            "spatial",
+                            "mapturns",
                         ):
                             if ftype in games[game_id]:
-                                await sync_file(
-                                    games[game_id][ftype], state, client
-                                )
+                                await sync_file(games[game_id][ftype], state, client)
 
                     # Check completion via game_over entry in log
                     if _cloud_run_is_complete(fs, prefix, run_id):
@@ -1054,7 +1091,7 @@ async def main() -> None:
         type=str,
         metavar="BUCKET",
         help="Cloud bucket URL (e.g. az://civbench). "
-             "Batch sync by default; add --watch to poll for changes.",
+        "Batch sync by default; add --watch to poll for changes.",
     )
     args = parser.parse_args()
 
@@ -1062,10 +1099,15 @@ async def main() -> None:
     env_label = "PROD" if args.prod else "DEV"
 
     if not convex_url:
-        log.error("CONVEX_URL not set — check web/.env.%s", "prod" if args.prod else "dev")
+        log.error(
+            "CONVEX_URL not set — check web/.env.%s", "prod" if args.prod else "dev"
+        )
         sys.exit(1)
     if not deploy_key:
-        log.error("CONVEX_DEPLOY_KEY not set — check web/.env.%s", "prod" if args.prod else "dev")
+        log.error(
+            "CONVEX_DEPLOY_KEY not set — check web/.env.%s",
+            "prod" if args.prod else "dev",
+        )
         sys.exit(1)
 
     client = ConvexClient(convex_url, deploy_key)
@@ -1079,7 +1121,9 @@ async def main() -> None:
             await batch_upload(upload_dir, client)
         elif args.cloud:
             if args.watch:
-                log.info("[%s] Watching cloud %s → %s", env_label, args.cloud, convex_url)
+                log.info(
+                    "[%s] Watching cloud %s → %s", env_label, args.cloud, convex_url
+                )
                 await watch_loop_cloud(args.cloud, client)
             else:
                 log.info("[%s] Batch cloud %s → %s", env_label, args.cloud, convex_url)

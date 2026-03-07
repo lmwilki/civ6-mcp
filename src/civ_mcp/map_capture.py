@@ -63,13 +63,16 @@ class MapCapture:
             # Pack into JSON-serializable format
             terrain_flat: list[int] = []
             for t in dump.tiles:
-                terrain_flat.extend([
-                    t.terrain, t.feature,
-                    1 if t.hills else 0,
-                    1 if t.river else 0,
-                    1 if t.coastal else 0,
-                    t.resource,
-                ])
+                terrain_flat.extend(
+                    [
+                        t.terrain,
+                        t.feature,
+                        1 if t.hills else 0,
+                        1 if t.river else 0,
+                        1 if t.coastal else 0,
+                        t.resource,
+                    ]
+                )
 
             data = {
                 "gridW": dump.grid_w,

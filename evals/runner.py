@@ -96,8 +96,10 @@ def ensure_game_ready() -> None:
         return
 
     if _port_reachable() and not is_game_running():
-        print("Pre-flight: Port 4318 is open but game is NOT running "
-              "(likely FireTuner.exe or stale connection). Launching game...")
+        print(
+            "Pre-flight: Port 4318 is open but game is NOT running "
+            "(likely FireTuner.exe or stale connection). Launching game..."
+        )
     else:
         print("Pre-flight: FireTuner port not reachable — launching Civ 6...")
 
@@ -236,7 +238,8 @@ def _discover_run_id() -> str | None:
         return None
     # Exclude _cities files
     files = [
-        f for f in diary_dir.glob("diary_*.jsonl")
+        f
+        for f in diary_dir.glob("diary_*.jsonl")
         if not f.name.endswith("_cities.jsonl")
     ]
     if not files:

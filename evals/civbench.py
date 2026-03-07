@@ -132,9 +132,7 @@ def _extract_to_store(state: AgentState) -> None:
             continue
         text = msg.content if isinstance(msg.content, str) else ""
         if isinstance(msg.content, list):
-            text = " ".join(
-                c.text for c in msg.content if hasattr(c, "text")
-            )
+            text = " ".join(c.text for c in msg.content if hasattr(c, "text"))
 
         if func == "get_game_overview":
             parsed = _parse_overview(text)
@@ -202,16 +200,18 @@ def _extract_reasoning(state: AgentState) -> None:
             continue
 
         has_tools = bool(msg.tool_calls)
-        entries.append({
-            "run_id": run_id,
-            "turn": turn,
-            "msg_index": i,
-            "msg_type": "reasoning" if has_tools else "summary",
-            "tool_call_count": len(msg.tool_calls) if msg.tool_calls else 0,
-            "text": text.strip(),
-            "text_len": len(text.strip()),
-            "ts": time.time(),
-        })
+        entries.append(
+            {
+                "run_id": run_id,
+                "turn": turn,
+                "msg_index": i,
+                "msg_type": "reasoning" if has_tools else "summary",
+                "tool_call_count": len(msg.tool_calls) if msg.tool_calls else 0,
+                "text": text.strip(),
+                "text_len": len(text.strip()),
+                "ts": time.time(),
+            }
+        )
 
     if entries:
         with open(path, "a") as f:
@@ -221,12 +221,15 @@ def _extract_reasoning(state: AgentState) -> None:
     s.set("_scanned_reasoning", len(state.messages))
 
     if entries:
-        summary = s.get("reasoning_summary", {
-            "total_entries": 0,
-            "summary_count": 0,
-            "reasoning_count": 0,
-            "total_chars": 0,
-        })
+        summary = s.get(
+            "reasoning_summary",
+            {
+                "total_entries": 0,
+                "summary_count": 0,
+                "reasoning_count": 0,
+                "total_chars": 0,
+            },
+        )
         for e in entries:
             summary["total_entries"] += 1
             summary["total_chars"] += e["text_len"]
@@ -336,7 +339,9 @@ def _civ_mcp_server(
         env["CIV_MCP_AGENT_MODEL"] = model_id
     if scenario:
         # Auto-boot: resume_save overrides scenario start save
-        env["CIV_MCP_SAVE_FILE"] = resume_save or scenario.save_file.replace(".Civ6Save", "")
+        env["CIV_MCP_SAVE_FILE"] = resume_save or scenario.save_file.replace(
+            ".Civ6Save", ""
+        )
     # Package eval metadata as a single JSON blob → written to manifest
     metadata: dict[str, str] = {}
     if scenario:
@@ -356,9 +361,13 @@ def _civ_mcp_server(
     if cloud_bucket:
         env["CIV_MCP_TELEMETRY_BUCKET"] = cloud_bucket
     # Pass through Azure storage credentials for CloudSink
-    for az_var in ("AZURE_STORAGE_ACCOUNT_NAME", "AZURE_STORAGE_ACCOUNT_KEY",
-                   "AZURE_STORAGE_SAS_TOKEN", "AZURE_STORAGE_ANON",
-                   "AZURE_STORAGE_CONNECTION_STRING"):
+    for az_var in (
+        "AZURE_STORAGE_ACCOUNT_NAME",
+        "AZURE_STORAGE_ACCOUNT_KEY",
+        "AZURE_STORAGE_SAS_TOKEN",
+        "AZURE_STORAGE_ANON",
+        "AZURE_STORAGE_CONNECTION_STRING",
+    ):
         val = os.environ.get(az_var)
         if val:
             env[az_var] = val
@@ -479,13 +488,25 @@ def civbench_standard(
     # Pass scenario metadata when running a single scenario. Multi-scenario
     # runs share one MCP process, so env vars can't vary per sample — the
     # diary/log entries still carry per-turn civ/game info for identification.
-    scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
-    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_standard", model_id=model_id, resume_save=resume_save)
+    scenario_obj = (
+        SCENARIOS.get(scenario_list[0])
+        if scenario_list and len(scenario_list) == 1
+        else None
+    )
+    server = _civ_mcp_server(
+        run_id=run_id,
+        scenario=scenario_obj,
+        eval_track="civbench_standard",
+        model_id=model_id,
+        resume_save=resume_save,
+    )
 
     # Resolve file:// references (Inspect -T passes raw strings)
     if resume_context and resume_context.startswith("file://"):
         ctx_path = Path(resume_context.removeprefix("file://"))
-        resume_context = ctx_path.read_text(encoding="utf-8") if ctx_path.exists() else None
+        resume_context = (
+            ctx_path.read_text(encoding="utf-8") if ctx_path.exists() else None
+        )
 
     return Task(
         dataset=_make_dataset(scenario_list, resume_save, resume_context),
@@ -530,8 +551,17 @@ def civbench_open(
     run_id = uuid.uuid4().hex[:8]
     os.environ["CIV_MCP_RUN_ID"] = run_id  # reasoning capture reads this
     # See civbench_standard for why scenario_obj is None for multi-scenario runs
-    scenario_obj = SCENARIOS.get(scenario_list[0]) if scenario_list and len(scenario_list) == 1 else None
-    server = _civ_mcp_server(run_id=run_id, scenario=scenario_obj, eval_track="civbench_open", model_id=model_id)
+    scenario_obj = (
+        SCENARIOS.get(scenario_list[0])
+        if scenario_list and len(scenario_list) == 1
+        else None
+    )
+    server = _civ_mcp_server(
+        run_id=run_id,
+        scenario=scenario_obj,
+        eval_track="civbench_open",
+        model_id=model_id,
+    )
 
     return Task(
         dataset=_make_dataset(scenario_list),

@@ -168,9 +168,7 @@ class SpatialTracker:
         self._revealed = set(tiles)
         self._revealed_seeded = True
 
-    def mark_revealed(
-        self, tiles: set[tuple[int, int]]
-    ) -> set[tuple[int, int]]:
+    def mark_revealed(self, tiles: set[tuple[int, int]]) -> set[tuple[int, int]]:
         """Add tiles to revealed set. Returns the newly revealed subset."""
         newly = tiles - self._revealed
         self._revealed |= tiles

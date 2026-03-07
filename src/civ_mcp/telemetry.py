@@ -402,9 +402,7 @@ class TelemetryEmitter:
         If metadata is None, reads CIV_MCP_METADATA env var (JSON) or {}.
         """
         self._run_id = (
-            run_id
-            or os.environ.get("CIV_MCP_RUN_ID")
-            or uuid.uuid4().hex[:8]
+            run_id or os.environ.get("CIV_MCP_RUN_ID") or uuid.uuid4().hex[:8]
         )
         if metadata is not None:
             self._metadata = metadata
@@ -443,9 +441,7 @@ class TelemetryEmitter:
             try:
                 await sink.emit(event_type, data)
             except Exception:
-                log.warning(
-                    "Sink %s failed on %s", sink, event_type, exc_info=True
-                )
+                log.warning("Sink %s failed on %s", sink, event_type, exc_info=True)
 
     async def close(self) -> None:
         """Flush and close all sinks."""

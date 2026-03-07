@@ -222,17 +222,38 @@ async def _logged(
     except (LuaError, ValueError) as e:
         result = f"Error: {e}"
         ms = int((time.monotonic() - start) * 1000)
-        log.info("[T%s] %s(%s) ERR %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
+        log.info(
+            "[T%s] %s(%s) ERR %dms: %s",
+            turn,
+            tool_name,
+            _param_summary(params),
+            ms,
+            _result_summary(result),
+        )
         await logger.log_error(tool_name, result)
         return result
     except ConnectionError as e:
         result = str(e)
         ms = int((time.monotonic() - start) * 1000)
-        log.info("[T%s] %s(%s) ERR %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
+        log.info(
+            "[T%s] %s(%s) ERR %dms: %s",
+            turn,
+            tool_name,
+            _param_summary(params),
+            ms,
+            _result_summary(result),
+        )
         await logger.log_error(tool_name, result)
         return result
     ms = int((time.monotonic() - start) * 1000)
-    log.info("[T%s] %s(%s) OK %dms: %s", turn, tool_name, _param_summary(params), ms, _result_summary(result))
+    log.info(
+        "[T%s] %s(%s) OK %dms: %s",
+        turn,
+        tool_name,
+        _param_summary(params),
+        ms,
+        _result_summary(result),
+    )
     await logger.log_tool_call(tool_name, params, result, ms)
     try:
         await _get_spatial(ctx).record(tool_name, params, result, ms, tiles=tiles)
@@ -277,7 +298,9 @@ async def get_game_overview(ctx: Context) -> str:
                 )
                 seed_tiles = lq.parse_revealed_tiles_seed(seed_lines)
                 spatial.seed_revealed(seed_tiles)
-                log.info("Seeded spatial tracker with %d revealed tiles", len(seed_tiles))
+                log.info(
+                    "Seeded spatial tracker with %d revealed tiles", len(seed_tiles)
+                )
             except Exception:
                 log.debug("Failed to seed revealed tiles", exc_info=True)
         text = nr.narrate_overview(ov)
@@ -1579,7 +1602,9 @@ async def end_turn(
         # same-turn retries and turn-advanced-during-blocker cases.
         try:
             path = _diary_path(_diary_civ_type, _diary_seed, _diary_run_id)
-            merged_row = _merge_agent_reflections(path, gs._diary_written_turn, reflections)
+            merged_row = _merge_agent_reflections(
+                path, gs._diary_written_turn, reflections
+            )
             if merged_row:
                 log.info(
                     "Diary: merged retry reflections into turn %s",
@@ -1704,7 +1729,6 @@ async def end_turn(
             log.warning("Failed to log game-over entry", exc_info=True)
 
     return result
-
 
 
 # ---------------------------------------------------------------------------
