@@ -167,6 +167,7 @@ NOTIFICATION_TOOL_MAP: dict[str, str] = {
     "NOTIFICATION_WORLD_CONGRESS_BLOCKING": "get_world_congress() then vote_world_congress()",
     "NOTIFICATION_WORLD_CONGRESS_RESULTS": "get_world_congress() (review results)",
     "NOTIFICATION_WORLD_CONGRESS_SPECIAL_SESSION_BLOCKING": "get_world_congress() then vote_world_congress()",
+    "NOTIFICATION_COMMAND_UNITS": "Units have moves remaining — move them or use skip_remaining_units()",
 }
 
 
