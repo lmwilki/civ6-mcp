@@ -36,7 +36,6 @@ export default function GameDetailPage() {
   const slug = params.slug;
   const filename = `diary_${slug}.jsonl`;
   const rawTab = searchParams.get("tab");
-  // "spatial" and "log" redirect to "map" and "diary" respectively
   const tab: Tab =
     rawTab === "spatial" || rawTab === "map" ? "map" :
     "diary";

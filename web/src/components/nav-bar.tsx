@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { ThemeToggle } from "./theme-toggle";
-import { PulsingDot } from "./pulsing-dot";
+
 
 interface NavBarProps {
   active: "home" | "about" | "docs" | "games" | "leaderboard";
-  connected?: boolean;
   turn?: number | null;
 }
 
-export function NavBar({ active, connected, turn }: NavBarProps) {
+export function NavBar({ active, turn }: NavBarProps) {
   return (
     <header className="shrink-0 border-b border-marble-300 bg-marble-50">
       <div className="mx-auto grid max-w-5xl items-center px-4 py-3 sm:px-6 lg:grid-cols-[1fr_1px_340px]">
@@ -112,10 +111,6 @@ export function NavBar({ active, connected, turn }: NavBarProps) {
             </span>
           )}
           <ThemeToggle />
-          <PulsingDot
-            color={connected ? "bg-patina" : "bg-marble-400"}
-            ping={false}
-          />
         </div>
       </div>
     </header>
