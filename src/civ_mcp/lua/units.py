@@ -282,6 +282,9 @@ local unitInfo = GameInfo.Units[unit:GetType()]
 local isRanged = UnitManager.CanStartOperation(unit, UnitOperationTypes.RANGE_ATTACK, nil, true)
 local isAir = (not isRanged) and UnitManager.CanStartOperation(unit, UnitOperationTypes.AIR_ATTACK, nil, params)
 if isRanged then
+    if unit:GetMovesRemaining() <= 0 then
+        {_bail("ERR:NO_MOVES|Unit has no movement points for ranged attack. Ranged attacks require movement. Move and attack on separate turns, or attack before moving.")}
+    end
     local rng = unitInfo and unitInfo.Range or 1
     if dist > rng then
         {_bail_lua('"ERR:OUT_OF_RANGE|Target at distance " .. dist .. " but range is " .. rng .. ". Move closer first."')}
@@ -331,6 +334,13 @@ else
         {_bail_lua('"ERR:ATTACK_BLOCKED|Cannot attack " .. enemyName .. " at ({target_x},{target_y}) (map dist=" .. dist .. "). Unit not adjacent or blocked by popup/diplomacy."')}
     end
     UnitManager.RequestOperation(unit, UnitOperationTypes.MOVE_TO, params)
+    -- Verify unit reached adjacency (MOVE_TO resolves synchronously for movement)
+    local newX, newY = unit:GetX(), unit:GetY()
+    local newDist = Map.GetPlotDistance(newX, newY, {target_x}, {target_y})
+    if newDist > 1 then
+        print("ERR:STOPPED_SHORT|Unit moved to (" .. newX .. "," .. newY .. ") but could not reach target at ({target_x},{target_y}) — " .. newDist .. " tiles away. Movement exhausted by terrain. Try again next turn from closer position.")
+        print("{SENTINEL}"); return
+    end
     -- Try to read post-combat state (may fail if units moved/died)
     local myAfterHP = myHP
     local ok1, _ = pcall(function() myAfterHP = unit:GetMaxDamage() - unit:GetDamage() end)
@@ -1443,7 +1453,7 @@ if unit:GetMovesRemaining() <= 0 then
 end
 local targetPlot = Map.GetPlot({target_x}, {target_y})
 if not targetPlot then {_bail(f"ERR:INVALID_TARGET|Target ({target_x},{target_y}) is out of bounds")} end
-local path = UnitManager.GetMoveToPath(unit, {target_x}, {target_y})
+local path = UnitManager.GetMoveToPath(unit, targetPlot:GetIndex())
 if not path or #path == 0 then {_bail("ERR:NO_PATH|No path found to target")} end
 -- Validate path reaches destination (GetMoveToPath returns garbage for unreachable targets)
 local lastPlot = Map.GetPlotByIndex(path[#path])
