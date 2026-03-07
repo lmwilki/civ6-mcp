@@ -36,6 +36,7 @@ log = logging.getLogger(__name__)
 if sys.platform == "win32":
     try:
         import ctypes as _ctypes
+
         _ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
     except Exception:
         pass  # Older Windows or already set
@@ -110,8 +111,7 @@ def _require_gui_deps() -> None:
             import win32gui  # noqa: F401
         except ImportError:
             raise RuntimeError(
-                "Game launcher requires pywin32. "
-                "Install with: uv pip install pywin32"
+                "Game launcher requires pywin32. Install with: uv pip install pywin32"
             )
         try:
             from winrt.windows.media.ocr import OcrEngine  # noqa: F401
@@ -138,9 +138,7 @@ def _require_gui_deps() -> None:
         if shutil.which("tesseract") is None:
             missing.append("tesseract-ocr (sudo apt install tesseract-ocr)")
         if missing:
-            raise RuntimeError(
-                "Game launcher GUI requires: " + ", ".join(missing)
-            )
+            raise RuntimeError("Game launcher GUI requires: " + ", ".join(missing))
         return
     if sys.platform != "darwin":
         raise NotImplementedError(f"GUI automation not supported on {sys.platform}")
@@ -207,7 +205,9 @@ def _dismiss_crash_dialog() -> bool:
         )
         r = subprocess.run(
             ["osascript", "-e", script],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         dismissed = r.stdout.strip() == "true"
         if dismissed:
@@ -328,6 +328,7 @@ def _send_key_win32(vk_code: int) -> None:
     class INPUT(ctypes.Structure):
         class _U(ctypes.Union):
             _fields_ = [("ki", KEYBDINPUT)]
+
         _anonymous_ = ("_u",)
         _fields_ = [("type", ctypes.c_ulong), ("_u", _U)]
 
@@ -335,16 +336,30 @@ def _send_key_win32(vk_code: int) -> None:
     user32 = ctypes.windll.user32
 
     # Key down
-    inp_down = INPUT(type=1, ki=KEYBDINPUT(
-        wVk=vk_code, wScan=0, dwFlags=0, time=0, dwExtraInfo=None,
-    ))
+    inp_down = INPUT(
+        type=1,
+        ki=KEYBDINPUT(
+            wVk=vk_code,
+            wScan=0,
+            dwFlags=0,
+            time=0,
+            dwExtraInfo=None,
+        ),
+    )
     user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(INPUT))
     time.sleep(0.05)
 
     # Key up
-    inp_up = INPUT(type=1, ki=KEYBDINPUT(
-        wVk=vk_code, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=None,
-    ))
+    inp_up = INPUT(
+        type=1,
+        ki=KEYBDINPUT(
+            wVk=vk_code,
+            wScan=0,
+            dwFlags=KEYEVENTF_KEYUP,
+            time=0,
+            dwExtraInfo=None,
+        ),
+    )
     user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(INPUT))
 
 
@@ -371,7 +386,9 @@ def _find_game_exe_win32() -> str | None:
     """Find the Civ 6 DX12 EXE via Steam library folders."""
     import re
 
-    steam_dir = os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "Steam")
+    steam_dir = os.path.join(
+        os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "Steam"
+    )
     vdf_path = os.path.join(steam_dir, "steamapps", "libraryfolders.vdf")
 
     if not os.path.exists(vdf_path):
@@ -395,18 +412,28 @@ def _find_game_exe_win32() -> str | None:
             continue
         lib_path = m.group(1).replace("\\\\", "\\")
         exe = os.path.join(
-            lib_path, "steamapps", "common",
+            lib_path,
+            "steamapps",
+            "common",
             "Sid Meier's Civilization VI",
-            "Base", "Binaries", "Win64Steam", "CivilizationVI_DX12.exe",
+            "Base",
+            "Binaries",
+            "Win64Steam",
+            "CivilizationVI_DX12.exe",
         )
         if os.path.exists(exe):
             return exe
 
     # Fallback: check default location directly
     exe = os.path.join(
-        steam_dir, "steamapps", "common",
+        steam_dir,
+        "steamapps",
+        "common",
         "Sid Meier's Civilization VI",
-        "Base", "Binaries", "Win64Steam", "CivilizationVI_DX12.exe",
+        "Base",
+        "Binaries",
+        "Win64Steam",
+        "CivilizationVI_DX12.exe",
     )
     return exe if os.path.exists(exe) else None
 
@@ -455,7 +482,9 @@ def _launch_game_sync() -> str:
         # steam://run may have silently failed — try direct EXE launch
         exe_path = _find_game_exe_win32()
         if exe_path:
-            log.info("steam://run did not start game — launching EXE directly: %s", exe_path)
+            log.info(
+                "steam://run did not start game — launching EXE directly: %s", exe_path
+            )
             subprocess.Popen([exe_path])  # noqa: S603 — hardcoded game path
             waited = _wait_for_game_process()
 
@@ -465,7 +494,9 @@ def _launch_game_sync() -> str:
     # Wait for FireTuner port to open (replaces blind sleep)
     log.info("Game process started after %ds, waiting for FireTuner port...", waited)
     if _wait_for_tuner_port():
-        return f"Game launched. Process started after {waited}s, FireTuner port is open."
+        return (
+            f"Game launched. Process started after {waited}s, FireTuner port is open."
+        )
 
     return f"WARNING: Game launched (process after {waited}s) but FireTuner port did not open within {_PORT_POLL_TIMEOUT}s."
 
@@ -522,11 +553,27 @@ def _find_game_window() -> WindowInfo | None:
 def _find_game_window_win32() -> WindowInfo | None:
     """Find the Civ 6 window via win32gui.EnumWindows.
 
-    Returns the CLIENT area rect (matching _capture_window_win32 which
-    uses PW_CLIENTONLY). Uses ClientToScreen for correct screen mapping.
+    Returns the CLIENT area rect in physical pixel coordinates (matching
+    _capture_window_win32 which captures the DX framebuffer at native
+    resolution). Uses DPI-aware context for ClientToScreen so that the
+    window origin is also in physical space.
     """
+    import ctypes
+
     import win32gui
     import win32process
+
+    # Switch to DPI-aware so ClientToScreen returns physical coordinates,
+    # matching GetClientRect which returns physical pixels for DX windows.
+    user32 = ctypes.windll.user32
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_ssize_t(-4)
+    old_ctx = None
+    try:
+        old_ctx = user32.SetThreadDpiAwarenessContext(
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        )
+    except Exception:
+        pass
 
     results: list[WindowInfo] = []
 
@@ -540,15 +587,23 @@ def _find_game_window_win32() -> WindowInfo | None:
             # ClientToScreen maps client (0,0) to screen coordinates
             screen_x, screen_y = win32gui.ClientToScreen(hwnd, (cl, ct))
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
-            results.append(WindowInfo(
-                window_id=hwnd,
-                x=screen_x, y=screen_y,
-                w=cr - cl, h=cb - ct,
-                pid=pid,
-            ))
+            results.append(
+                WindowInfo(
+                    window_id=hwnd,
+                    x=screen_x,
+                    y=screen_y,
+                    w=cr - cl,
+                    h=cb - ct,
+                    pid=pid,
+                )
+            )
         return True
 
     win32gui.EnumWindows(callback, None)
+
+    if old_ctx:
+        user32.SetThreadDpiAwarenessContext(ctypes.c_ssize_t(old_ctx))
+
     return results[0] if results else None
 
 
@@ -562,7 +617,9 @@ def _find_game_window_linux() -> WindowInfo | None:
     try:
         r = subprocess.run(
             ["xdotool", "search", "--name", "Civilization VI"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if r.returncode != 0 or not r.stdout.strip():
             return None
@@ -576,7 +633,9 @@ def _find_game_window_linux() -> WindowInfo | None:
 
             name_r = subprocess.run(
                 ["xdotool", "getwindowname", str(wid)],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             name = name_r.stdout.strip() if name_r.returncode == 0 else ""
             if name != "Civilization VI":
@@ -584,7 +643,9 @@ def _find_game_window_linux() -> WindowInfo | None:
 
             r2 = subprocess.run(
                 ["xdotool", "getwindowgeometry", "--shell", str(wid)],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             geo: dict[str, int] = {}
             for line in r2.stdout.strip().split("\n"):
@@ -595,14 +656,18 @@ def _find_game_window_linux() -> WindowInfo | None:
 
             r3 = subprocess.run(
                 ["xdotool", "getwindowpid", str(wid)],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             pid = int(r3.stdout.strip()) if r3.returncode == 0 else 0
 
             info = WindowInfo(
                 window_id=wid,
-                x=geo.get("X", 0), y=geo.get("Y", 0),
-                w=geo.get("WIDTH", 0), h=geo.get("HEIGHT", 0),
+                x=geo.get("X", 0),
+                y=geo.get("Y", 0),
+                w=geo.get("WIDTH", 0),
+                h=geo.get("HEIGHT", 0),
                 pid=pid,
             )
 
@@ -663,17 +728,23 @@ def _capture_window_screencapture(window_id: int) -> object:
     try:
         subprocess.run(
             ["screencapture", "-x", "-l", str(window_id), path],
-            check=True, timeout=5, capture_output=True,
+            check=True,
+            timeout=5,
+            capture_output=True,
         )
         data = NSData.dataWithContentsOfFile_(path)
         if data is None:
-            raise RuntimeError(f"screencapture produced no output for window {window_id}")
+            raise RuntimeError(
+                f"screencapture produced no output for window {window_id}"
+            )
         provider = Quartz.CGDataProviderCreateWithCFData(data)
         cg_image = Quartz.CGImageCreateWithPNGDataProvider(
             provider, None, True, Quartz.kCGRenderingIntentDefault
         )
         if cg_image is None:
-            raise RuntimeError(f"Failed to create CGImage from screencapture for window {window_id}")
+            raise RuntimeError(
+                f"Failed to create CGImage from screencapture for window {window_id}"
+            )
         return cg_image
     finally:
         os.unlink(path)
@@ -704,13 +775,21 @@ def _capture_window_win32(hwnd: int) -> "PIL.Image.Image":
     # PrintWindow with PW_CLIENTONLY|PW_RENDERFULLCONTENT for DX windows
     PW_CLIENTONLY = 0x1
     PW_RENDERFULLCONTENT = 0x2
-    ctypes.windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(),
-                                     PW_CLIENTONLY | PW_RENDERFULLCONTENT)
+    ctypes.windll.user32.PrintWindow(
+        hwnd, save_dc.GetSafeHdc(), PW_CLIENTONLY | PW_RENDERFULLCONTENT
+    )
 
     bmp_info = bitmap.GetInfo()
     bmp_bits = bitmap.GetBitmapBits(True)
-    img = Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]),
-                           bmp_bits, "raw", "BGRX", 0, 1)
+    img = Image.frombuffer(
+        "RGB",
+        (bmp_info["bmWidth"], bmp_info["bmHeight"]),
+        bmp_bits,
+        "raw",
+        "BGRX",
+        0,
+        1,
+    )
 
     # Cleanup GDI resources
     save_dc.DeleteDC()
@@ -734,7 +813,9 @@ def _capture_window_linux(window_id: int) -> "PIL.Image.Image":
 
     r = subprocess.run(
         ["xdotool", "getwindowgeometry", "--shell", str(window_id)],
-        capture_output=True, text=True, timeout=5,
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     geo: dict[str, int] = {}
     for line in r.stdout.strip().split("\n"):
@@ -860,6 +941,7 @@ def _ocr_winrt(
     if loop is not None:
         # Already in an async context — run in a new thread
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             ocr_result = pool.submit(lambda: asyncio.run(_run_ocr())).result(timeout=10)
     else:
@@ -918,13 +1000,17 @@ def _ocr_tesseract(
     # faded/low-contrast UI elements (e.g. greyed-out buttons). Results are
     # merged with the normal pass taking priority (higher confidence).
     data = pytesseract.image_to_data(
-        pil_image, config="--psm 11", output_type=pytesseract.Output.DICT,
+        pil_image,
+        config="--psm 11",
+        output_type=pytesseract.Output.DICT,
     )
     # Threshold pass: grayscale → binary at brightness 80
     gray = pil_image.convert("L")
     thresh = gray.point(lambda x: 255 if x > 80 else 0)
     data_thresh = pytesseract.image_to_data(
-        thresh, config="--psm 11", output_type=pytesseract.Output.DICT,
+        thresh,
+        config="--psm 11",
+        output_type=pytesseract.Output.DICT,
     )
     # Append threshold results with a tag so we can de-duplicate
     n_orig = len(data["text"])
@@ -1051,17 +1137,34 @@ def _ocr_fullscreen() -> list[tuple[str, int, int, int, int]]:
 
 
 def _ocr_fullscreen_win32() -> list[tuple[str, int, int, int, int]]:
-    """Full-screen capture + OCR on Windows."""
+    """Full-screen capture + OCR on Windows.
+
+    Captures in physical pixel coordinates (DPI-aware) so that results
+    are in the same coordinate space as game window OCR (which captures
+    DX framebuffers at native resolution).
+    """
     import ctypes
 
     import win32gui
     import win32ui
     from PIL import Image
 
-    # Get virtual screen dimensions (handles multi-monitor)
     user32 = ctypes.windll.user32
-    w = user32.GetSystemMetrics(0)  # SM_CXSCREEN
-    h = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+
+    # Switch to DPI-aware to get physical primary monitor dimensions.
+    # This ensures the capture and coordinates match physical screen space,
+    # consistent with DX fullscreen window captures.
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_ssize_t(-4)
+    old_ctx = None
+    try:
+        old_ctx = user32.SetThreadDpiAwarenessContext(
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        )
+    except Exception:
+        pass
+
+    w = user32.GetSystemMetrics(0)  # SM_CXSCREEN (physical when DPI-aware)
+    h = user32.GetSystemMetrics(1)  # SM_CYSCREEN (physical when DPI-aware)
 
     desktop_hwnd = win32gui.GetDesktopWindow()
     desktop_dc = win32gui.GetWindowDC(desktop_hwnd)
@@ -1074,13 +1177,23 @@ def _ocr_fullscreen_win32() -> list[tuple[str, int, int, int, int]]:
 
     bmp_info = bitmap.GetInfo()
     bmp_bits = bitmap.GetBitmapBits(True)
-    img = Image.frombuffer("RGB", (bmp_info["bmWidth"], bmp_info["bmHeight"]),
-                           bmp_bits, "raw", "BGRX", 0, 1)
+    img = Image.frombuffer(
+        "RGB",
+        (bmp_info["bmWidth"], bmp_info["bmHeight"]),
+        bmp_bits,
+        "raw",
+        "BGRX",
+        0,
+        1,
+    )
 
     save_dc.DeleteDC()
     mfc_dc.DeleteDC()
     win32gui.ReleaseDC(desktop_hwnd, desktop_dc)
     win32gui.DeleteObject(bitmap.GetHandle())
+
+    if old_ctx:
+        user32.SetThreadDpiAwarenessContext(ctypes.c_ssize_t(old_ctx))
 
     return _ocr_winrt(img, 0, 0, w, h)
 
@@ -1095,8 +1208,11 @@ def _ocr_fullscreen_linux() -> list[tuple[str, int, int, int, int]]:
         screenshot = sct.grab(monitor)
         img = Image.frombytes("RGB", screenshot.size, screenshot.rgb)
         return _ocr_tesseract(
-            img, monitor["left"], monitor["top"],
-            monitor["width"], monitor["height"],
+            img,
+            monitor["left"],
+            monitor["top"],
+            monitor["width"],
+            monitor["height"],
         )
 
 
@@ -1181,13 +1297,32 @@ def _click(x: int, y: int) -> None:
 def _click_win32(x: int, y: int) -> None:
     """Click at screen coordinates using SendInput (Windows)."""
     import ctypes
+    import ctypes.wintypes
 
-    # Normalize to absolute coordinates (0-65535 range)
+    # MOUSEEVENTF_ABSOLUTE + MOUSEEVENTF_VIRTUALDESK maps 0-65535 to the
+    # physical virtual screen. All OCR coordinates are in physical pixel
+    # space (game window captures DX framebuffers at native resolution,
+    # fullscreen captures use DPI-aware mode).
     user32 = ctypes.windll.user32
-    screen_w = user32.GetSystemMetrics(0)
-    screen_h = user32.GetSystemMetrics(1)
-    abs_x = int(x * 65536 / screen_w)
-    abs_y = int(y * 65536 / screen_h)
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_ssize_t(-4)
+    old_ctx = None
+    try:
+        old_ctx = user32.SetThreadDpiAwarenessContext(
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        )
+    except Exception:
+        pass
+
+    vx0 = user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+    vy0 = user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+    vw = user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+    vh = user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+
+    if old_ctx:
+        user32.SetThreadDpiAwarenessContext(ctypes.c_ssize_t(old_ctx))
+
+    abs_x = int((x - vx0) * 65536 / vw)
+    abs_y = int((y - vy0) * 65536 / vh)
 
     class MOUSEINPUT(ctypes.Structure):
         _fields_ = [
@@ -1204,33 +1339,53 @@ def _click_win32(x: int, y: int) -> None:
 
     MOUSEEVENTF_MOVE = 0x0001
     MOUSEEVENTF_ABSOLUTE = 0x8000
+    MOUSEEVENTF_VIRTUALDESK = 0x4000
     MOUSEEVENTF_LEFTDOWN = 0x0002
     MOUSEEVENTF_LEFTUP = 0x0004
+    ABS_VIRT = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
 
     # Move
-    move = INPUT(type=0, mi=MOUSEINPUT(
-        dx=abs_x, dy=abs_y, mouseData=0,
-        dwFlags=MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
-        time=0, dwExtraInfo=None,
-    ))
+    move = INPUT(
+        type=0,
+        mi=MOUSEINPUT(
+            dx=abs_x,
+            dy=abs_y,
+            mouseData=0,
+            dwFlags=MOUSEEVENTF_MOVE | ABS_VIRT,
+            time=0,
+            dwExtraInfo=None,
+        ),
+    )
     user32.SendInput(1, ctypes.byref(move), ctypes.sizeof(INPUT))
     time.sleep(0.15)
 
     # Click down
-    down = INPUT(type=0, mi=MOUSEINPUT(
-        dx=abs_x, dy=abs_y, mouseData=0,
-        dwFlags=MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE,
-        time=0, dwExtraInfo=None,
-    ))
+    down = INPUT(
+        type=0,
+        mi=MOUSEINPUT(
+            dx=abs_x,
+            dy=abs_y,
+            mouseData=0,
+            dwFlags=MOUSEEVENTF_LEFTDOWN | ABS_VIRT,
+            time=0,
+            dwExtraInfo=None,
+        ),
+    )
     user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(INPUT))
     time.sleep(0.05)
 
     # Click up
-    up = INPUT(type=0, mi=MOUSEINPUT(
-        dx=abs_x, dy=abs_y, mouseData=0,
-        dwFlags=MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE,
-        time=0, dwExtraInfo=None,
-    ))
+    up = INPUT(
+        type=0,
+        mi=MOUSEINPUT(
+            dx=abs_x,
+            dy=abs_y,
+            mouseData=0,
+            dwFlags=MOUSEEVENTF_LEFTUP | ABS_VIRT,
+            time=0,
+            dwExtraInfo=None,
+        ),
+    )
     user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(INPUT))
 
 
@@ -1238,12 +1393,14 @@ def _click_linux(x: int, y: int) -> None:
     """Click at screen coordinates using xdotool (Linux)."""
     subprocess.run(
         ["xdotool", "mousemove", str(x), str(y)],
-        capture_output=True, timeout=5,
+        capture_output=True,
+        timeout=5,
     )
     time.sleep(0.15)
     subprocess.run(
         ["xdotool", "click", "1"],
-        capture_output=True, timeout=5,
+        capture_output=True,
+        timeout=5,
     )
 
 
@@ -1252,6 +1409,7 @@ def _is_window_focused() -> bool:
     if sys.platform == "win32":
         try:
             import win32gui
+
             hwnd = win32gui.GetForegroundWindow()
             title = win32gui.GetWindowText(hwnd)
             return any(p in title for p in _APP_NAME_PATTERNS)
@@ -1261,7 +1419,9 @@ def _is_window_focused() -> bool:
         try:
             r = subprocess.run(
                 ["xdotool", "getactivewindow", "getwindowname"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if r.returncode != 0:
                 return False
@@ -1353,9 +1513,7 @@ def _bring_to_front_win32() -> None:
 
     try:
         # Attach our thread to the foreground window's thread
-        fg_thread = user32.GetWindowThreadProcessId(
-            user32.GetForegroundWindow(), None
-        )
+        fg_thread = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
         our_thread = user32.GetCurrentThreadId()
         attached = False
         if fg_thread != our_thread:
@@ -1381,7 +1539,8 @@ def _bring_to_front_linux() -> None:
         return
     subprocess.run(
         ["xdotool", "windowactivate", "--sync", str(win.window_id)],
-        capture_output=True, timeout=5,
+        capture_output=True,
+        timeout=5,
     )
     time.sleep(0.3)
 
@@ -1420,7 +1579,10 @@ def _wait_for_text(
                 results = _ocr_fullscreen()
 
         match = _find_text(
-            results, target, exact=exact, prefer_bottom=prefer_bottom,
+            results,
+            target,
+            exact=exact,
+            prefer_bottom=prefer_bottom,
             min_y_fraction=min_y_fraction,
         )
         if match:
@@ -1446,7 +1608,10 @@ def _click_text(
             tightly packed and OCR bbox centers can land between items.
     """
     match = _wait_for_text(
-        target, timeout=timeout, exact=exact, prefer_bottom=prefer_bottom,
+        target,
+        timeout=timeout,
+        exact=exact,
+        prefer_bottom=prefer_bottom,
         min_y_fraction=min_y_fraction,
     )
     if not match:
@@ -1532,14 +1697,13 @@ def _dismiss_crash_dialogs_sync() -> list[str]:
             if buttons:
                 try:
                     # BM_CLICK message to press the button
-                    win32gui.SendMessage(
-                        buttons[0], win32con.BM_CLICK, 0, 0
-                    )
+                    win32gui.SendMessage(buttons[0], win32con.BM_CLICK, 0, 0)
                     title = win32gui.GetWindowText(hwnd)
                     dismissed.append(f"{title} (clicked '{target_button}')")
                     log.info(
                         "Dismissed crash dialog: '%s' -> clicked '%s'",
-                        title, target_button,
+                        title,
+                        target_button,
                     )
                 except Exception as e:
                     log.debug("Failed to click '%s': %s", target_button, e)
@@ -1614,50 +1778,34 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     steps.append("Clicked Load Game")
 
     if tab is not None:
-        log.info("[3/7] Clicking '%s' filter...", tab)
+        log.info("[3/6] Clicking '%s' filter...", tab)
         if not _click_text(tab, timeout=10, exact=True, post_delay=1):
             log.info("%s filter not found — may already be active", tab)
             steps.append(f"{tab} filter (may already be active)")
         else:
             steps.append(f"Clicked {tab} filter")
     else:
-        log.info("[3/7] Using default save list (no filter needed)")
+        log.info("[3/6] Using default save list (no filter needed)")
         steps.append("Default save list (regular saves)")
 
-    # Sort by name so 0A_, 0B_, ... saves appear at the top.
-    # The UI shows the CURRENT sort mode as a label. When "Sort by Last Modified"
-    # is visible, click it to toggle to sort-by-name. When "Sort by Name" is
-    # visible, we're already sorted by name.
-    log.info("[4/7] Ensuring sorted by Name...")
-    match = _wait_for_text("Sort by Last Modified", timeout=3)
-    if match:
-        # Currently sorted by Last Modified — click to switch to Name
-        text, x, y, w, h = match
-        log.info("OCR: clicking 'Sort by Last Modified' to toggle to Name at (%d,%d)", x, y)
-        _bring_to_front()
-        time.sleep(0.3)
-        _click(x, y)
-        time.sleep(1)
-        steps.append("Sorted by Name")
-    else:
-        log.info("Already sorted by Name")
-        steps.append("Already sorted by Name")
-
-    log.info("[5/7] Looking for save '%s'...", save_name)
+    log.info("[4/6] Looking for save '%s'...", save_name)
     if not _click_text(save_name, timeout=15, post_delay=1):
-        return f"FAILED: Save '{save_name}' not found. Steps completed: {', '.join(steps)}"
+        return (
+            f"FAILED: Save '{save_name}' not found. Steps completed: {', '.join(steps)}"
+        )
     steps.append(f"Selected save {save_name}")
 
-    log.info("[6/7] Clicking 'Load Game' button (bottom, not title)...")
+    log.info("[5/6] Clicking 'Load Game' button (bottom, not title)...")
     # prefer_bottom picks the button over the page title. If the only match
     # is the title (y < 50% of screen), skip it — the button wasn't detected.
-    if not _click_text("Load Game", timeout=10, post_delay=1, prefer_bottom=True,
-                       min_y_fraction=0.7):
+    if not _click_text(
+        "Load Game", timeout=10, post_delay=1, prefer_bottom=True, min_y_fraction=0.7
+    ):
         steps.append("Load Game button not found (may have loaded from double-click)")
     else:
         steps.append("Clicked Load Game button")
 
-    # [7/7] Wait for save to load, then click through the leader intro screen.
+    # Wait for save to load, then click through the leader intro screen.
     #
     # NOTE (Windows): PrintWindow + SetForegroundWindow during the DX12
     # loading phase can crash the renderer.  macOS (Quartz) and Linux (mss)
@@ -1667,7 +1815,7 @@ def _navigate_to_save_sync(save_name: str, tab: str | None = "Autosaves") -> str
     # first-time loads with shader compilation.  OCR just won't find the
     # text during the loading bar phase (safe no-op).
 
-    log.info("[7/7] Waiting for save to load and CONTINUE GAME screen...")
+    log.info("[6/6] Waiting for save to load and CONTINUE GAME screen...")
     match = _wait_for_text("CONTINUE", timeout=90, interval=2.5)
     if match:
         text, x, y, w, h = match
@@ -1727,7 +1875,10 @@ async def load_save_from_menu(save_name: str | None = None) -> str:
         available = list_autosaves(5)
         # Also list regular saves
         regular = glob.glob(os.path.join(SINGLE_SAVE_DIR, "*.Civ6Save"))
-        regular = [os.path.basename(s).replace(".Civ6Save", "") for s in sorted(regular, key=os.path.getmtime, reverse=True)[:5]]
+        regular = [
+            os.path.basename(s).replace(".Civ6Save", "")
+            for s in sorted(regular, key=os.path.getmtime, reverse=True)[:5]
+        ]
         avail_str = ", ".join(available + regular) if (available or regular) else "none"
         return f"Save '{save_name}' not found. Available: {avail_str}"
 
