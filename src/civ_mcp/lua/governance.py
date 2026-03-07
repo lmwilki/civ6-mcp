@@ -185,8 +185,10 @@ for row in GameInfo.Governors() do
                 local promoRow = GameInfo.GovernorPromotions[promo.GovernorPromotion]
                 if promoRow and not g:HasPromotion(promoRow.Index) then
                     local pName = Locale.Lookup(promoRow.Name)
-                    local pDesc = Locale.Lookup(promoRow.Description)
-                    print("GOV_PROMO|" .. row.GovernorType .. "|" .. promoRow.GovernorPromotionType .. "|" .. pName:gsub("|","/") .. "|" .. pDesc:gsub("|","/"))
+                    local pDesc = Locale.Lookup(promoRow.Description):gsub("|", "/"):gsub("\\n", " ")
+                    local lvl = promoRow.Level or 0
+                    local col = promoRow.Column or 0
+                    print("GOV_PROMO|" .. row.GovernorType .. "|" .. promoRow.GovernorPromotionType .. "|" .. pName:gsub("|","/") .. "|" .. pDesc .. "|" .. lvl .. "|" .. col)
                 end
             end
         end
@@ -196,7 +198,20 @@ for gov in GameInfo.Governors() do
     if gov.TransitionStrength and gov.TransitionStrength > 0 and not appointedTypes[gov.GovernorType] then
         local gName = Locale.Lookup(gov.Name)
         local gTitle = Locale.Lookup(gov.Title)
-        print("AVAILABLE|" .. gov.GovernorType .. "|" .. gName:gsub("|","/") .. "|" .. gTitle:gsub("|","/"))
+        local gDesc = gov.Description and Locale.Lookup(gov.Description):gsub("|", "/"):gsub("\\n", " ") or ""
+        print("AVAILABLE|" .. gov.GovernorType .. "|" .. gName:gsub("|","/") .. "|" .. gTitle:gsub("|","/") .. "|" .. gDesc)
+        for promo in GameInfo.GovernorPromotionSets() do
+            if promo.GovernorType == gov.GovernorType then
+                local promoRow = GameInfo.GovernorPromotions[promo.GovernorPromotion]
+                if promoRow then
+                    local pName = Locale.Lookup(promoRow.Name)
+                    local pDesc = Locale.Lookup(promoRow.Description):gsub("|", "/"):gsub("\\n", " ")
+                    local lvl = promoRow.Level or 0
+                    local col = promoRow.Column or 0
+                    print("GOV_PROMO|" .. gov.GovernorType .. "|" .. promoRow.GovernorPromotionType .. "|" .. pName:gsub("|","/") .. "|" .. pDesc .. "|" .. lvl .. "|" .. col)
+                end
+            end
+        end
     end
 end
 print("{SENTINEL}")
@@ -722,6 +737,8 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
                         promotion_type=parts[2],
                         name=parts[3],
                         description=parts[4],
+                        level=int(parts[5]) if len(parts) > 5 else 0,
+                        column=int(parts[6]) if len(parts) > 6 else 0,
                     )
                 )
         elif line.startswith("AVAILABLE|"):
@@ -732,12 +749,23 @@ def parse_governors_response(lines: list[str]) -> GovernorStatus:
                         governor_type=parts[1],
                         name=parts[2],
                         title=parts[3],
+                        description=parts[4] if len(parts) > 4 else "",
                     )
                 )
 
     # Attach promotions to their governors
     for gov in appointed:
         gov.available_promotions = promos_by_gov.get(gov.governor_type, [])
+
+    # Attach promotions to available governors, split out base ability
+    for gov in available:
+        all_promos = promos_by_gov.get(gov.governor_type, [])
+        for p in all_promos:
+            if p.level == 0:
+                gov.base_ability = p.name
+                gov.base_ability_desc = p.description
+            else:
+                gov.promotions.append(p)
 
     return GovernorStatus(
         points_available=pts_avail,
