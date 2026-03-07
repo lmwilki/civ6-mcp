@@ -16,7 +16,12 @@ from typing import TYPE_CHECKING
 
 from civ_mcp import lua as lq
 from civ_mcp.connection import GameConnection
-from civ_mcp.narrate import narrate_combat_estimate, narrate_move_discoveries, narrate_settle_candidates
+from civ_mcp.narrate import (
+    narrate_combat_estimate,
+    narrate_move_discoveries,
+    narrate_settle_candidates,
+    narrate_test_trade,
+)
 
 if TYPE_CHECKING:
     from civ_mcp.spatial import SpatialTracker
@@ -236,11 +241,7 @@ class GameState:
                 pass
         # Post-move: visibility diff for discovery feedback
         blocked = "|BLOCKED" in result
-        if (
-            not blocked
-            and self.spatial is not None
-            and self.spatial._revealed_seeded
-        ):
+        if not blocked and self.spatial is not None and self.spatial._revealed_seeded:
             try:
                 # Extract actual position from result
                 now_match = re.search(r"now_at:(\d+),(\d+)", result)
@@ -335,8 +336,9 @@ class GameState:
                         and post_hp >= actual_pre
                     ):
                         result += (
-                            "\n  !! WARNING: Target HP unchanged — attack may have been "
-                            "blocked by a popup. Run dismiss_popup then retry."
+                            "\n  !! WARNING: Target HP unchanged — attack may not have "
+                            "executed. Possible causes: popup blocking, LOS issue, or "
+                            "combat animation still resolving. Run dismiss_popup if needed."
                         )
             except Exception as e:
                 log.debug("Attack followup read failed: %s", e)
@@ -594,9 +596,7 @@ class GameState:
                                 f" Hint: {bld_info} may require a completed"
                                 " district or prerequisite building."
                             )
-                    return (
-                        f"Error: CANNOT_START|{item_name} cannot start.{hint}"
-                    )
+                    return f"Error: CANNOT_START|{item_name} cannot start.{hint}"
             except Exception:
                 log.debug("Production readback failed", exc_info=True)
                 return f"Error: CANNOT_START|{item_name} (readback failed)"
@@ -816,6 +816,17 @@ class GameState:
         lua = lq.build_propose_trade(other_player_id, offer_items, request_items)
         lines = await self.conn.execute_write(lua)
         return _action_result(lines)
+
+    async def test_trade(
+        self,
+        other_player_id: int,
+        offer_items: list[dict],
+        request_items: list[dict],
+    ) -> str:
+        lua = lq.build_test_trade(other_player_id, offer_items, request_items)
+        lines = await self.conn.execute_write(lua)
+        result = lq.parse_test_trade_response(lines)
+        return narrate_test_trade(result)
 
     async def propose_peace(self, other_player_id: int) -> str:
         lua = lq.build_propose_peace(other_player_id)
@@ -1609,9 +1620,7 @@ def _extract_pre_hp(result: str) -> int | None:
     return None
 
 
-def _extract_post_hp(
-    followup_lines: list[str], attacker_owner: int = 0
-) -> int | None:
+def _extract_post_hp(followup_lines: list[str], attacker_owner: int = 0) -> int | None:
     """Extract post-combat *enemy* HP from followup query lines.
 
     Followup format: UNIT|UNIT_TYPE|hp/max|owner:N
