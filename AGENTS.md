@@ -54,7 +54,7 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 
 ### Around every 10 turns:
 - `get_empire_resources` — unimproved luxuries and nearby strategics
-- Surplus luxuries: duplicates beyond 1 copy provide zero amenity benefit. Trade them via `propose_trade` for GPT, strategic resources, or luxury types you don't own (each new type = +1 amenity to 4 cities). Even 5 GPT per surplus luxury adds up over 30 turns.
+- Surplus luxuries: duplicates beyond 1 copy provide zero amenity benefit. Trade them via `propose_trade` for GPT, strategic resources, or luxury types you don't own (each new type = +1 amenity to 4 cities). Even 5 GPT per surplus luxury adds up over 30 turns. Use `mode="test"` to check what the AI will accept before sending.
 - Gold/faith balance: if either is accumulating with no plan, spend it — `purchase_item`, `purchase_tile`, `patronize_great_person`
 - City count vs time in game — if expansion is behind, a settler tends to be the highest-leverage production choice
 - `get_trade_routes` — check for idle routes; idle routes are free yields going uncollected
@@ -206,9 +206,9 @@ Military Engineers (requires Encampment + Armory): `build_route` builds a railro
 - `send_diplomatic_action(action="DECLARE_FRIENDSHIP")` — requires Friendly status
 - `send_diplomatic_action(action="RESIDENT_EMBASSY")` — requires Writing tech
 - `form_alliance(player_id, type)` — types: MILITARY/RESEARCH/CULTURAL/ECONOMIC/RELIGIOUS; requires friendship 30t + Diplomatic Service civic
-- `propose_trade(player_id, ...)` — trade gold/GPT/resources/favor/open borders
+- `propose_trade(player_id, ...)` — trade gold/GPT/resources/favor/open borders/cities. Use `mode="test"` first to see the AI's counter-offer without committing, then `mode="send"` to finalize. Cities use `city_id` from `get_trade_options`.
 - `propose_peace(player_id)` — white peace; 10t war cooldown required
-- `get_trade_options(other_player_id)` — see what a civ has available to trade
+- `get_trade_options(other_player_id)` — see what a civ has available to trade (gold, resources, favor, cities, agreements)
 - `get_pending_trades` — check incoming trade offers; `respond_to_trade(player_id, accept)` to accept/reject
 - Check `get_diplomacy` for defensive pacts before declaring war
 - `get_diplomacy` shows leader agendas — historical agendas are always visible; random agendas require Secret diplomatic visibility (spy in their capital or alliance). Use agendas to predict AI behavior and avoid relationship penalties.
