@@ -14,12 +14,18 @@ came five turns earlier will under-score here. For those patterns use
 the transcript-level scanners.
 """
 
-from inspect_ai.model import ChatMessageAssistant
+from collections.abc import AsyncIterator
+
+from inspect_ai.model import ChatMessage, ChatMessageAssistant, ChatMessageTool
 from inspect_scout import (
     AnswerStructured,
+    Loader,
+    Reference,
     Result,
     Scanner,
+    Transcript,
     generate_answer,
+    loader,
     parse_answer,
     scanner,
 )
@@ -204,5 +210,173 @@ def move_37_candidate() -> Scanner[ChatMessageAssistant]:
 
         output = await generate_answer(prompt, "boolean", parse=False)
         return parse_answer(output, "boolean", extract_refs=lambda _t: [])
+
+    return scan
+
+
+# ---------------------------------------------------------------------------
+# 5-turn context variant
+# ---------------------------------------------------------------------------
+
+CONTEXT_WINDOW = 5
+TOOL_RESULT_CHAR_BUDGET = 2000
+
+
+def _format_message(msg: ChatMessage) -> str:
+    """Format a single message for the context prompt.
+
+    Tool results are truncated — a 10k-token `get_map_area` response
+    dominates the window without adding judgement signal.
+    """
+    role = msg.role.upper()
+    text = msg.text or ""
+
+    if isinstance(msg, ChatMessageAssistant) and msg.tool_calls:
+        lines = [f"{role}:"]
+        if text.strip():
+            lines.append(text)
+        lines.append("Tool calls:")
+        for call in msg.tool_calls:
+            args = call.arguments
+            if isinstance(args, dict):
+                args_text = ", ".join(f"{k}={v}" for k, v in args.items())
+            else:
+                args_text = str(args)
+            lines.append(f"  - {call.function}({args_text})")
+        return "\n".join(lines)
+
+    if isinstance(msg, ChatMessageTool):
+        func = msg.function or "tool"
+        body = text
+        if len(body) > TOOL_RESULT_CHAR_BUDGET:
+            body = body[:TOOL_RESULT_CHAR_BUDGET] + "... [truncated]"
+        return f"TOOL ({func}):\n{body}"
+
+    return f"{role}:\n{text}"
+
+
+def _window_messages(
+    messages: list[ChatMessage], focus_index: int, window: int
+) -> tuple[list[ChatMessage], int]:
+    """Slice the transcript into the window of `window` most recent assistant
+    turns ending at `focus_index`, including interleaved tool/user messages.
+    Returns (slice, index-of-focus-in-slice).
+    """
+    assistant_indices = [
+        i for i, m in enumerate(messages[: focus_index + 1]) if m.role == "assistant"
+    ]
+    start_assistant = assistant_indices[-window:][0] if assistant_indices else 0
+    return messages[start_assistant : focus_index + 1], focus_index - start_assistant
+
+
+@loader(messages=["assistant", "tool", "user"])
+def assistant_context_windows(
+    window: int = CONTEXT_WINDOW,
+    stride: int = 1,
+) -> Loader[list[ChatMessage]]:
+    """Yield one sliding window per judged assistant turn.
+
+    Each window is a `list[ChatMessage]` containing up to `window`
+    consecutive assistant turns (plus interleaved tool/user messages)
+    ending at a focus assistant turn — which is by construction the
+    last assistant message in the list. Scout treats each yielded item
+    as an independent scan invocation, so the worker pool parallelises
+    across windows.
+
+    Args:
+        window: Max number of assistant turns in each window (focus turn
+            plus up to window-1 preceding ones).
+        stride: Judge every Nth assistant turn instead of every one. Use
+            5 or 10 on long Civ games to keep API cost bounded.
+    """
+
+    async def load(transcript: Transcript) -> AsyncIterator[list[ChatMessage]]:
+        messages = list(transcript.messages)
+        assistant_count = 0
+        for pos, msg in enumerate(messages):
+            if not isinstance(msg, ChatMessageAssistant):
+                continue
+            if assistant_count % stride == 0:
+                slice_, _ = _window_messages(messages, pos, window)
+                yield slice_
+            assistant_count += 1
+
+    return load
+
+
+@scanner(loader=assistant_context_windows(stride=5))
+def brilliant_move_with_context() -> Scanner[list[ChatMessage]]:
+    """5-turn context variant of `brilliant_move`.
+
+    For each focus turn, the judge sees up to 5 preceding assistant
+    turns (with their interleaved tool results) so brilliance that only
+    makes sense *given prior context* — setups, feints, long-horizon
+    plans articulated earlier — can score here. Penalises turns that
+    are just mechanically executing a decision already stated upstream.
+
+    Runs via scout's `@loader` pattern so the worker pool parallelises
+    across windows instead of serialising inside a single scan.
+    """
+
+    answer = AnswerStructured(type=BrilliantMoveAnswer)
+
+    async def scan(window_msgs: list[ChatMessage]) -> Result:
+        focus_index = next(
+            (
+                i
+                for i in range(len(window_msgs) - 1, -1, -1)
+                if isinstance(window_msgs[i], ChatMessageAssistant)
+            ),
+            -1,
+        )
+        if focus_index < 0:
+            return Result(value=0, explanation="No assistant message in window")
+
+        focus = window_msgs[focus_index]
+
+        rendered_lines = []
+        for i, msg in enumerate(window_msgs):
+            marker = "  <-- FOCUS TURN" if i == focus_index else ""
+            rendered_lines.append(f"{_format_message(msg)}{marker}")
+        rendered = "\n\n".join(rendered_lines)
+
+        prompt = (
+            f"{BRILLIANT_MOVE_QUESTION}\n\n"
+            "You are shown up to 5 consecutive assistant turns with "
+            "their tool results. Judge ONLY the turn marked "
+            "'<-- FOCUS TURN'. The preceding turns are context — use "
+            "them to recognize setups, feints, and long-horizon plans "
+            "that make the focus turn brilliant (or that show the "
+            "focus turn is just executing a prior decision, in which "
+            "case rate it lower).\n\n"
+            "[BEGIN CONTEXT WINDOW]\n"
+            "===================================\n"
+            f"{rendered}\n"
+            "===================================\n"
+            "[END CONTEXT WINDOW]\n"
+        )
+
+        result = await generate_answer(prompt, answer)
+
+        if isinstance(result.value, dict):
+            rating = int(result.value.get("rating", 0))
+            category = str(result.value.get("category", "none"))
+            summary = str(result.value.get("summary", ""))
+            result.value = rating
+            result.metadata = {
+                **(result.metadata or {}),
+                "category": category,
+                "summary": summary,
+                "window_size": len(window_msgs),
+            }
+            if summary:
+                result.explanation = summary
+
+        if focus.id:
+            result.references = [
+                Reference(type="message", id=focus.id, cite="FOCUS")
+            ]
+
+        return result
 
     return scan
