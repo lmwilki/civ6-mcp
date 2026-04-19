@@ -203,6 +203,58 @@ Civilization VI is a compelling environment for evaluating LLM strategic reasoni
 
 The MCP interface provides a clean abstraction: the model receives narrated game state as text and responds with tool calls. All game rules are enforced by the engine. A companion web app lets you replay sessions turn by turn.
 
+## Analyzing runs
+
+Post-run tooling for the `.eval` logs produced by [Inspect](https://inspect.aisi.org.uk/). The `evals` / `scout` / `analysis` extras install the required dependencies.
+
+### Scout scanners
+
+[Inspect Scout](https://inspect.aisi.org.uk/scout) scanners over a directory of transcripts. Each scanner in `evals/scanners/` judges a specific axis — tool misuse, blind spots, strategic coherence, deception, civ-kit alignment, and **brilliant moves** (Move 37 style creative plays, per-assistant-turn).
+
+```bash
+# Full scan — all scanners, judge model from the yaml
+uv run --extra scout scout scan evals/scan.yaml
+
+# Brilliant-moves only (fast: per-message scanners, Claude as judge)
+uv run --extra scout scout scan evals/scan_brilliant_fast.yaml -T logs/<dir>
+```
+
+`brilliant_move` returns a 0–4 rating per turn; `move_37_candidate` is the cheaper boolean filter for the top tier only.
+
+### Token usage across runs
+
+Aggregate token totals by model across a log directory, and plot per-run composition (fresh-input / cache-read / cache-write / output / reasoning).
+
+```bash
+# Headline totals by model (cheap — reads headers only)
+uv run --extra evals python scripts/inspect-log-analysis/analysis.py <log_dir>
+
+# Stacked-bar composition + per-run scatter + CSV, for logs with log.status == "success"
+uv run --extra evals --extra analysis python \
+  scripts/inspect-log-analysis/figures.py <log_dir> --out-dir <path>
+```
+
+Caveat: `log.status == "success"` means the Inspect harness exited cleanly, **not** that the agent won the game — `.eval` logs carry no binary win/loss signal.
+
+### Action resampling
+
+Replay the same decision point from a recorded transcript N times against any model. Loads a `.eval`, truncates message history at the chosen index, introspects MCP tool schemas from `civ_mcp.server` as schema-only stubs (never executed), and asks "what would you do next?" across N epochs with identical context. No live game needed.
+
+```bash
+# 1) Generate N resamples from a fixed point
+uv run --extra evals inspect eval evals/civbench_resample.py@civbench_resample \
+  --model openai/azure/gpt-5.2 --epochs 100 \
+  -T eval_log=logs/<source>.eval \
+  -T sample_id=<id> -T truncate_at_message=<k>
+
+# 2) Aggregate tool/args histograms + agreement with the original action
+uv run --extra evals python scripts/inspect-log-analysis/analyze_resample.py \
+  --resample-log logs/<new>.eval --source-log logs/<source>.eval \
+  --sample-id <id> --truncate-at-message <k>
+```
+
+Outputs name-match and exact-match rates against the original transcript action, plus histograms over tool names, full `(tool, args)` calls, and assistant text.
+
 ## How it works
 
 ```
