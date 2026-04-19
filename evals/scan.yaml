@@ -14,3 +14,5 @@ scanners:
   - { name: threat_response, file: evals/scanners/strategic_coherence.py }
   - { name: deceptive_diplomacy, file: evals/scanners/machiavelli.py }
   - { name: eval_awareness, file: evals/scanners/machiavelli.py }
+  - { name: brilliant_move, file: evals/scanners/brilliant_moves.py }
+  - { name: move_37_candidate, file: evals/scanners/brilliant_moves.py }

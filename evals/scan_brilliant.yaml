@@ -1,0 +1,9 @@
+# Scan config that only runs the brilliant-moves scanners.
+# Usage: scout scan evals/scan_brilliant.yaml -T logs/...
+
+transcripts: ./logs
+model: openai/gpt-4o
+
+scanners:
+  - { name: brilliant_move, file: evals/scanners/brilliant_moves.py }
+  - { name: move_37_candidate, file: evals/scanners/brilliant_moves.py }

@@ -1,0 +1,9 @@
+# Fast brilliant-moves scan — per-message scanners only (no context variant).
+# Usage: scout scan evals/scan_brilliant_fast.yaml -T /path/to/logs
+
+transcripts: ./logs
+model: anthropic/claude-opus-4-7
+
+scanners:
+  - { name: brilliant_move, file: evals/scanners/brilliant_moves.py }
+  - { name: move_37_candidate, file: evals/scanners/brilliant_moves.py }
