@@ -1,5 +1,7 @@
 # civ6-mcp
 
+[![SafeSkill 86/100](https://img.shields.io/badge/SafeSkill-86%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/lmwilki-civ6-mcp)
+
 An MCP server that lets LLM agents play full games of Civilization VI.
 
 Connect any MCP-compatible client — Claude Code, Codex, Gemini CLI, or your own — to a running Civ 6 game. The agent reads game state, moves units, manages cities, conducts diplomacy, and ends turns, all through the game's own rule-enforcing APIs. No cheats, no vision model required.
