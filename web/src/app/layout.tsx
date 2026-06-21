@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConvexClientProvider } from "@/components/convex-provider";
 import { ConsoleEgg } from "@/components/console-egg";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const cinzel = Cinzel({
@@ -69,6 +70,7 @@ export default function RootLayout({
             </TooltipProvider>
           </ThemeProvider>
         </ConvexClientProvider>
+        <Analytics />
       </body>
     </html>
   );
