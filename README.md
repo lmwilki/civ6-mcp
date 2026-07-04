@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/lmwilki-civ6-mcp-badge.png)](https://mseep.ai/app/lmwilki-civ6-mcp)
+
 # civ6-mcp
 
 An MCP server that lets LLM agents play full games of Civilization VI.
