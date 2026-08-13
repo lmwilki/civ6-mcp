@@ -198,7 +198,7 @@ BLOCKING_TOOL_MAP: dict[str, str] = {
     "ENDTURN_BLOCKING_STACKED_UNITS": "Move units — cannot stack military units",
     "ENDTURN_BLOCKING_CONSIDER_GOVERNMENT_CHANGE": "Consider Changing Governments",
     "ENDTURN_BLOCKING_COMMEMORATION_AVAILABLE": "Use get_dedications() then choose_dedication(dedication_index=...)",
-    "ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION": "MUST VOTE: Use get_world_congress() to see resolutions, then queue_wc_votes() to register all votes, then end_turn(). Deploy ALL diplomatic favor!",
+    "ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION": "MUST VOTE: Use get_world_congress() to see resolutions, then queue_wc_votes() to register all votes, then end_turn(). Deploy ALL diplomatic favor! If end_turn still reports this blocker after voting, the congress screen is holding the turn — call advance_world_congress() then end_turn() again.",
     "ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK": "Use get_world_congress() to review results (auto-resolved)",
     "ENDTURN_BLOCKING_WORLD_CONGRESS_SPECIAL_SESSION": "World Congress special session (auto-resolved)",
     "ENDTURN_BLOCKING_CONSIDER_RAZE_CITY": "Use city_action(city_id=..., action='keep') or 'raze'/'liberate'",

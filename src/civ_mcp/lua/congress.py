@@ -184,23 +184,122 @@ print("{SENTINEL}")
 """
 
 
+# Every full-screen context the World Congress can leave up. Any one of them
+# still showing holds the end-turn lock, so all must be hidden together.
+# This list previously lived inline at four call sites which had drifted:
+# three knew only about Intro/Popup, so a turn blocked behind the Results or
+# Proposals screen could never be unblocked.
+WORLD_CONGRESS_CONTEXTS: tuple[str, ...] = (
+    "WorldCongressPopup",
+    "WorldCongressIntro",
+    "WorldCongressBetweenTurns",
+    "WorldCongressResults",
+    "WorldCongressProposals",
+)
+
+
+def _hide_congress_screens_lua(counter: str = "hidden") -> str:
+    """Lua fragment hiding every World Congress screen, counting into `counter`.
+
+    SetHide() alone is not enough: the popup stays queued in UIManager and can
+    re-assert itself on the next UI tick, so dequeue before hiding.
+    """
+    names = ", ".join(f'"{n}"' for n in WORLD_CONGRESS_CONTEXTS)
+    return (
+        f"local {counter} = 0; "
+        f"for _, n in ipairs({{{names}}}) do "
+        f'  local c = ContextPtr:LookUpControl("/InGame/" .. n); '
+        f"  if c and not c:IsHidden() then "
+        f"    pcall(function() UIManager:DequeuePopup(c) end); "
+        f"    c:SetHide(true); "
+        f"    {counter} = {counter} + 1 "
+        f"  end "
+        f"end; "
+    )
+
+
+def build_world_congress_dismiss(only_type: str | None = None) -> str:
+    """Clear World Congress end-turn blockers (InGame context).
+
+    Replicates the game UI's "continue/pass" button: mark the congress as
+    looked-at, dismiss the blocking notifications, and hide every congress
+    screen.
+
+    Args:
+        only_type: Dismiss just this blocking type (e.g.
+            ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK). None dismisses every
+            WORLD_CONGRESS blocker.
+
+    Prints: WC_DISMISSED|<notifications dismissed>|<screens hidden>
+    """
+    if only_type:
+        match = (
+            f"if bt and bt == EndTurnBlockingTypes.{only_type} then "
+            "  NotificationManager.Dismiss(me, nid); dismissed = dismissed + 1 "
+            "end "
+        )
+    else:
+        match = (
+            "if bt and bt ~= 0 then "
+            "  for k, v in pairs(EndTurnBlockingTypes) do "
+            '    if v == bt and k:find("WORLD_CONGRESS") then '
+            "      NotificationManager.Dismiss(me, nid); "
+            "      dismissed = dismissed + 1; "
+            "      break "
+            "    end "
+            "  end "
+            "end "
+        )
+    return (
+        "local me = Game.GetLocalPlayer(); "
+        "pcall(function() UI.RequestPlayerOperation("
+        "me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {}) end); "
+        "local dismissed = 0; "
+        "local list = NotificationManager.GetList(me); "
+        "if list then "
+        "  for _, nid in ipairs(list) do "
+        "    pcall(function() "
+        "      local e = NotificationManager.Find(me, nid); "
+        "      if e and not e:IsDismissed() then "
+        "        local bt = e:GetEndTurnBlocking(); "
+        f"        {match}"
+        "      end "
+        "    end) "
+        "  end "
+        "end; "
+        + _hide_congress_screens_lua()
+        + 'print("WC_DISMISSED|" .. dismissed .. "|" .. hidden); '
+        f'print("{SENTINEL}")'
+    )
+
+
+def parse_world_congress_dismiss(lines: list[str]) -> tuple[int, int]:
+    """Parse build_world_congress_dismiss output -> (dismissed, hidden)."""
+    for line in lines:
+        if line.startswith("WC_DISMISSED|"):
+            parts = line.split("|")
+            if len(parts) >= 3:
+                try:
+                    return int(parts[1]), int(parts[2])
+                except ValueError:
+                    return (0, 0)
+    return (0, 0)
+
+
 def build_congress_submit() -> str:
     """Submit all World Congress votes and resume turn processing (InGame context).
 
     Mirrors WorldCongressPopup.lua OnAccept(): submit votes then ACTION_ENDTURN
     to resume turn-segment processing after the WC stage.
     """
-    return """
-local me = Game.GetLocalPlayer()
-local intro = ContextPtr:LookUpControl("/InGame/WorldCongressIntro")
-if intro then intro:SetHide(true) end
-local popup = ContextPtr:LookUpControl("/InGame/WorldCongressPopup")
-if popup then popup:SetHide(true) end
-UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_SUBMIT_TURN, {})
-UI.RequestAction(ActionTypes.ACTION_ENDTURN)
-print("OK:CONGRESS_SUBMITTED")
-print("{SENTINEL}")
-""".replace("{SENTINEL}", SENTINEL)
+    return (
+        "local me = Game.GetLocalPlayer(); "
+        + _hide_congress_screens_lua()
+        + "UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_SUBMIT_TURN, {}); "
+        "UI.RequestAction(ActionTypes.ACTION_ENDTURN); "
+        'print("OK:CONGRESS_SUBMITTED"); '
+        f'print("{SENTINEL}")'
+    )
 
 
 def build_register_wc_voter(votes: list[dict] | None = None) -> str:

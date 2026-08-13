@@ -274,6 +274,7 @@ WC fires synchronously inside `end_turn()` — register votes **before** calling
 2. Review resolutions (options A/B, target list, favor costs)
 3. `queue_wc_votes(votes='[{"hash": H, "option": 1, "target": 0, "votes": N}]')`
 4. `end_turn()` — handler fires, votes deploy, turn advances
+5. If `end_turn` still reports **World Congress Session** after voting, a congress screen is holding the turn — call `advance_world_congress()` then `end_turn()` again. Repeatedly calling `end_turn()` alone will loop forever.
 
 - `hash`: from `get_world_congress`; `option`: 1=A / 2=B; `target`: player_id resolved to list index at runtime; `votes`: max to spend
 - 1 free vote per resolution (costs nothing — worth casting)

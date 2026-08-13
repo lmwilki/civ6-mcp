@@ -4,6 +4,8 @@
 
 The focus shifted from running games to packaging the results. The dataset publisher pipeline exports all telemetry to HuggingFace with Croissant 1.1 metadata for the NeurIPS Evaluations & Datasets track submission. Several reliability features landed in parallel from ongoing eval runs across the fleet.
 
+- **World Congress end-turn deadlock fixed**: The "hide the congress UI" Lua existed in five separate copies that had drifted — three knew only about `WorldCongressIntro`/`WorldCongressPopup`, so a turn blocked behind the Results, Proposals, or BetweenTurns screen could never be unblocked and `end_turn` looped forever. Consolidated into one `build_world_congress_dismiss()` covering all five contexts (plus `UIManager:DequeuePopup`, which `SetHide` alone omits). New `advance_world_congress` tool for the session blocker, surfaced in the blocker hint so agents can actually find it.
+- **end_turn no longer latches on an aborted call**: `_pending_end_turn` was only cleared when a turn advanced, so a killed task, client timeout, or dropped connection left it stuck `True` — every later `end_turn` refused to send `ACTION_ENDTURN` and polled a request the game never received. Now escapes when the turn moved past the baseline or the marker exceeds `STALE_PENDING_SECS`, extracted into a pure `should_resend_end_turn()`.
 - **HuggingFace dataset publisher**: End-to-end pipeline (`scripts/publish_hf/`) for staging, exporting parquet tables, generating Croissant 1.1 metadata, validating, and uploading to HuggingFace.
 - **NeurIPS anonymization**: RAI metadata fields, identity redaction in parquet exports, anonymous HF account.
 - **Game-over watchdog**: Detect victories even when the LLM stops calling tools — polls game state on a background timer.
