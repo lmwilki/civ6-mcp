@@ -698,6 +698,15 @@ class VictoryProgress:
     their_staycationers: dict[str, int] = field(
         default_factory=dict
     )  # civ_name -> domestic tourists
+    # Culture DEFENSE: how close each rival is to a culture victory over us.
+    # Without these, the culture section only ever described our own offense,
+    # which reads as "no threat" even when a rival wins next turn.
+    their_tourists_from_us: dict[str, int] = field(
+        default_factory=dict
+    )  # civ_name -> foreign tourists they have attracted from us
+    they_dominate_us: dict[str, bool] = field(
+        default_factory=dict
+    )  # civ_name -> their tourists exceed our domestic tourists
     # Domination: who holds their original capital?
     capitals_held: dict[str, bool] = field(
         default_factory=dict

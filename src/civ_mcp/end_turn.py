@@ -139,8 +139,17 @@ async def _get_turn_number(gs: GameState) -> int | None:
 
 async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
     """Lightweight per-turn check for foreign victory threats."""
-    events: list[lq.TurnEvent] = []
     lines = await gs.conn.execute_write(lq.build_victory_proximity_query())
+    return victory_events_from_lines(lines)
+
+
+def victory_events_from_lines(lines: list[str]) -> list[lq.TurnEvent]:
+    """Map victory-proximity Lua output to turn events.
+
+    Pure function so the threat thresholds are unit-testable without a live
+    game connection.
+    """
+    events: list[lq.TurnEvent] = []
     enabled: set[str] = set()
     for line in lines:
         if line.startswith("VENABLED|"):
@@ -227,6 +236,58 @@ async def _check_victory_proximity(gs: GameState) -> list[lq.TurnEvent]:
                             priority=2,
                             category="victory",
                             message=f"Science race: {parts[1]} has {vp}/{needed} space race projects.",
+                        )
+                    )
+        elif line.startswith("CUL_THREAT|"):
+            if enabled and "VICTORY_CULTURE" not in enabled:
+                continue
+            parts = line.split("|")
+            if len(parts) >= 5:
+                civ = parts[1]
+                their_tourists = int(parts[2])
+                our_domestic = int(parts[3])
+                dominant = parts[4] == "true"
+                their_cul = float(parts[5]) if len(parts) > 5 else 0.0
+                our_cul = float(parts[6]) if len(parts) > 6 else 0.0
+                pct = (their_tourists * 100 // our_domestic) if our_domestic > 0 else 0
+                if dominant or (our_domestic > 0 and their_tourists >= our_domestic):
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=(
+                                f"!!! CULTURE VICTORY IMMINENT: {civ} has {their_tourists} "
+                                f"foreign tourists vs our {our_domestic} domestic — they are "
+                                "culturally dominant over us. A culture win fires the moment "
+                                "they dominate every civ; it does not wait for a turn boundary."
+                            ),
+                        )
+                    )
+                elif pct >= 70:
+                    events.append(
+                        lq.TurnEvent(
+                            priority=1,
+                            category="victory",
+                            message=(
+                                f"!! CULTURE VICTORY THREAT: {civ} has {their_tourists}/"
+                                f"{our_domestic} tourists ({pct}% of the way to dominating us)."
+                            ),
+                        )
+                    )
+                # Leading indicator: culture output diverges dozens of turns
+                # before the tourist count does. This is the only warning that
+                # arrives while counters (war, Rock Bands, own tourism) are
+                # still actionable.
+                if not dominant and our_cul > 0 and their_cul >= 2.0 * our_cul:
+                    events.append(
+                        lq.TurnEvent(
+                            priority=2,
+                            category="victory",
+                            message=(
+                                f"Culture watch: {civ} culture output {their_cul:.0f}/turn is "
+                                f"{their_cul / our_cul:.1f}x ours ({our_cul:.0f}/turn). "
+                                "Culture-victory counters need ~30 turns of lead time."
+                            ),
                         )
                     )
     return events

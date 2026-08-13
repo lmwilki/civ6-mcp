@@ -17,6 +17,10 @@ def build_victory_proximity_query() -> str:
         """
 local me = Game.GetLocalPlayer()
 local pDiplo = Players[me]:GetDiplomacy()
+local myCul = Players[me]:GetCulture()
+local myStay, myCulYield = 0, 0
+pcall(function() myStay = myCul:GetStaycationers() end)
+pcall(function() myCulYield = myCul:GetCultureYield() end)
 local relCount = {}
 local relOwner = {}
 local totalMajors = 0
@@ -56,6 +60,21 @@ for i = 0, 62 do
                 local needed = 50
                 pcall(function() needed = p:GetStats():GetScienceVictoryPointsTotalNeeded() end)
                 print("SCI_THREAT|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. svp .. "|" .. needed)
+            end
+            -- Culture DEFENSE.  Two independent signals:
+            --   theirTourists vs myStay  -- how close they are to beating us now
+            --   theirCulYield vs myCulYield -- the leading indicator, visible
+            --                                  dozens of turns earlier
+            local theirTourists, theyDominate, theirCulYield = 0, false, 0
+            local okCul = pcall(function()
+                local tc = p:GetCulture()
+                theirTourists = tc:GetTouristsFrom(me)
+                theyDominate = tc:IsDominantOver(me)
+                theirCulYield = tc:GetCultureYield()
+            end)
+            if okCul then
+                local cfg = PlayerConfigurations[i]
+                print("CUL_THREAT|" .. Locale.Lookup(cfg:GetCivilizationShortDescription()) .. "|" .. theirTourists .. "|" .. myStay .. "|" .. tostring(theyDominate) .. "|" .. string.format("%.1f", theirCulYield) .. "|" .. string.format("%.1f", myCulYield))
             end
         end
     end
@@ -189,7 +208,21 @@ for i = 0, 62 do
                                         end
                                     end
                                 end)
-                                status = canBuild and "ready" or "unlocked"
+                                if canBuild then
+                                    status = "ready"
+                                elseif spaceports > 0 and projRow.MaxPlayerInstances == 1 then
+                                    -- Tech held + Spaceport owned + a one-shot
+                                    -- project that no city can start => it was
+                                    -- already launched.  GetScienceVictoryPoints()
+                                    -- cannot be used to detect this: it reports 0
+                                    -- in some rulesets even after projects finish,
+                                    -- which made launched projects render as
+                                    -- "unlocked" forever.
+                                    status = "completed"
+                                    completedCount = completedCount + 1
+                                else
+                                    status = "unlocked"
+                                end
                             end
                         end
                         print("SPACEPROJ|" .. projType .. "|" .. projName .. "|" .. status .. "|" .. progPct .. "|" .. turnsLeft .. "|" .. cost .. "|" .. techType .. "|" .. tostring(hasTech) .. "|" .. cityBuild)
@@ -200,7 +233,13 @@ for i = 0, 62 do
                 local ourTourists = pCul:GetTouristsFrom(i)
                 local theirStay = p:GetCulture():GetStaycationers()
                 local dominant = pCul:IsDominantOver(i)
-                print("CULTURE|" .. name .. "|" .. ourTourists .. "|" .. theirStay .. "|" .. tostring(dominant))
+                -- Defensive direction: their tourists attracted FROM us, and
+                -- whether they are culturally dominant over us. Reporting only
+                -- the offensive direction hides an imminent rival culture win.
+                local theirTourists, theyDominate = 0, false
+                pcall(function() theirTourists = p:GetCulture():GetTouristsFrom(me) end)
+                pcall(function() theyDominate = p:GetCulture():IsDominantOver(me) end)
+                print("CULTURE|" .. name .. "|" .. ourTourists .. "|" .. theirStay .. "|" .. tostring(dominant) .. "|" .. theirTourists .. "|" .. tostring(theyDominate))
             end
             local cap = p:GetCities():GetCapitalCity()
             local holdsOwn = cap and cap:IsOriginalCapital() or false
@@ -276,6 +315,8 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
     players: list[VictoryPlayerProgress] = []
     our_tourists: dict[str, int] = {}
     their_stay: dict[str, int] = {}
+    their_tourists_from_us: dict[str, int] = {}
+    they_dominate_us: dict[str, bool] = {}
     capitals: dict[str, bool] = {}
     rel_majority: dict[str, str] = {}
     rel_founded_names: dict[str, str] = {}
@@ -327,6 +368,10 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
             if len(p) >= 5:
                 our_tourists[p[1]] = int(p[2])
                 their_stay[p[1]] = int(p[3])
+            # Defensive fields are appended; older payloads omit them.
+            if len(p) >= 7:
+                their_tourists_from_us[p[1]] = _int(p[5])
+                they_dominate_us[p[1]] = p[6] == "true"
         elif line.startswith("CAPITAL|"):
             p = line.split("|")
             if len(p) >= 3:
@@ -377,6 +422,8 @@ def parse_victory_progress_response(lines: list[str]) -> VictoryProgress:
         players=players,
         our_tourists_from=our_tourists,
         their_staycationers=their_stay,
+        their_tourists_from_us=their_tourists_from_us,
+        they_dominate_us=they_dominate_us,
         capitals_held=capitals,
         religion_majority=rel_majority,
         religion_founded_names=rel_founded_names,

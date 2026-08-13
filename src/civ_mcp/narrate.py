@@ -1730,7 +1730,7 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
                 if sp.status == "building":
                     detail += f" -- {sp.progress_pct}% ({sp.turns_remaining} turns) in {sp.city_name}"
                 if sp.status == "unlocked":
-                    detail += " -- tech done, but need to complete prior projects first or build a Spaceport"
+                    detail += " -- tech done, but no city can start it: need a completed Spaceport, or finish the prior project in the chain"
                 if sp.status == "locked":
                     tech_status = "HAVE" if sp.has_tech else "NEED"
                     tech_name = (
@@ -1756,16 +1756,45 @@ def narrate_victory_progress(vp: lq.VictoryProgress) -> str:
     # --- Culture Victory ---
     if all_enabled or "VICTORY_CULTURE" in ev:
         lines.append("")
-        lines.append("CULTURE (your tourists > every civ's domestic tourists)")
+        lines.append(
+            "CULTURE (a civ wins when its foreign tourists exceed every rival's domestic tourists)"
+        )
         if us:
-            lines.append(f"  Our domestic tourists: {us.staycationers}")
+            lines.append(
+                f"  US -> THEM (our offense) | our domestic tourists: {us.staycationers}"
+            )
             for name, our_tourists in vp.our_tourists_from.items():
                 their_dom = vp.their_staycationers.get(name, 0)
                 gap = their_dom - our_tourists
                 status = "DOMINANT" if gap <= 0 else f"need {gap} more"
                 lines.append(
-                    f"  vs {name}: {our_tourists}/{their_dom} tourists ({status})"
+                    f"    vs {name}: {our_tourists}/{their_dom} tourists ({status})"
                 )
+
+            # Defense. Omitting this is how a rival culture victory arrives
+            # unannounced: the offense block above can read "need 508 more"
+            # (hopeless for us) on the very turn a rival is about to win.
+            if vp.their_tourists_from_us:
+                lines.append(
+                    f"  THEM -> US (our defense) | a rival needs > {us.staycationers} tourists to dominate us"
+                )
+                for name, their_tourists in sorted(
+                    vp.their_tourists_from_us.items(), key=lambda kv: -kv[1]
+                ):
+                    pct = (
+                        their_tourists * 100 // us.staycationers
+                        if us.staycationers > 0
+                        else 0
+                    )
+                    if vp.they_dominate_us.get(name, False):
+                        mark = "  <== !!! CULTURALLY DOMINANT OVER US"
+                    elif pct >= 70:
+                        mark = f"  <== !! CULTURE VICTORY THREAT ({pct}% of the way)"
+                    else:
+                        mark = ""
+                    lines.append(
+                        f"    {name}: {their_tourists}/{us.staycationers} tourists{mark}"
+                    )
 
     # --- Religious Victory ---
     if all_enabled or "VICTORY_RELIGIOUS" in ev:

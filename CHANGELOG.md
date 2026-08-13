@@ -4,6 +4,8 @@
 
 The focus shifted from running games to packaging the results. The dataset publisher pipeline exports all telemetry to HuggingFace with Croissant 1.1 metadata for the NeurIPS Evaluations & Datasets track submission. Several reliability features landed in parallel from ongoing eval runs across the fleet.
 
+- **Rival culture victory is now visible**: `get_victory_progress` only ever reported our *offense* toward a culture victory ("need 508 more"), never a rival's offense against us. An agent lost a game at T337 to a Khmer culture victory while the tool graded Culture at "15% viability" and the per-turn scan emitted nothing. The CULTURE section now splits into `US -> THEM` / `THEM -> US`, and `end_turn` emits `CUL_THREAT` events — including a culture-output-ratio warning that fires dozens of turns before the tourist count moves, while counters are still actionable.
+- **Space project completion no longer inferred from science VP**: `GetScienceVictoryPoints()` reports 0 in some rulesets even after projects launch, so completed projects rendered as `[UNLOCKED]` forever with a hint telling the agent to "build a Spaceport" it already owned. Completion is now detected structurally (one-shot project + tech held + Spaceport owned + unbuildable ⇒ launched).
 - **HuggingFace dataset publisher**: End-to-end pipeline (`scripts/publish_hf/`) for staging, exporting parquet tables, generating Croissant 1.1 metadata, validating, and uploading to HuggingFace.
 - **NeurIPS anonymization**: RAI metadata fields, identity redaction in parquet exports, anonymous HF account.
 - **Game-over watchdog**: Detect victories even when the LLM stops calling tools — polls game state on a background timer.

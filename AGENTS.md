@@ -64,7 +64,8 @@ Periodic checks worth doing regularly. The game doesn't surface most of this pro
 
 ### Around every 20 turns:
 - `get_diplomacy` — delegations to new civs, friendships with Friendly civs, alliances if eligible
-- `get_victory_progress` — check all 6 victory types, not just your own path
+- `get_victory_progress` — check all 6 victory types, not just your own path. Read the **`THEM -> US`** block under CULTURE, not just `US -> THEM`: the offense block can say "need 508 more" (hopeless for you) on the very turn a rival is about to win a culture victory.
+- **Compare every rival's `Cul` in RIVAL INTELLIGENCE against your own.** A rival at 2x your culture output is a culture-victory clock already running; counters (war to seize Great Works, National Parks, Rock Bands, your own tourism) need ~30 turns of lead time, so acting when the tourist counter moves is far too late.
 - `get_religion_spread` — religious victory is invisible without active checking; a rival with majority in most civs is a serious threat
 
 ### Around every 30 turns:
