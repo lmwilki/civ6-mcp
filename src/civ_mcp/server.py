@@ -2698,6 +2698,25 @@ async def dismiss_popup(ctx: Context) -> str:
     return await _logged(ctx, "dismiss_popup", {}, gs.dismiss_popup)
 
 
+@mcp.tool()
+async def advance_world_congress(ctx: Context) -> str:
+    """Clear a stuck World Congress session so end_turn can proceed.
+
+    end_turn never auto-resolves ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION —
+    it stops so you can vote first. After queue_wc_votes the session still
+    blocks. This is the "continue congress" button: it marks the congress
+    looked-at, dismisses the blocking notifications, and hides every
+    congress screen. dismiss_popup hides the screens but does not clear the
+    blocker, so it cannot release the turn on its own.
+
+    Flow: get_world_congress() -> queue_wc_votes(...) -> end_turn()
+    -> if blocked on World Congress Session: advance_world_congress()
+    -> end_turn() again.
+    """
+    gs = _get_game(ctx)
+    return await _logged(ctx, "advance_world_congress", {}, gs.advance_world_congress)
+
+
 @mcp.tool(annotations={"destructiveHint": True})
 async def run_lua(ctx: Context, code: str, context: str = "gamecore") -> str:
     """Run arbitrary Lua code in the game. Advanced escape hatch — prefer built-in tools.

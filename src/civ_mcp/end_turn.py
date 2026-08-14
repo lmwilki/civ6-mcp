@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import civ_mcp.narrate as nr
@@ -15,6 +16,63 @@ if TYPE_CHECKING:
     from civ_mcp.game_state import GameState
 
 log = logging.getLogger(__name__)
+
+
+# How long an unacknowledged ACTION_ENDTURN stays trusted. The double-send
+# hazard (which makes turns skip, e.g. 412 -> 415) only exists for a few
+# seconds after the original request, so a generous threshold keeps that
+# protection intact while still escaping a permanently latched flag.
+STALE_PENDING_SECS = 20.0
+
+
+def should_resend_end_turn(
+    *,
+    pending: bool,
+    pending_from: int | None,
+    pending_at: float,
+    turn_before: int | None,
+    now: float,
+    stale_secs: float = STALE_PENDING_SECS,
+) -> tuple[bool, str]:
+    """Decide whether to send ACTION_ENDTURN, given the in-flight marker.
+
+    The guard exists to stop duplicate ACTION_ENDTURN requests. But the flag
+    is only cleared when the turn actually advances, so an aborted call — a
+    killed background task, a client timeout, a dropped connection — used to
+    latch it True forever: every later end_turn silently refused to send the
+    action and polled a request the game never received. That is a permanent
+    hang with no recovery path short of restarting the server.
+
+    Two escapes:
+      1. The turn already moved past the pending baseline, so that request
+         completed and this is a fresh turn.
+      2. The flag is older than ``stale_secs`` and the turn has not moved,
+         so the request was lost.
+
+    Returns (resend, reason) — reason is for logging.
+    """
+    if not pending:
+        return True, "no request in flight"
+    if (
+        pending_from is not None
+        and turn_before is not None
+        and turn_before > pending_from
+    ):
+        return True, (
+            f"pending request from turn {pending_from} already completed "
+            f"(now turn {turn_before}) — sending fresh request"
+        )
+    elapsed = now - pending_at
+    if elapsed > stale_secs:
+        return True, (
+            f"pending request from turn {pending_from} is stale "
+            f"({elapsed:.0f}s, turn still {turn_before}) — previous call was "
+            "likely aborted; re-sending"
+        )
+    return False, (
+        f"previous request still in flight (from turn {pending_from}, "
+        f"{elapsed:.1f}s ago) — not re-sending"
+    )
 
 
 async def _check_mid_turn_diplomacy(
@@ -76,8 +134,7 @@ async def _check_mid_turn_diplomacy(
                 if advanced:
                     return None, True  # turn advanced, caller handles snapshot
                 # Original ACTION_ENDTURN was consumed — next call must re-send
-                gs._pending_end_turn = False
-                gs._pending_end_turn_from = None
+                gs.clear_pending_end_turn()
                 return (
                     f"WAR DECLARED by {war_msg}! Session dismissed.\n"
                     f"Turn did not advance — call end_turn again.\n"
@@ -504,8 +561,7 @@ async def execute_end_turn(gs: GameState) -> str:
     # 0. Game-over check — don't try to advance a finished game
     gameover = await gs.check_game_over()
     if gameover is not None:
-        gs._pending_end_turn = False
-        gs._pending_end_turn_from = None
+        gs.clear_pending_end_turn()
         gs._last_game_over = gameover
         vtype = gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
         if gameover.is_defeat:
@@ -630,27 +686,9 @@ async def execute_end_turn(gs: GameState) -> str:
 
                 if blocking_type == "ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK":
                     await gs.conn.execute_write(
-                        f"local me = Game.GetLocalPlayer(); "
-                        f"UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); "
-                        f"local list = NotificationManager.GetList(me); "
-                        f"if list then "
-                        f"  for _, nid in ipairs(list) do "
-                        f"    pcall(function() "
-                        f"      local e = NotificationManager.Find(me, nid); "
-                        f"      if e and not e:IsDismissed() then "
-                        f"        local bt = e:GetEndTurnBlocking(); "
-                        f"        if bt and bt == EndTurnBlockingTypes.ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK then "
-                        f"          NotificationManager.Dismiss(me, nid) "
-                        f"        end "
-                        f"      end "
-                        f"    end) "
-                        f"  end "
-                        f"end; "
-                        f'local i = ContextPtr:LookUpControl("/InGame/WorldCongressIntro"); '
-                        f"if i then i:SetHide(true) end; "
-                        f'local p = ContextPtr:LookUpControl("/InGame/WorldCongressPopup"); '
-                        f"if p then p:SetHide(true) end; "
-                        f'print("OK"); print("{lq.SENTINEL}")'
+                        lq.build_world_congress_dismiss(
+                            only_type="ENDTURN_BLOCKING_WORLD_CONGRESS_LOOK"
+                        )
                     )
                     resolved_any = True
                     continue
@@ -669,41 +707,22 @@ async def execute_end_turn(gs: GameState) -> str:
                 if "WORLD_CONGRESS" in blocking_type:
                     try:
                         wc_dismiss_lines = await gs.conn.execute_write(
-                            f"local me = Game.GetLocalPlayer(); "
-                            f"UI.RequestPlayerOperation(me, PlayerOperations.WORLD_CONGRESS_LOOKED_AT_AVAILABLE, {{}}); "
-                            f"local dismissed = 0; "
-                            f"local list = NotificationManager.GetList(me); "
-                            f"if list then "
-                            f"  for _, nid in ipairs(list) do "
-                            f"    pcall(function() "
-                            f"      local e = NotificationManager.Find(me, nid); "
-                            f"      if e and not e:IsDismissed() then "
-                            f"        local bt = e:GetEndTurnBlocking(); "
-                            f"        if bt and bt ~= 0 then "
-                            f"          for k, v in pairs(EndTurnBlockingTypes) do "
-                            f'            if v == bt and k:find("WORLD_CONGRESS") then '
-                            f"              NotificationManager.Dismiss(me, nid); "
-                            f"              dismissed = dismissed + 1; "
-                            f"              break "
-                            f"            end "
-                            f"          end "
-                            f"        end "
-                            f"      end "
-                            f"    end) "
-                            f"  end "
-                            f"end; "
-                            f'local i = ContextPtr:LookUpControl("/InGame/WorldCongressIntro"); '
-                            f"if i then i:SetHide(true) end; "
-                            f'local p = ContextPtr:LookUpControl("/InGame/WorldCongressPopup"); '
-                            f"if p then p:SetHide(true) end; "
-                            f'print("DISMISSED:" .. dismissed); print("{lq.SENTINEL}")'
+                            lq.build_world_congress_dismiss()
                         )
-                        if any(
-                            "DISMISSED:" in l and not l.endswith(":0")
-                            for l in wc_dismiss_lines
-                        ):
+                        dismissed, hidden = lq.parse_world_congress_dismiss(
+                            wc_dismiss_lines
+                        )
+                        # Hiding a screen counts as progress: a congress
+                        # context left up holds the end-turn lock even when
+                        # no notification remains to dismiss.
+                        if dismissed or hidden:
                             resolved_any = True
-                            log.info("Auto-dismissed WC blocker: %s", blocking_type)
+                            log.info(
+                                "Auto-resolved WC blocker %s (dismissed %d, hid %d)",
+                                blocking_type,
+                                dismissed,
+                                hidden,
+                            )
                             continue
                     except Exception:
                         log.debug("WC catch-all auto-resolve failed", exc_info=True)
@@ -1141,19 +1160,40 @@ async def execute_end_turn(gs: GameState) -> str:
     # After mid-turn diplomacy/deals, the game auto-continues AI processing
     # with the original request, so we only need to poll for advancement.
     lua = lq.build_end_turn()
+    # The in-flight guard prevents double-sending ACTION_ENDTURN in quick
+    # succession (which makes turns skip, e.g. 412 -> 415).  But the flag is
+    # only cleared when the turn actually advances, so an aborted call — a
+    # killed background task, a client timeout, a dropped connection — leaves
+    # it stuck True forever and every later end_turn silently refuses to send
+    # the action, polling a request the game never received.
+    #
+    # Two escapes:
+    #   1. The turn already moved past the pending baseline -> that request
+    #      completed; this is a fresh turn and must be sent normally.
+    #   2. The flag is older than STALE_PENDING_SECS and the turn has not
+    #      moved -> the request was lost.  Re-send.  The double-send hazard
+    #      only exists within a few seconds of the original, so a generous
+    #      threshold keeps the original protection intact.
+    resend, reason = should_resend_end_turn(
+        pending=gs._pending_end_turn,
+        pending_from=gs._pending_end_turn_from,
+        pending_at=gs._pending_end_turn_at,
+        turn_before=turn_before,
+        now=time.monotonic(),
+    )
     if gs._pending_end_turn:
-        log.info(
-            "Skipping ACTION_ENDTURN — previous request still in flight (from turn %s)",
-            gs._pending_end_turn_from,
-        )
-        # Use the original turn number as baseline for advancement detection.
-        # The current turn_before may already be advanced if the game auto-continued.
-        if gs._pending_end_turn_from is not None:
-            turn_before = gs._pending_end_turn_from
-    else:
+        log.info("ACTION_ENDTURN in-flight guard: %s", reason)
+        if resend:
+            gs.clear_pending_end_turn()
+        else:
+            # Use the original turn number as baseline for advancement
+            # detection: turn_before may already be advanced if the game
+            # auto-continued after mid-turn diplomacy.
+            if gs._pending_end_turn_from is not None:
+                turn_before = gs._pending_end_turn_from
+    if resend:
         await gs.conn.execute_write(lua)
-        gs._pending_end_turn = True
-        gs._pending_end_turn_from = turn_before
+        gs.mark_pending_end_turn(turn_before, time.monotonic())
 
     # Poll for turn advancement using GameCore-only queries.
     # CRITICAL: Do NOT send InGame queries while AI civs are processing
@@ -1231,8 +1271,7 @@ async def execute_end_turn(gs: GameState) -> str:
             if delay >= 10.0:
                 gameover = await gs.check_game_over()
                 if gameover is not None:
-                    gs._pending_end_turn = False
-                    gs._pending_end_turn_from = None
+                    gs.clear_pending_end_turn()
                     gs._last_game_over = gameover
                     vtype = (
                         gameover.victory_type.replace("VICTORY_", "")
@@ -1328,8 +1367,7 @@ async def execute_end_turn(gs: GameState) -> str:
         # Check if game ended during turn transition (victory/defeat)
         gameover = await gs.check_game_over()
         if gameover is not None:
-            gs._pending_end_turn = False
-            gs._pending_end_turn_from = None
+            gs.clear_pending_end_turn()
             gs._last_game_over = gameover
             vtype = (
                 gameover.victory_type.replace("VICTORY_", "").replace("_", " ").title()
@@ -1365,15 +1403,13 @@ async def execute_end_turn(gs: GameState) -> str:
         except Exception:
             pass
         # Turn didn't advance — clear the pending flag so next call re-sends
-        gs._pending_end_turn = False
-        gs._pending_end_turn_from = None
+        gs.clear_pending_end_turn()
         if details:
             # Before returning blocker, check if game actually ended —
             # victory can trigger during AI processing while blockers coexist
             gameover = await gs.check_game_over()
             if gameover is not None:
-                gs._pending_end_turn = False
-                gs._pending_end_turn_from = None
+                gs.clear_pending_end_turn()
                 gs._last_game_over = gameover
                 vtype = (
                     gameover.victory_type.replace("VICTORY_", "")
@@ -1403,8 +1439,7 @@ async def execute_end_turn(gs: GameState) -> str:
         return f"End turn requested (turn is still {turn_num}). Check get_pending_diplomacy or dismiss_popup."
 
     # Turn advanced — clear the pending flag
-    gs._pending_end_turn = False
-    gs._pending_end_turn_from = None
+    gs.clear_pending_end_turn()
 
     # Turn regression detection — catch accidental wrong-save loads
     if turn_after is not None and gs._high_water_turn > 0:

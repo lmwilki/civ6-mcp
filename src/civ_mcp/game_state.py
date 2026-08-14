@@ -45,6 +45,13 @@ class GameState:
         self._pending_end_turn_from: int | None = (
             None  # turn number when ACTION_ENDTURN was sent
         )
+        self._pending_end_turn_at: float = (
+            0.0  # monotonic time ACTION_ENDTURN was sent (staleness guard)
+        )
+        # World Congress blocker loop detection (read by server.py). Declared
+        # here rather than assigned dynamically so the invariant is visible.
+        self._wc_blocker_turn: int = -1  # turn the WC blocker last fired on
+        self._wc_blocker_count: int = 0  # consecutive fires on that turn
         self._high_water_turn: int = 0  # highest turn seen (for regression detection)
         self._local_player_id: int = 0  # human player (always 0 in single-player)
         self._hang_retry_active: bool = False  # guard against recursive hang recovery
@@ -1675,6 +1682,28 @@ class GameState:
         from civ_mcp.game_lifecycle import dismiss_popup
 
         return await dismiss_popup(self.conn)
+
+    def mark_pending_end_turn(self, turn: int | None, now: float) -> None:
+        """Record that ACTION_ENDTURN was sent.
+
+        Set all three fields together — the staleness guard reads the
+        timestamp, so a flag raised without one would be mis-classified.
+        """
+        self._pending_end_turn = True
+        self._pending_end_turn_from = turn
+        self._pending_end_turn_at = now
+
+    def clear_pending_end_turn(self) -> None:
+        """Clear the in-flight ACTION_ENDTURN marker and its timestamp."""
+        self._pending_end_turn = False
+        self._pending_end_turn_from = None
+        self._pending_end_turn_at = 0.0
+
+    async def advance_world_congress(self) -> str:
+        """Clear a stuck World Congress session blocker."""
+        from civ_mcp.game_lifecycle import advance_world_congress
+
+        return await advance_world_congress(self.conn)
 
     async def list_saves(self) -> str:
         """List available save files."""

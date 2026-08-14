@@ -10,6 +10,46 @@ from civ_mcp.connection import GameConnection
 log = logging.getLogger(__name__)
 
 
+async def advance_world_congress(conn: GameConnection) -> str:
+    """Clear a stuck World Congress session so end_turn can proceed.
+
+    end_turn deliberately refuses to auto-resolve
+    ENDTURN_BLOCKING_WORLD_CONGRESS_SESSION so the agent votes first
+    (get_world_congress + queue_wc_votes).  Once votes are registered the
+    session still blocks: this is the "continue congress" button —
+    LOOKED_AT_AVAILABLE + dismiss every WORLD_CONGRESS end-turn blocker +
+    hide every congress screen.
+
+    Distinct from dismiss_popup, which hides the same screens but does not
+    dismiss the blocking notifications or mark the congress looked-at, so it
+    cannot release a session blocker on its own.
+
+    Call this after queue_wc_votes when end_turn reports
+    "Blocker: World Congress Session".
+    """
+    try:
+        lines = await conn.execute_write(lq.build_world_congress_dismiss())
+    except Exception as e:
+        log.debug("advance_world_congress failed: %s", e)
+        return f"Error: could not advance World Congress ({e})"
+
+    if not any(line.startswith("WC_DISMISSED|") for line in lines):
+        return "World Congress advance ran but returned no status — retry end_turn()."
+
+    dismissed, hidden = lq.parse_world_congress_dismiss(lines)
+    if dismissed == 0 and hidden == 0:
+        return (
+            "No World Congress blocker found — nothing to advance. "
+            "If end_turn is still blocked, call get_notifications() "
+            "to see the actual blocker."
+        )
+    return (
+        f"World Congress advanced: dismissed {dismissed} blocking "
+        f"notification(s), hid {hidden} congress screen(s). "
+        "Call end_turn() again."
+    )
+
+
 async def dismiss_popup(conn: GameConnection) -> str:
     """Dismiss any blocking popup or UI overlay in the game.
 
@@ -37,8 +77,9 @@ async def dismiss_popup(conn: GameConnection) -> str:
         "PopupDialog",
         "BoostUnlockedPopup",
         "GreatWorkShowcase",
-        "WorldCongressPopup",
-        "WorldCongressIntro",
+        # All congress screens, not just Popup/Intro — any one of them left up
+        # holds the end-turn lock.
+        *lq.WORLD_CONGRESS_CONTEXTS,
     ]
     checks = []
     for name in popup_names:
