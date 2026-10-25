@@ -45,41 +45,45 @@ for i, u in p:GetUnits():Members() do
     end
 end
 local myScore = p:GetScore()
-local favor = p:GetFavor()
+local favor = 0
 local favorPerTurn = 0
 local pDiplo = p:GetDiplomacy()
--- 1. Government tier bonus (govRow.Tier is a string like "GOVERNMENT_TIER_1")
-local govIdx = cu:GetCurrentGovernment()
-if govIdx >= 0 then
-    local govRow = GameInfo.Governments[govIdx]
-    if govRow and govRow.Tier then
-        local n = tonumber(tostring(govRow.Tier):match("(%d+)$")) or 0
-        favorPerTurn = favorPerTurn + math.max(1, n)
+-- Diplomatic Favor is only available in Gathering Storm.
+if p.GetFavor then
+    favor = p:GetFavor() or 0
+    -- 1. Government tier bonus (govRow.Tier is a string like "GOVERNMENT_TIER_1")
+    local govIdx = cu:GetCurrentGovernment()
+    if govIdx >= 0 then
+        local govRow = GameInfo.Governments[govIdx]
+        if govRow and govRow.Tier then
+            local n = tonumber(tostring(govRow.Tier):match("(%d+)$")) or 0
+            favorPerTurn = favorPerTurn + math.max(1, n)
+        end
     end
-end
--- 2. Alliances (level-based, +1 per alliance level)
-for i = 0, 62 do
-    if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
-        local ok, ai = pcall(function() return Players[i]:GetDiplomaticAI() end)
-        if ok and ai then
-            local ok2, stateIdx = pcall(function() return ai:GetDiplomaticStateIndex(id) end)
-            if ok2 and stateIdx then
-                local si = tonumber(stateIdx) or -1
-                if si == 0 then
-                    local ok3, aLvl = pcall(function() return pDiplo:GetAllianceLevel(i) end)
-                    favorPerTurn = favorPerTurn + (tonumber(ok3 and aLvl) or 1)
+    -- 2. Alliances (level-based, +1 per alliance level)
+    for i = 0, 62 do
+        if i ~= id and Players[i] and Players[i]:IsAlive() and Players[i]:IsMajor() and pDiplo:HasMet(i) then
+            local ok, ai = pcall(function() return Players[i]:GetDiplomaticAI() end)
+            if ok and ai then
+                local ok2, stateIdx = pcall(function() return ai:GetDiplomaticStateIndex(id) end)
+                if ok2 and stateIdx then
+                    local si = tonumber(stateIdx) or -1
+                    if si == 0 then
+                        local ok3, aLvl = pcall(function() return pDiplo:GetAllianceLevel(i) end)
+                        favorPerTurn = favorPerTurn + (tonumber(ok3 and aLvl) or 1)
+                    end
                 end
             end
         end
     end
-end
--- 3. Suzerainties (+1 each)
-for i = 0, 62 do
-    if Players[i] and Players[i]:IsAlive() then
-        local ok, canRecv = pcall(function() return Players[i]:GetInfluence():CanReceiveInfluence() end)
-        if ok and canRecv then
-            local suzID = Players[i]:GetInfluence():GetSuzerain()
-            if suzID == id then favorPerTurn = favorPerTurn + 1 end
+    -- 3. Suzerainties (+1 each)
+    for i = 0, 62 do
+        if Players[i] and Players[i]:IsAlive() then
+            local ok, canRecv = pcall(function() return Players[i]:GetInfluence():CanReceiveInfluence() end)
+            if ok and canRecv then
+                local suzID = Players[i]:GetInfluence():GetSuzerain()
+                if suzID == id then favorPerTurn = favorPerTurn + 1 end
+            end
         end
     end
 end
@@ -122,14 +126,17 @@ for i = 0, 62 do
 end
 local maxRel = math.floor(nMajors / 2) + 1
 print("RELSLOTS|" .. nReligions .. "|" .. maxRel)
-local eraManager = Game.GetEras()
-local eraIdx = eraManager:GetCurrentEra()
-local eraEntry = GameInfo.Eras[eraIdx]
-local eraName = eraEntry and Locale.Lookup(eraEntry.Name) or "Unknown"
-local eraScore = eraManager:GetPlayerCurrentScore(id)
-local darkThresh = eraManager:GetPlayerDarkAgeThreshold(id)
-local goldenThresh = eraManager:GetPlayerGoldenAgeThreshold(id)
-print("ERA|" .. eraName .. "|" .. eraScore .. "|" .. darkThresh .. "|" .. goldenThresh)
+-- Era scores are unavailable in the base-game ruleset.
+if Game.GetEras then
+    local eraManager = Game.GetEras()
+    local eraIdx = eraManager:GetCurrentEra()
+    local eraEntry = GameInfo.Eras[eraIdx]
+    local eraName = eraEntry and Locale.Lookup(eraEntry.Name) or "Unknown"
+    local eraScore = eraManager:GetPlayerCurrentScore(id)
+    local darkThresh = eraManager:GetPlayerDarkAgeThreshold(id)
+    local goldenThresh = eraManager:GetPlayerGoldenAgeThreshold(id)
+    print("ERA|" .. eraName .. "|" .. eraScore .. "|" .. darkThresh .. "|" .. goldenThresh)
+end
 local maxTurns = GameConfiguration.GetValue("GAME_MAX_TURNS") or 0
 print("MAXTURNS|" .. maxTurns)
 local diffName = "Unknown"
